@@ -97,12 +97,11 @@ struct DockBar: View {
             .glassEffect(.regular)
             .clipShape(.capsule)
             .overlay {
-                // 液态玻璃透镜：跟随手指/选中项
+                // 液态玻璃透镜：跟随手指/选中项（半透明蓝，不用 glassEffect——小元素上渲染会变灰块）
                 Capsule()
-                    .fill(Color.accentColor.opacity(isInteracting ? 0.32 : 0.18))
-                    .frame(width: tabWidth(in: geo.size.width) - 6, height: geo.size.height - 8)
+                    .fill(Color.accentColor.opacity(isInteracting ? 0.35 : 0.22))
+                    .frame(width: tabWidth(in: geo.size.width) - 8, height: geo.size.height - 10)
                     .offset(x: lensX)
-                    .glassEffect(.regular)
                     .animation(.spring(duration: 0.3, bounce: 0.25), value: lensX)
             }
             .overlay {
@@ -132,7 +131,12 @@ struct DockBar: View {
             )
             .onAppear {
                 dockWidth = geo.size.width
-                lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0, width: geo.size.width)
+                // 延迟到布局完成后设置透镜初始位置（避免 geo 尺寸未就绪）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.none) {
+                        lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0, width: geo.size.width)
+                    }
+                }
             }
             .onChange(of: selected) {
                 withAnimation(.spring(duration: 0.35, bounce: 0.25)) {
