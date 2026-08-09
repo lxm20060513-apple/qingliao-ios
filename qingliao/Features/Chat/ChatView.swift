@@ -67,6 +67,7 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        // 避开悬浮 Dock（Dock 高约 74pt + 间距），输入栏在 Dock 上方
+        .padding(.bottom, 78)
     }
 }

@@ -1,9 +1,9 @@
 import SwiftUI
 
-enum DockTab: CaseIterable, Identifiable {
+enum DockTab: String, CaseIterable, Identifiable {
     case chat, sessions, dashboard, settings
 
-    var id: Self { self }
+    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -31,26 +31,27 @@ struct DockTabView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            Group {
-                switch selected {
-                case .chat: ChatView()
-                case .sessions: SessionsView()
-                case .dashboard: DashboardView()
-                case .settings: SettingsView()
-                }
+            // 页面滑动切换（TabView page style）
+            TabView(selection: $selected) {
+                ChatView().tag(DockTab.chat)
+                SessionsView().tag(DockTab.sessions)
+                DashboardView().tag(DockTab.dashboard)
+                SettingsView().tag(DockTab.settings)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(Color.black)
+            .ignoresSafeArea(edges: .bottom)
 
             VStack {
                 Spacer()
                 DockBar(selected: $selected)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 12)
             }
         }
     }
 }
 
-// MARK: - 液态玻璃悬浮 Dock
+// MARK: - 液态玻璃悬浮 Dock（iOS 26 Liquid Glass 风格模拟）
 
 struct DockBar: View {
     @Binding var selected: DockTab
@@ -59,32 +60,53 @@ struct DockBar: View {
         HStack(spacing: 2) {
             ForEach(DockTab.allCases) { tab in
                 Button {
-                    withAnimation(.spring(duration: 0.35)) { selected = tab }
+                    withAnimation(.spring(duration: 0.4, bounce: 0.3)) { selected = tab }
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 4) {
                         Image(systemName: tab.icon)
-                            .font(.system(size: 19, weight: .medium))
+                            .font(.system(size: 21, weight: .medium))
                         Text(tab.title)
-                            .font(.system(size: 9.5, weight: .semibold))
+                            .font(.system(size: 10.5, weight: .semibold))
                     }
                     .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 9)
                     .contentShape(Rectangle())
                     .background {
                         if selected == tab {
-                            Capsule().fill(Color.accentColor.opacity(0.16))
+                            Capsule().fill(Color.accentColor.opacity(0.18))
                         }
                     }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.13), lineWidth: 0.8))
-        .shadow(color: .black.opacity(0.35), radius: 18, y: 7)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background {
+            // 液态玻璃：材质 + 顶部高光渐变 + 环境光晕
+            ZStack {
+                Capsule().fill(
+                    LinearGradient(colors: [
+                        Color.white.opacity(0.10),
+                        Color.white.opacity(0.03)
+                    ], startPoint: .top, endPoint: .bottom)
+                )
+                Capsule().fill(.ultraThinMaterial)
+            }
+            .clipShape(Capsule())
+        }
+        .overlay {
+            // 高光描边（上亮下暗，模拟玻璃折射）
+            Capsule().strokeBorder(
+                LinearGradient(colors: [
+                    Color.white.opacity(0.28),
+                    Color.white.opacity(0.08)
+                ], startPoint: .top, endPoint: .bottom),
+                lineWidth: 0.9
+            )
+        }
+        .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
+        .padding(.horizontal, 26)
     }
 }
