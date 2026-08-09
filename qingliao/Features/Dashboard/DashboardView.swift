@@ -17,8 +17,8 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        DeviceCard(name: "客厅灯", value: haLights, sub: "\(haLightsOn) 盏开启", status: haLightsOn > 0 ? .on : .off)
-                        DeviceCard(name: "空调", value: haClimate, sub: "\(haClimateOn) 台运行中", status: haClimateOn > 0 ? .on : .off)
+                        DeviceCard(name: "客厅灯", value: haLights, sub: "\(lightsOn) 盏开启", status: lightsOn > 0 ? .on : .off)
+                        DeviceCard(name: "空调", value: haClimate, sub: "\(climateOn) 台运行中", status: climateOn > 0 ? .on : .off)
                         DeviceCard(name: "门锁", value: haLockBattery, sub: "智能门锁", status: .on)
                         DeviceCard(name: "猫眼", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
                         DeviceCard(name: "安防", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
