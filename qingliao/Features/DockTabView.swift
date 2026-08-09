@@ -41,14 +41,14 @@ struct DockTabView: View {
             .background(Color.black)
             .ignoresSafeArea(edges: .bottom)
 
-            // 环境光晕（液态玻璃透出内容）
+            // 环境光晕：收敛到底部 Dock 区域、低透明度（页面主体保持纯黑，玻璃有内容可透即可）
             ZStack {
-                Circle().fill(Color.blue.opacity(0.30)).frame(width: 300, height: 300).blur(radius: 70)
-                    .offset(y: 120)
-                Circle().fill(Color.indigo.opacity(0.22)).frame(width: 240, height: 240).blur(radius: 60)
-                    .offset(x: 130, y: 90)
-                Circle().fill(Color.cyan.opacity(0.15)).frame(width: 200, height: 200).blur(radius: 55)
-                    .offset(x: -120, y: 110)
+                Circle().fill(Color.blue.opacity(0.14)).frame(width: 220, height: 220).blur(radius: 65)
+                    .offset(y: 170)
+                Circle().fill(Color.indigo.opacity(0.10)).frame(width: 190, height: 190).blur(radius: 55)
+                    .offset(x: 140, y: 140)
+                Circle().fill(Color.cyan.opacity(0.07)).frame(width: 170, height: 170).blur(radius: 50)
+                    .offset(x: -130, y: 150)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
