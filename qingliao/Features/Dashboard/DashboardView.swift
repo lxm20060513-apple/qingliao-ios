@@ -10,7 +10,6 @@ struct DashboardView: View {
     @State private var loaded = false
     @State private var showLightsSheet = false
     @State private var showClimateSheet = false
-    @State private var busyEntity: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,16 +55,12 @@ struct DashboardView: View {
                 await refresh()
             }
             .sheet(isPresented: $showLightsSheet) {
-                HADeviceSheet(title: "客厅灯", domain: "light", entities: lights, busyEntity: busyEntity) { e in
-                    await toggle(e, domain: "light")
-                }
-                .presentationDetents([.medium, .large])
+                HADeviceSheet(title: "客厅灯", domain: "light")
+                    .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showClimateSheet) {
-                HADeviceSheet(title: "空调", domain: "climate", entities: climates, busyEntity: busyEntity) { e in
-                    await toggle(e, domain: "climate")
-                }
-                .presentationDetents([.medium, .large])
+                HADeviceSheet(title: "空调", domain: "climate")
+                    .presentationDetents([.medium, .large])
             }
         }
         .task {
@@ -90,20 +85,6 @@ struct DashboardView: View {
         }
         if let h = try? await auth.jsonArray("/api/ha/states") {
             haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
-        }
-    }
-
-    /// HA 服务调用（PWA 同款：POST /api/ha/services/{domain}/toggle）
-    private func toggle(_ e: HAEntity, domain: String) async {
-        guard busyEntity == nil else { return }
-        busyEntity = e.entityID
-        defer { busyEntity = nil }
-        do {
-            _ = try await auth.request("/api/ha/services/\(domain)/toggle", method: "POST",
-                                       body: ["entity_id": e.entityID])
-            await refresh()
-        } catch {
-            // 控制失败静默（下次刷新自动纠正状态）
         }
     }
 
@@ -169,15 +150,17 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - HA 设备控制 sheet（列表 + Toggle → 调服务）
+// MARK: - HA 设备控制 sheet（自管数据：onAppear 拉列表，Toggle 调服务后本地刷新）
 
 struct HADeviceSheet: View {
+    @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
     let title: String
     let domain: String
-    let entities: [HAEntity]
-    let busyEntity: String?
-    var onToggle: (HAEntity) async -> Void
+
+    @State private var entities: [HAEntity] = []
+    @State private var loading = true
+    @State private var busyID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -198,7 +181,11 @@ struct HADeviceSheet: View {
             .padding(.top, 18)
             .padding(.bottom, 8)
 
-            if entities.isEmpty {
+            if loading {
+                Spacer()
+                ProgressView().tint(.secondary)
+                Spacer()
+            } else if entities.isEmpty {
                 Spacer()
                 Text("暂无可用设备")
                     .font(.system(size: 13))
@@ -221,12 +208,12 @@ struct HADeviceSheet: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if busyEntity == e.entityID {
+                                if busyID == e.entityID {
                                     ProgressView().tint(.secondary)
                                 } else {
                                     Toggle("", isOn: Binding(
                                         get: { e.state != "off" },
-                                        set: { _ in Task { await onToggle(e) } }
+                                        set: { _ in toggle(e) }
                                     ))
                                     .labelsHidden()
                                     .tint(.green)
@@ -242,9 +229,36 @@ struct HADeviceSheet: View {
         }
         .background(Color(uiColor: .systemBackground))
         .preferredColorScheme(.dark)
+        .task { await load() }
     }
 
-    /// 设备显示名：friendly_name 太长时取前两段
+    /// Toggle 调 HA 服务（Task 内只捕获 Sendable 的 id/domain，勿捕获实体对象）
+    private func toggle(_ e: HAEntity) {
+        let id = e.entityID
+        busyID = id
+        Task {
+            defer { busyID = nil }
+            do {
+                _ = try await auth.request("/api/ha/services/\(domain)/toggle", method: "POST",
+                                           body: ["entity_id": id])
+            } catch {
+                // 控制失败静默
+            }
+            await load()
+        }
+    }
+
+    private func load() async {
+        if let arr = try? await auth.jsonArray("/api/ha/states") {
+            let all = arr.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
+            entities = all.filter {
+                $0.entityID.hasPrefix(domain + ".") && !$0.state.contains("unavailable")
+            }
+        }
+        loading = false
+    }
+
+    /// 设备显示名：friendly_name 太长时取第一段
     private func displayName(_ e: HAEntity) -> String {
         var name = e.friendlyName
         if name.isEmpty {
