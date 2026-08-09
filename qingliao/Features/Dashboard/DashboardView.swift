@@ -10,6 +10,7 @@ struct DashboardView: View {
     @State private var loaded = false
     @State private var showLightsSheet = false
     @State private var showClimateSheet = false
+    @State private var showServiceSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +35,7 @@ struct DashboardView: View {
                         MeterCard(name: "内存", value: nas.memUsedText, sub: "/ \(nas.memTotalText)", ratio: nas.memPct, color: .green)
                         MeterCard(name: "磁盘", value: String(format: "%.0f%%", nas.maxDiskPct), sub: "\(nas.disks.count) 个分区", ratio: nas.maxDiskPct / 100.0, color: .orange)
                         ServiceCard(name: "轻聊后端", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
+                            .onTapGesture { showServiceSheet = true }
                         ServiceCard(name: "Hermes 网关", running: nas.hermesAlive, detail: nas.hermesMemText)
                         ServiceCard(name: "运行时间", running: true, detail: nas.uptime)
                     }
@@ -60,6 +62,10 @@ struct DashboardView: View {
             .sheet(isPresented: $showClimateSheet) {
                 HADeviceSheet(title: "空调", domain: "climate")
                     .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showServiceSheet) {
+                ServiceControlSheet()
+                    .presentationDetents([.medium])
             }
         }
         .task {
@@ -146,6 +152,137 @@ struct DashboardView: View {
         Text(s)
             .font(.system(size: 15, weight: .bold))
             .padding(.top, 6)
+    }
+}
+
+// MARK: - 服务控制 sheet（轻聊后端：重试 / 停止）
+
+struct ServiceControlSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var busy = false
+    @State private var info = "管理轻聊后端服务"
+    @State private var showStopConfirm = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("轻聊后端")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.accentColor)
+                    Text(info)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+
+                // 重试服务
+                Button {
+                    restart()
+                } label: {
+                    HStack {
+                        if busy {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        Text("重试服务")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                // 停止服务
+                Button {
+                    showStopConfirm = true
+                } label: {
+                    HStack {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("停止服务")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .confirmationDialog("停止后轻聊将完全不可用，需在 NAS 上手动启动", isPresented: $showStopConfirm, titleVisibility: .visible) {
+                    Button("停止服务", role: .destructive) {
+                        stopService()
+                    }
+                    Button("取消", role: .cancel) {}
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+
+            Spacer()
+        }
+        .background(Color(uiColor: .systemBackground))
+        .preferredColorScheme(.dark)
+    }
+
+    private func restart() {
+        guard !busy else { return }
+        busy = true
+        info = "正在重启服务..."
+        Task {
+            defer { busy = false }
+            do {
+                _ = try await auth.request("/api/nas/service/restart", method: "POST",
+                                           body: ["service": "qingliao"])
+                info = "重试指令已发送，服务即将重启"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    if !Task.isCancelled { dismiss() }
+                }
+            } catch {
+                info = "发送失败，请检查连接"
+            }
+        }
+    }
+
+    private func stopService() {
+        guard !busy else { return }
+        busy = true
+        info = "正在停止服务..."
+        Task {
+            defer { busy = false }
+            do {
+                _ = try await auth.request("/api/nas/service/stop", method: "POST",
+                                           body: ["service": "qingliao"])
+                info = "停止指令已发送"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if !Task.isCancelled { dismiss() }
+                }
+            } catch {
+                info = "发送失败，请检查连接"
+            }
+        }
     }
 }
 
