@@ -68,6 +68,7 @@ struct DockBar: View {
     @Binding var selected: DockTab
     @State private var lensX: CGFloat = 0
     @State private var isInteracting = false
+    @State private var hoverIdx: Int? = nil   // 手指所在 tab（放大镜用）
     @State private var dockWidth: CGFloat = 280
 
     var body: some View {
@@ -80,17 +81,17 @@ struct DockBar: View {
                         VStack(spacing: 4) {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 21, weight: .medium))
-                                // 放大镜效果：透镜按住时，透镜下的图标放大
-                                .scaleEffect(lensIsOn(tab) ? 1.4 : 1.0)
+                                // 放大镜效果：透镜所在的 tab 图标放大（松手后短暂保持）
+                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : 1.0)
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
-                                .scaleEffect(lensIsOn(tab) ? 1.3 : 1.0)
+                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
                         }
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .contentShape(Rectangle())
-                        .animation(.spring(duration: 0.25, bounce: 0.4), value: lensIsOn(tab))
+                        .animation(.spring(duration: 0.3, bounce: 0.4), value: hoverIdx)
                     }
                     .buttonStyle(.plain)
                 }
@@ -125,6 +126,7 @@ struct DockBar: View {
                         // 内容从 padding 12 处开始
                         let idx = min(max(Int((value.location.x - 12) / tw), 0), DockTab.allCases.count - 1)
                         lensX = lensOffset(for: idx)
+                        hoverIdx = idx
                         let newTab = DockTab.allCases[idx]
                         if newTab != selected {
                             selected = newTab
@@ -132,6 +134,15 @@ struct DockBar: View {
                     }
                     .onEnded { _ in
                         isInteracting = false
+                        // 放大短暂保持（点按也能看清放大效果）
+                        let lastIdx = hoverIdx
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            if hoverIdx == lastIdx {
+                                withAnimation(.spring(duration: 0.3, bounce: 0.3)) {
+                                    hoverIdx = nil
+                                }
+                            }
+                        }
                     }
             )
             .onAppear {
@@ -158,8 +169,8 @@ struct DockBar: View {
     }
 
     /// 放大镜状态：按住且透镜在当前 tab 上
-    private func lensIsOn(_ tab: DockTab) -> Bool {
-        isInteracting && selected == tab
+    private func tabIndex(_ tab: DockTab) -> Int {
+        DockTab.allCases.firstIndex(of: tab) ?? 0
     }
 
     /// 透镜中心相对 Dock 中心的偏移（4 tab 对称：-1.5/-0.5/+0.5/+1.5 倍 tab 宽）
