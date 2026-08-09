@@ -128,14 +128,14 @@ struct BotCard: View {
             ZStack {
                 Circle()
                     .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                Text("M")
-                    .font(.system(size: 17, weight: .bold))
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.white)
             }
             .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("机器人 main")
+                Text("轻聊 agent")
                     .font(.system(size: 15, weight: .semibold))
                 Text("deepseek/deepseek-v4-flash")
                     .font(.system(size: 11, design: .monospaced))

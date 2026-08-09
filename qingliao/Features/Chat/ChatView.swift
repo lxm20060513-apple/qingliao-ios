@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
@@ -11,13 +12,17 @@ struct ChatView: View {
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
     @State private var sentOK = false   // ✅送达提示条
+    @State private var showPhotoPicker = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var pendingImage: UIImage?
+    @State private var pendingImageData: String?
 
     private let modelName = "deepseek-v4-flash"
     private let provider = "opencode"
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "聊天", subtitle: "在线 · WebChat 直连 · \(displayServer)")
+            PageHeader(title: "聊天", subtitle: "在线")
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
@@ -32,15 +37,54 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
+            // 图片预览条（选图后显示）
+            if let img = pendingImage {
+                HStack(spacing: 10) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 42, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Text("图片已选择，发送后 AI 可识别")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        pendingImage = nil
+                        pendingImageData = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 6)
+            }
             ChatInputBar(text: $inputText, focused: $inputFocus, streaming: stream.isStreaming) {
                 send()
             } onStop: {
                 stream.stop(auth: auth)
+            } onPickAttachment: {
+                showPhotoPicker = true
             }
             // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
             .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let img = UIImage(data: data) {
+                    pendingImage = img
+                    pendingImageData = compressImage(img)
+                }
+                photoItem = nil
+            }
+        }
         .onChange(of: stream.isStreaming) { _, streaming in
             if !streaming, !stream.content.isEmpty {
                 withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
@@ -96,18 +140,17 @@ struct ChatView: View {
         }
     }
 
-    private var displayServer: String {
-        auth.serverURL.replacingOccurrences(of: "http://", with: "")
-    }
-
     // MARK: - 发送
 
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !stream.isStreaming else { return }
+        let img = pendingImageData
+        guard (!text.isEmpty || img != nil), !stream.isStreaming else { return }
         inputText = ""
+        pendingImage = nil
+        pendingImageData = nil
 
-        chat.append(.local(role: "user", content: text))
+        chat.append(.local(role: "user", content: text, imageDataURL: img))
         let history = chat.historyPayload()
 
         Task {
@@ -126,6 +169,30 @@ struct ChatView: View {
             }
         }
     }
+
+    /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
+    private func compressImage(_ image: UIImage) -> String? {
+        let maxSide: CGFloat = 1280
+        var w = image.size.width
+        var h = image.size.height
+        if max(w, h) > maxSide {
+            let scale = maxSide / max(w, h)
+            w *= scale
+            h *= scale
+        }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: w, height: h))
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        var quality: CGFloat = 0.72
+        var data = resized.jpegData(compressionQuality: quality)
+        while let d = data, d.count > 900_000, quality > 0.25 {
+            quality -= 0.15
+            data = resized.jpegData(compressionQuality: quality)
+        }
+        guard let d = data else { return nil }
+        return "data:image/jpeg;base64," + d.base64EncodedString()
+    }
 }
 
 // MARK: - 消息气泡
@@ -142,32 +209,50 @@ struct MessageBubble: View {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Text("M")
-                        .font(.system(size: 13, weight: .bold))
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 30, height: 30)
             }
 
-            Text(message.content.isEmpty ? " " : message.content)
-                .font(.system(size: 14))
-                .lineSpacing(3)
-                .foregroundStyle(message.isUser ? .white : .primary)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 9)
-                .background(
-                    message.isUser
-                        ? Color(red: 0.13, green: 0.22, blue: 0.45)                 // 深蓝 navy 气泡
-                        : Color(uiColor: .systemGray5)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .frame(maxWidth: 290, alignment: message.isUser ? .trailing : .leading)
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+                if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: 200, maxHeight: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                if !message.content.isEmpty {
+                    Text(message.content)
+                        .font(.system(size: 14))
+                        .lineSpacing(3)
+                        .foregroundStyle(message.isUser ? .white : .primary)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
+                        .background(
+                            message.isUser
+                                ? Color(red: 0.13, green: 0.22, blue: 0.45)                 // 深蓝 navy 气泡
+                                : Color(uiColor: .systemGray5)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+            }
+            .frame(maxWidth: 290, alignment: message.isUser ? .trailing : .leading)
 
             if !message.isUser {
                 Spacer(minLength: 48)
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+    }
+
+    private func dataURLImage(_ urlStr: String) -> UIImage? {
+        guard let comma = urlStr.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(urlStr[urlStr.index(after: comma)...])),
+              let img = UIImage(data: data) else { return nil }
+        return img
     }
 }
 
@@ -179,10 +264,11 @@ struct ChatInputBar: View {
     var streaming: Bool
     var onSend: () -> Void
     var onStop: () -> Void = {}
+    var onPickAttachment: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
-            Button {} label: {
+            Button(action: onPickAttachment) {
                 Image(systemName: "paperclip")
                     .font(.system(size: 17))
                     .foregroundStyle(.secondary)
@@ -221,14 +307,5 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
-        // 键盘工具栏："完成"收起键盘（用户反馈键盘无法收回）
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("完成") { focused = false }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-            }
-        }
     }
 }

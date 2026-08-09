@@ -56,11 +56,12 @@ struct DockTabView: View {
 
             VStack {
                 Spacer()
-                // 键盘弹出时隐藏 Dock（微信 tab bar 行为），输入框紧贴键盘
+                // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 DockBar(selected: $selected)
+                    .offset(y: kb.isVisible ? 40 : 0)
                     .opacity(kb.isVisible ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible)
-                    .animation(.easeOut(duration: 0.2), value: kb.isVisible)
+                    .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
                     .padding(.bottom, 8)
             }
         }

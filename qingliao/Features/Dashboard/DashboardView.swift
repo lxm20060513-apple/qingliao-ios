@@ -40,12 +40,11 @@ struct DashboardView: View {
 
                     if !nas.disks.isEmpty {
                         sectionTitle("全部磁盘")
-                        VStack(spacing: 0) {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                             ForEach(nas.disks) { d in
-                                DiskRow(disk: d)
+                                DiskTile(disk: d)
                             }
                         }
-                        .glassListCard()
                     }
                 }
                 .padding(.horizontal, 14)
@@ -150,7 +149,7 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - HA 设备控制 sheet（自管数据：onAppear 拉列表，Toggle 调服务后本地刷新）
+// MARK: - HA 设备控制 sheet（HomeKit 风格：灯=卡片网格 / 空调=模式控制卡）
 
 struct HADeviceSheet: View {
     @Environment(AuthStore.self) private var auth
@@ -191,39 +190,26 @@ struct HADeviceSheet: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.tertiary)
                 Spacer()
-            } else {
+            } else if domain == "light" {
                 ScrollView {
-                    VStack(spacing: 0) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(entities) { e in
-                            HStack(spacing: 12) {
-                                Circle()
-                                    .fill(stateColor(e.state))
-                                    .frame(width: 8, height: 8)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(displayName(e))
-                                        .font(.system(size: 14, weight: .medium))
-                                        .lineLimit(1)
-                                    Text(e.state == "off" ? "已关闭" : (e.state == "on" ? "已开启" : e.state))
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if busyID == e.entityID {
-                                    ProgressView().tint(.secondary)
-                                } else {
-                                    Toggle("", isOn: Binding(
-                                        get: { e.state != "off" },
-                                        set: { _ in toggle(e) }
-                                    ))
-                                    .labelsHidden()
-                                    .tint(.green)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            Divider().padding(.leading, 36)
+                            lightCard(e)
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 20)
+                }
+            } else {
+                // 空调：模式控制卡
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(entities) { e in
+                            climateCard(e)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 20)
                 }
             }
         }
@@ -232,15 +218,175 @@ struct HADeviceSheet: View {
         .task { await load() }
     }
 
-    /// Toggle 调 HA 服务（Task 内只捕获 Sendable 的 id/domain，勿捕获实体对象）
+    // MARK: - 灯卡（HomeKit 网格：点亮=黄色光晕）
+
+    private func lightCard(_ e: HAEntity) -> some View {
+        let isOn = e.state == "on"
+        return Button {
+            toggle(e)
+        } label: {
+            VStack(spacing: 8) {
+                if busyID == e.entityID {
+                    ProgressView().tint(.secondary)
+                        .frame(height: 30)
+                } else {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(isOn ? Color.yellow : Color.gray.opacity(0.7))
+                        .shadow(color: isOn ? Color.yellow.opacity(0.55) : .clear, radius: 9)
+                }
+                Text(displayName(e))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(isOn ? "已开启" : "已关闭")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isOn ? .yellow : .tertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isOn ? Color.yellow.opacity(0.13) : Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isOn ? Color.yellow.opacity(0.3) : .clear, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 空调卡（当前温度大字 + 模式按钮 + 温度步进）
+
+    private func climateCard(_ e: HAEntity) -> some View {
+        let attrs = e.attributes
+        let cur = (attrs["current_temperature"] as? Double) ?? 0
+        let target = (attrs["temperature"] as? Double) ?? 24
+        let step = (attrs["target_temp_step"] as? Double) ?? 1
+        let modes = (attrs["hvac_modes"] as? [String]) ?? ["off", "auto", "cool", "dry", "heat", "fan_only"]
+        let isOn = e.state != "off" && e.state != "unavailable"
+
+        return VStack(alignment: .leading, spacing: 12) {
+            // 顶部：名称 + 状态
+            HStack {
+                Text(displayName(e))
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                Spacer()
+                Circle()
+                    .fill(isOn ? Color.green : Color.gray)
+                    .frame(width: 8, height: 8)
+            }
+
+            // 当前温度 + 目标温度步进
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("室内温度")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(String(format: "%.0f", cur))
+                            .font(.system(size: 40, weight: .bold))
+                        Text("°")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                VStack(spacing: 6) {
+                    Button {
+                        setTemp(e, value: target + step)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .bold))
+                            .frame(width: 34, height: 34)
+                            .background(Color(uiColor: .systemGray5), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    Text(String(format: "%.1f°", target))
+                        .font(.system(size: 16, weight: .semibold))
+                    Button {
+                        setTemp(e, value: target - step)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 14, weight: .bold))
+                            .frame(width: 34, height: 34)
+                            .background(Color(uiColor: .systemGray5), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // 模式按钮行
+            HStack(spacing: 8) {
+                ForEach(modes, id: \.self) { m in
+                    Button {
+                        setMode(e, mode: m)
+                    } label: {
+                        Text(modeName(m))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(e.state == m ? Color.white : Color.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(e.state == m ? Color.accentColor : Color(uiColor: .systemGray5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isOn ? Color.blue.opacity(0.25) : .clear, lineWidth: 0.8)
+        )
+    }
+
+    /// 模式显示名
+    private func modeName(_ m: String) -> String {
+        switch m {
+        case "off": "关闭"
+        case "auto": "自动"
+        case "cool": "制冷"
+        case "heat": "制热"
+        case "dry": "除湿"
+        case "fan_only": "送风"
+        default: m
+        }
+    }
+
+    // MARK: - 服务调用（Task 内只捕获 Sendable 值）
+
     private func toggle(_ e: HAEntity) {
-        let id = e.entityID
-        busyID = id
+        callService(domain: domain, service: "toggle", entityID: e.entityID, extra: nil)
+    }
+
+    private func setMode(_ e: HAEntity, mode: String) {
+        callService(domain: "climate", service: "set_hvac_mode", entityID: e.entityID,
+                    extra: ["hvac_mode": mode])
+    }
+
+    private func setTemp(_ e: HAEntity, value: Double) {
+        callService(domain: "climate", service: "set_temperature", entityID: e.entityID,
+                    extra: ["temperature": value])
+    }
+
+    private func callService(domain: String, service: String, entityID: String, extra: [String: Any]?) {
+        guard busyID == nil else { return }
+        busyID = entityID
+        let id = entityID
+        let path = "/api/ha/services/\(domain)/\(service)"
+        var body: [String: Any] = ["entity_id": id]
+        if let extra { body.merge(extra) { _, new in new } }
         Task {
             defer { busyID = nil }
             do {
-                _ = try await auth.request("/api/ha/services/\(domain)/toggle", method: "POST",
-                                           body: ["entity_id": id])
+                _ = try await auth.request(path, method: "POST", body: body)
             } catch {
                 // 控制失败静默
             }
@@ -272,28 +418,28 @@ struct HADeviceSheet: View {
         }
         return name
     }
-
-    private func stateColor(_ st: String) -> Color {
-        st == "off" || st.contains("unavailable") ? .gray : .green
-    }
 }
 
-// MARK: - 磁盘行（PWA 同款：mnt + pct + 进度条 + used/total）
+// MARK: - 磁盘磁贴（与 DeviceCard/MeterCard 同款 HomeKit 卡片风格）
 
-struct DiskRow: View {
+struct DiskTile: View {
     let disk: NASDisk
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(disk.mnt)
-                    .font(.system(size: 13, weight: .medium))
+                Text(shortName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
                 Text(String(format: "%.0f%%", disk.pct))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(disk.pct > 90 ? .red : (disk.pct > 75 ? .orange : .primary))
             }
+            Text(String(format: "%.0f%%", disk.pct))
+                .font(.system(size: 18, weight: .bold))
+                .padding(.top, 6)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(uiColor: .systemGray5))
@@ -303,14 +449,21 @@ struct DiskRow: View {
                 }
             }
             .frame(height: 4)
+            .padding(.top, 7)
             Text("\(disk.usedText) / \(disk.totalText)")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 3)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// 挂载点短名（/dev/mapper/... → volume1）
+    private var shortName: String {
+        let parts = disk.mnt.split(separator: "/").filter { !$0.isEmpty }
+        return parts.last.map(String.init) ?? disk.mnt
     }
 }
 

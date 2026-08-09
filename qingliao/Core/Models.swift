@@ -6,8 +6,9 @@ struct ChatMessage: Identifiable {
     let role: String        // user / assistant / system
     let content: String     // 纯文本形态（数组 content 取 text 部分）
     let timestamp: TimeInterval?   // 毫秒
+    var imageDataURL: String?      // data:image/jpeg;base64,...（本地发送的图片）
 
-    var id: String { "\(role)-\(content.hashValue)-\(timestamp ?? 0)" }
+    var id: String { "\(role)-\(content.hashValue)-\(imageDataURL?.hashValue ?? 0)-\(timestamp ?? 0)" }
     var isUser: Bool { role == "user" }
 
     /// 解析 messages 数组里的条目：content 可能是 String 或 [{type,text}...]
@@ -19,23 +20,36 @@ struct ChatMessage: Identifiable {
         if let s = d["content"] as? String {
             text = s
         } else if let arr = d["content"] as? [[String: Any]] {
-            // 多模态块：拼接 text 字段
+            // 多模态块：拼接 text 字段，图片记为 [图片]（历史消息不带 data URL，防超大 JSON）
             text = arr.compactMap { $0["text"] as? String }.joined(separator: "\n")
-            if text.isEmpty {
-                text = arr.contains { ($0["type"] as? String) == "image_url" } ? "[图片]" : ""
+            let hasImage = arr.contains { ($0["type"] as? String) == "image_url" }
+            if hasImage {
+                let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                text = t.isEmpty ? "[图片]" : t + "\n[图片]"
             }
         }
         return ChatMessage(role: role, content: text, timestamp: ts)
     }
 
     /// 本地新消息（无时间戳）
-    static func local(role: String, content: String) -> ChatMessage {
-        ChatMessage(role: role, content: content, timestamp: Date().timeIntervalSince1970 * 1000)
+    static func local(role: String, content: String, imageDataURL: String? = nil) -> ChatMessage {
+        ChatMessage(role: role, content: content, timestamp: Date().timeIntervalSince1970 * 1000,
+                    imageDataURL: imageDataURL)
     }
 
-    /// 请求体形态（发往 stream/start 的 messages）
+    /// 请求体形态（发往 stream/start 的 messages）：带图时用 content 数组
     func asPayload() -> [String: Any] {
-        var p: [String: Any] = ["role": role, "content": content]
+        var p: [String: Any] = ["role": role]
+        if let img = imageDataURL {
+            var blocks: [[String: Any]] = []
+            if !content.isEmpty {
+                blocks.append(["type": "text", "text": content])
+            }
+            blocks.append(["type": "image_url", "image_url": ["url": img]])
+            p["content"] = blocks
+        } else {
+            p["content"] = content
+        }
         if let ts = timestamp { p["timestamp"] = ts }
         return p
     }
