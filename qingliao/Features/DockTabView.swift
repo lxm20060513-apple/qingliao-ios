@@ -33,7 +33,7 @@ struct DockTabView: View {
 
             TabView(selection: $selected) {
                 ChatView().tag(DockTab.chat)
-                SessionsView().tag(DockTab.sessions)
+                SessionsView(onOpenSession: { selected = .chat }).tag(DockTab.sessions)
                 DashboardView().tag(DockTab.dashboard)
                 SettingsView().tag(DockTab.settings)
             }

@@ -1,59 +1,122 @@
 import SwiftUI
 
-// MARK: - 会话页（最近聊天列表 + 滑动删除）
-
-struct SessionItem: Identifiable {
-    let id: String
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String
-    let time: String
-}
+// MARK: - 会话页（真实会话列表 + 滑动删除 + 点击进入聊天）
 
 struct SessionsView: View {
-    @State private var items: [SessionItem] = [
-        SessionItem(id: "1", icon: "🧠", iconColor: .blue, title: "Cron: 量化学习模型定时任务", subtitle: "策略在正常运行，收益 +2.3%", time: "28 分钟"),
-        SessionItem(id: "2", icon: "🔧", iconColor: .indigo, title: "工具链测试", subtitle: "浏览器 / 终端 / 文件全部通过", time: "2 小时"),
-        SessionItem(id: "3", icon: "🧪", iconColor: .green, title: "协议测试", subtitle: "API 鉴权链路验证 OK", time: "昨天"),
-        SessionItem(id: "4", icon: "📈", iconColor: .orange, title: "量化学习模型", subtitle: "回测结果已更新", time: "4 天"),
-    ]
+    @Environment(AuthStore.self) private var auth
+    @Environment(ChatStore.self) private var chat
+
+    @State private var sessions: [ChatSession] = []
+    @State private var isLoading = false
+    @State private var errorText: String?
+    var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "会话", trailing: AnyView(addButton))
-            ScrollView {
-                VStack(spacing: 10) {
-                    BotCard()
-                    VStack(spacing: 0) {
-                        ForEach(items) { item in
-                            SessionRow(item: item)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        withAnimation {
-                                            items.removeAll { $0.id == item.id }
+            if isLoading && sessions.isEmpty {
+                Spacer()
+                ProgressView()
+                    .tint(.secondary)
+                Spacer()
+            } else if let err = errorText, sessions.isEmpty {
+                Spacer()
+                Text(err)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Button("重试") { Task { await load() } }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.top, 8)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        BotCard()
+                        if sessions.isEmpty {
+                            Text("暂无会话记录")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 30)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(sessions) { s in
+                                    SessionRow(session: s) {
+                                        chat.load(s)
+                                        onOpenSession?()
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            delete(s)
+                                        } label: {
+                                            Label("删除", systemImage: "trash")
                                         }
-                                    } label: {
-                                        Label("删除", systemImage: "trash")
                                     }
                                 }
+                            }
+                            .glassListCard()
                         }
                     }
-                    .glassListCard()
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 90)
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 90)
+                .refreshable {
+                    await load()
+                }
             }
         }
+        .task { await load() }
     }
 
     private var addButton: some View {
-        Button {} label: {
+        Button {
+            chat.newSession()
+            onOpenSession?()
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 数据
+
+    private func load() async {
+        isLoading = true
+        errorText = nil
+        do {
+            let j = try await auth.json("/api/sessions/list")
+            let raw = (j["sessions"] as? [Any] ?? [])
+            sessions = raw.compactMap { ChatSession.parse($0 as? [String: Any] ?? [:]) }
+        } catch {
+            errorText = "加载失败，请检查连接"
+        }
+        isLoading = false
+    }
+
+    private func delete(_ s: ChatSession) {
+        // 本地先移除，再同步到后端（merge deleted）
+        withAnimation {
+            sessions.removeAll { $0.id == s.id }
+        }
+        if chat.sessionId == s.id {
+            chat.newSession()
+        }
+        Task {
+            do {
+                _ = try await auth.json("/api/sessions/merge", method: "POST", body: [
+                    "sessions": [] as [Any],
+                    "deleted": [s.id]
+                ])
+            } catch {
+                // 后端同步失败时回滚恢复
+                if !sessions.contains(where: { $0.id == s.id }) {
+                    sessions.append(s)
+                    sessions.sort { ($0.lastTime ?? 0) > ($1.lastTime ?? 0) }
+                }
+            }
+        }
     }
 }
 
@@ -102,38 +165,48 @@ struct BotCard: View {
 // MARK: - 会话行
 
 struct SessionRow: View {
-    let item: SessionItem
+    let session: ChatSession
+    var action: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(item.icon)
-                .font(.system(size: 18))
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(colors: [Color.blue.opacity(0.18), Color.indigo.opacity(0.12)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Image(systemName: "bubble.left.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.blue.opacity(0.8))
+                }
                 .frame(width: 38, height: 38)
-                .background(item.iconColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                Text(item.subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.title.isEmpty ? "新对话" : session.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(session.lastMessageText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(item.time)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(session.relativeTime)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
     }
 }

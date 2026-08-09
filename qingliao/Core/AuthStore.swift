@@ -112,6 +112,15 @@ final class AuthStore {
         }
         return json
     }
+
+    /// 便捷：JSON 请求 → 返回数组（如 /api/ha/states 返回实体数组）
+    func jsonArray(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> [Any] {
+        let (data, _) = try await request(path, method: method, body: body)
+        guard let arr = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
+            throw APIError.badJSON
+        }
+        return arr
+    }
 }
 
 enum APIError: Error, LocalizedError {
