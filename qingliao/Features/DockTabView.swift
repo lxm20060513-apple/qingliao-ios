@@ -36,7 +36,7 @@ struct DockTabView: View {
                 ChatView().tag(DockTab.chat)
                 SessionsView(onOpenSession: { selected = .chat }).tag(DockTab.sessions)
                 DashboardView().tag(DockTab.dashboard)
-                SettingsView().tag(DockTab.settings)
+                SettingsView(onOpenSessions: { selected = .sessions }).tag(DockTab.settings)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .background(Color.black)

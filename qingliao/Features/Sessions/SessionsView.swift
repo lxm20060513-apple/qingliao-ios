@@ -169,44 +169,43 @@ struct SessionRow: View {
     var action: () -> Void = {}
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(LinearGradient(colors: [Color.blue.opacity(0.18), Color.indigo.opacity(0.12)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "bubble.left.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.blue.opacity(0.8))
-                }
-                .frame(width: 38, height: 38)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.title.isEmpty ? "新对话" : session.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(session.lastMessageText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(session.relativeTime)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.blue.opacity(0.18), Color.indigo.opacity(0.12)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.blue.opacity(0.8))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .contentShape(Rectangle())
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.title.isEmpty ? "新对话" : session.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(session.lastMessageText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(session.relativeTime)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .contentShape(Rectangle())
+        // 用 tap 手势而非 Button 包裹（Button 会与 swipeActions 滑动手势冲突，导致滑动删除失效）
+        .onTapGesture { action() }
     }
 }

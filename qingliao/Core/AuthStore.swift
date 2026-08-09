@@ -121,6 +121,37 @@ final class AuthStore {
         }
         return arr
     }
+
+    /// multipart 文件上传（文件管理用，与 PWA FormData 同协议）
+    func uploadMultipart(_ path: String, fileName: String, data: Data) async throws -> [String: Any] {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var server = serverURL
+        if !server.hasPrefix("http") { server = "http://" + server }
+        guard let url = URL(string: server + path) else { throw APIError.badURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "X-Auth-Token") }
+        req.httpBody = body
+        let (data2, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.badResponse }
+        if http.statusCode == 401 {
+            logout()
+            throw APIError.unauthorized
+        }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
+        guard let json = try? JSONSerialization.jsonObject(with: data2) as? [String: Any] else {
+            throw APIError.badJSON
+        }
+        return json
+    }
 }
 
 enum APIError: Error, LocalizedError {

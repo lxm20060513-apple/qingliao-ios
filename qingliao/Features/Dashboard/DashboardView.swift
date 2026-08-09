@@ -22,7 +22,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        DeviceCard(name: "客厅灯", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
+                        DeviceCard(name: "开关", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
                             .onTapGesture { activeSheet = .lights }
                         DeviceCard(name: "空调", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
                             .onTapGesture { activeSheet = .climate }
@@ -409,19 +409,28 @@ struct HADeviceSheet: View {
         .task { await load() }
     }
 
-    // MARK: - 灯卡（PWA HomeKit 复刻：圆角 20 / on=accent 边框+光晕 / 圆形小开关）
+    // MARK: - 灯卡（PWA HomeKit 复刻：渐变图标容器 + 圆形小开关）
 
     private func lightCard(_ e: HAEntity) -> some View {
         let isOn = e.state == "on"
         return Button {
             toggle(e)
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "lightbulb.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isOn ? Color.yellow : Color.gray.opacity(0.6))
-                        .shadow(color: isOn ? Color.yellow.opacity(0.5) : .clear, radius: 6)
+                    // 图标容器：点亮=黄色渐变光晕 / 熄灭=灰底
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(isOn
+                                  ? LinearGradient(colors: [Color.yellow.opacity(0.30), Color.orange.opacity(0.18)],
+                                                   startPoint: .top, endPoint: .bottom)
+                                  : Color(uiColor: .systemGray6))
+                        Image(systemName: "lightbulb.max.fill")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundStyle(isOn ? Color.yellow : Color.gray.opacity(0.5))
+                            .shadow(color: isOn ? Color.yellow.opacity(0.8) : .clear, radius: 8)
+                    }
+                    .frame(width: 46, height: 46)
                     Spacer()
                     // 圆形小开关（PWA .ha-toggle 同款）
                     ZStack {
@@ -448,7 +457,7 @@ struct HADeviceSheet: View {
                     .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
             }
             .padding(12)
-            .frame(minHeight: 88)
+            .frame(minHeight: 92)
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(isOn ? Color.blue.opacity(0.13) : Color(uiColor: .secondarySystemGroupedBackground))

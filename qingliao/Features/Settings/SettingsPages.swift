@@ -1,0 +1,452 @@
+import SwiftUI
+
+// MARK: - 文件管理页（浏览 NAS 文件 / 下载分享 / 上传）
+
+struct FileEntry: Identifiable {
+    let name: String
+    let isDir: Bool
+    let size: Double
+    let mtime: TimeInterval
+    var id: String { name }
+}
+
+struct FilesView: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var cwd = ""
+    @State private var entries: [FileEntry] = []
+    @State private var pathStack: [String] = []
+    @State private var loading = true
+    @State private var showImporter = false
+    @State private var toast = ""
+    @State private var downloading = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("文件管理")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 6)
+
+            // 路径面包屑
+            HStack(spacing: 6) {
+                if !pathStack.isEmpty {
+                    Button {
+                        cwd = ""
+                        pathStack = []
+                        Task { await load() }
+                    } label: {
+                        Text("根目录")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+                Text(cwd.isEmpty ? "微信文件" : cwd)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 8)
+
+            if loading {
+                Spacer()
+                ProgressView().tint(.secondary)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(entries) { e in
+                            fileRow(e)
+                            Divider().padding(.leading, 44)
+                        }
+                        if entries.isEmpty {
+                            Text("空目录")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 40)
+                        }
+                    }
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 14)
+                }
+                .refreshable { await load() }
+            }
+
+            // 上传按钮
+            Button {
+                showImporter = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("上传文件到当前目录")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 18)
+        }
+        .background(Color(uiColor: .systemBackground))
+        .preferredColorScheme(.dark)
+        .task { await load() }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result {
+                Task { await upload(url) }
+            }
+        }
+        .overlay(alignment: .top) {
+            if !toast.isEmpty {
+                Text(toast)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 6)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private func fileRow(_ e: FileEntry) -> some View {
+        Button {
+            if e.isDir {
+                pathStack.append(cwd)
+                cwd = (cwd.isEmpty ? "" : cwd + "/") + e.name
+                Task { await load() }
+            } else {
+                Task { await download(e) }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(icon(for: e))
+                    .font(.system(size: 18))
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(e.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(e.isDir ? "目录" : "\(sizeText(e.size)) · \(timeText(e.mtime))")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if e.isDir {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 数据
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        do {
+            let j = try await auth.json("/api/files/list?path=\(path)")
+            cwd = j["cwd"] as? String ?? cwd
+            let raw = (j["entries"] as? [Any]) ?? []
+            entries = raw.compactMap { d in
+                guard let d = d as? [String: Any], let name = d["name"] as? String else { return nil }
+                return FileEntry(name: name, isDir: (d["is_dir"] as? Bool) ?? false,
+                                 size: (d["size"] as? Double) ?? 0,
+                                 mtime: (d["mtime"] as? Double) ?? 0)
+            }
+        } catch {
+            toast = "加载失败"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+        }
+    }
+
+    private func download(_ e: FileEntry) async {
+        downloading = true
+        defer { downloading = false }
+        let path = ((cwd.isEmpty ? "" : cwd + "/") + e.name).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        do {
+            let (data, _) = try await auth.request("/api/files/download?path=\(path)")
+            let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("qingliao_files", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let fileURL = dir.appendingPathComponent(e.name)
+            try data.write(to: fileURL)
+            toast = "已下载到 App 文件目录"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+        } catch {
+            toast = "下载失败"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+        }
+    }
+
+    private func upload(_ url: URL) async {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard let fileData = try? Data(contentsOf: url) else {
+            toast = "读取文件失败"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            return
+        }
+        let fileName = url.lastPathComponent
+        do {
+            _ = try await auth.uploadMultipart("/api/files/upload", fileName: fileName, data: fileData)
+            toast = "上传成功"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            await load()
+        } catch {
+            toast = "上传失败"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+        }
+    }
+
+    private func icon(for e: FileEntry) -> String {
+        if e.isDir { return "📁" }
+        let ext = e.name.lowercased().split(separator: ".").last.map(String.init) ?? ""
+        if ["png", "jpg", "jpeg", "gif", "heic", "webp"].contains(ext) { return "🖼️" }
+        if ["pdf"].contains(ext) { return "📕" }
+        if ["mp3", "wav", "m4a", "flac"].contains(ext) { return "🎵" }
+        if ["mp4", "mov", "mkv"].contains(ext) { return "🎬" }
+        if ["ipa", "zip", "tar", "gz"].contains(ext) { return "📦" }
+        return "📄"
+    }
+
+    private func sizeText(_ s: Double) -> String {
+        if s >= 1_048_576 { return String(format: "%.1fM", s / 1_048_576) }
+        if s >= 1024 { return String(format: "%.0fK", s / 1024) }
+        return "\(Int(s))B"
+    }
+
+    private func timeText(_ t: TimeInterval) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MM-dd HH:mm"
+        return fmt.string(from: Date(timeIntervalSince1970: t))
+    }
+}
+
+// MARK: - 定时任务页
+
+struct CronTask: Identifiable {
+    let id: String
+    let name: String
+    let cron: String
+    let prompt: String
+}
+
+struct TasksView: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var tasks: [CronTask] = []
+    @State private var loading = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("定时任务")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Text("\(tasks.count) 个")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 8)
+
+            if loading {
+                Spacer()
+                ProgressView().tint(.secondary)
+                Spacer()
+            } else if tasks.isEmpty {
+                Spacer()
+                Text("暂无定时任务")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(tasks) { t in
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.indigo.opacity(0.15))
+                                    Image(systemName: "clock.badge.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Color.indigo)
+                                }
+                                .frame(width: 36, height: 36)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(t.name)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .lineLimit(1)
+                                    Text(t.cron)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            Divider().padding(.leading, 62)
+                        }
+                    }
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 20)
+                }
+                .refreshable { await load() }
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+        .preferredColorScheme(.dark)
+        .task { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let arr = try await auth.jsonArray("/api/cron/tasks")
+            tasks = arr.compactMap { d in
+                guard let d = d as? [String: Any], let id = d["id"] as? String else { return nil }
+                return CronTask(id: id, name: d["name"] as? String ?? "未命名",
+                                cron: d["cron"] as? String ?? "",
+                                prompt: d["prompt"] as? String ?? "")
+            }
+        } catch {
+            tasks = []
+        }
+    }
+}
+
+// MARK: - 日志页
+
+struct LogsView: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var logs: [String] = []
+    @State private var loading = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("日志")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button {
+                    Task { await load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 8)
+
+            if loading {
+                Spacer()
+                ProgressView().tint(.secondary)
+                Spacer()
+            } else if logs.isEmpty {
+                Spacer()
+                Text("暂无日志")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(logs.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                        }
+                    }
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 20)
+                }
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+        .preferredColorScheme(.dark)
+        .task { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let j = try await auth.json("/api/logs/sys?level=info")
+            if let arr = j["logs"] as? [String] {
+                logs = arr
+            } else if let arr = j["logs"] as? [[String: Any]] {
+                logs = arr.compactMap { $0["message"] as? String ?? $0["line"] as? String }
+            }
+        } catch {
+            logs = []
+        }
+    }
+}

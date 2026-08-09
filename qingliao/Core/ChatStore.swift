@@ -69,4 +69,30 @@ final class ChatStore {
             return p
         }
     }
+
+    /// 保存会话到后端（POST /api/sessions/merge）
+    /// 图片消息降级为文本（不带 base64 data URL，防 sessions.json 膨胀；历史重放本就不渲染图片）
+    func saveToServer(auth: AuthStore) async {
+        guard !messages.isEmpty else { return }
+        let msgs: [[String: Any]] = messages.map { m in
+            var content = m.content
+            if m.imageDataURL != nil {
+                let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                content = t.isEmpty ? "[图片]" : t + "\n[图片]"
+            }
+            var p: [String: Any] = ["role": m.role, "content": content]
+            if let ts = m.timestamp { p["timestamp"] = ts }
+            return p
+        }
+        let firstUserText = messages.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
+        let payload: [String: Any] = [
+            "id": sessionId,
+            "title": title.isEmpty ? firstUserText : title,
+            "messages": msgs
+        ]
+        _ = try? await auth.request("/api/sessions/merge", method: "POST", body: [
+            "sessions": [payload],
+            "deleted": [] as [Any]
+        ])
+    }
 }

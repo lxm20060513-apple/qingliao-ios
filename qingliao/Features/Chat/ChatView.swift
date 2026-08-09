@@ -176,6 +176,8 @@ struct ChatView: View {
                     chat.upsertAssistant(stream.content)
                     showSentOK()
                 }
+                // 保存会话到后端（会话记录同步）
+                Task { await chat.saveToServer(auth: auth) }
             }
         }
     }
@@ -244,7 +246,7 @@ struct MessageBubble: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 if !message.content.isEmpty {
-                    Text(message.content)
+                    Text(message.isUser ? AttributedString(message.content) : markdownText)
                         .font(.system(size: 14))
                         .lineSpacing(3)
                         .foregroundStyle(message.isUser ? .white : .primary)
@@ -265,6 +267,11 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+    }
+
+    /// AI 消息 markdown 渲染（解析失败回退纯文本——流式中途未闭合语法常见）
+    private var markdownText: AttributedString {
+        (try? AttributedString(markdown: message.content)) ?? AttributedString(message.content)
     }
 
     private func dataURLImage(_ urlStr: String) -> UIImage? {
