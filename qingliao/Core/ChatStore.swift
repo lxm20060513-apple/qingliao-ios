@@ -55,7 +55,18 @@ final class ChatStore {
     }
 
     /// 发送请求用的历史消息（payload 形态）
+    /// 只保留最后一条带图消息的 imageDataURL（前面已发过的图片不进 payload，防 base64 全量重复膨胀）
     func historyPayload() -> [[String: Any]] {
-        messages.map { $0.asPayload() }
+        var lastImgIdx: Int?
+        for (i, m) in messages.enumerated() where m.imageDataURL != nil {
+            lastImgIdx = i
+        }
+        return messages.enumerated().map { idx, m in
+            var p = m.asPayload()
+            if idx != lastImgIdx {
+                p["content"] = m.content
+            }
+            return p
+        }
     }
 }

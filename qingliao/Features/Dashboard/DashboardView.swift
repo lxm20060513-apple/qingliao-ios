@@ -1,6 +1,11 @@
 import SwiftUI
 
-// MARK: - 看板页（智能家居 2x3 可控制 + NAS 2x3 + 全部磁盘列表）
+// MARK: - 看板页（智能家居 2x3 可控制 + NAS 2x3 + 磁盘弹出式）
+
+enum DashboardSheet: String, Identifiable {
+    case lights, climate, service, disks
+    var id: String { rawValue }
+}
 
 struct DashboardView: View {
     @Environment(AuthStore.self) private var auth
@@ -8,10 +13,7 @@ struct DashboardView: View {
     @State private var nas = NASStatus()
     @State private var haEntities: [HAEntity] = []
     @State private var loaded = false
-    @State private var showLightsSheet = false
-    @State private var showClimateSheet = false
-    @State private var showServiceSheet = false
-    @State private var showDisksSheet = false
+    @State private var activeSheet: DashboardSheet?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,9 +23,9 @@ struct DashboardView: View {
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         DeviceCard(name: "客厅灯", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
-                            .onTapGesture { showLightsSheet = true }
+                            .onTapGesture { activeSheet = .lights }
                         DeviceCard(name: "空调", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
-                            .onTapGesture { showClimateSheet = true }
+                            .onTapGesture { activeSheet = .climate }
                         DeviceCard(name: "门锁", value: haLockBattery, sub: "智能门锁", status: .on)
                         DeviceCard(name: "猫眼", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
                         DeviceCard(name: "安防", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
@@ -35,9 +37,9 @@ struct DashboardView: View {
                         MeterCard(name: "CPU", value: String(format: "%.1f%%", nas.cpu), sub: nil, ratio: nas.cpu / 100.0, color: .blue)
                         MeterCard(name: "内存", value: nas.memUsedText, sub: "/ \(nas.memTotalText)", ratio: nas.memPct, color: .green)
                         MeterCard(name: "磁盘", value: String(format: "%.0f%%", nas.maxDiskPct), sub: "\(nas.disks.count) 个分区 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
-                            .onTapGesture { showDisksSheet = true }
+                            .onTapGesture { activeSheet = .disks }
                         ServiceCard(name: "轻聊后端", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
-                            .onTapGesture { showServiceSheet = true }
+                            .onTapGesture { activeSheet = .service }
                         ServiceCard(name: "Hermes 网关", running: nas.hermesAlive, detail: nas.hermesMemText)
                         ServiceCard(name: "运行时间", running: true, detail: nas.uptime)
                     }
@@ -48,21 +50,21 @@ struct DashboardView: View {
             .refreshable {
                 await refresh()
             }
-            .sheet(isPresented: $showLightsSheet) {
-                HADeviceSheet(title: "客厅灯", domain: "light")
-                    .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showClimateSheet) {
-                HADeviceSheet(title: "空调", domain: "climate")
-                    .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showServiceSheet) {
-                ServiceControlSheet()
-                    .presentationDetents([.medium])
-            }
-            .sheet(isPresented: $showDisksSheet) {
-                DisksSheet(disks: nas.disks)
-                    .presentationDetents([.medium, .large])
+            .sheet(item: $activeSheet) { s in
+                switch s {
+                case .lights:
+                    HADeviceSheet(title: "客厅灯", domain: "light")
+                        .presentationDetents([.medium, .large])
+                case .climate:
+                    HADeviceSheet(title: "空调", domain: "climate")
+                        .presentationDetents([.medium, .large])
+                case .service:
+                    ServiceControlSheet()
+                        .presentationDetents([.medium])
+                case .disks:
+                    DisksSheet(disks: nas.disks)
+                        .presentationDetents([.medium, .large])
+                }
             }
         }
         .task {
@@ -72,7 +74,7 @@ struct DashboardView: View {
             }
             // 10s 自动刷新
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                try? await Task.sleep(for: .seconds(10))
                 await refresh()
             }
         }

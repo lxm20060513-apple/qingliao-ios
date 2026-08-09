@@ -85,14 +85,6 @@ struct ChatView: View {
                 photoItem = nil
             }
         }
-        .onChange(of: stream.isStreaming) { _, streaming in
-            if !streaming, !stream.content.isEmpty {
-                withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation { sentOK = false }
-                }
-            }
-        }
     }
 
     // MARK: - 消息列表
@@ -182,8 +174,18 @@ struct ChatView: View {
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
                 } else {
                     chat.upsertAssistant(stream.content)
+                    showSentOK()
                 }
             }
+        }
+    }
+
+    /// ✅送达提示条（仅成功时显示，2.5s 后消失）
+    private func showSentOK() {
+        withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation { sentOK = false }
         }
     }
 

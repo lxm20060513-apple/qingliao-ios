@@ -80,7 +80,7 @@ final class StreamClient {
                 guard let self, !self.isDone else { break }
                 await self.pollOnce(auth: auth)
                 if self.isDone { break }
-                try? await Task.sleep(nanoseconds: UInt64(self.interval * 1_000_000_000))
+                try? await Task.sleep(for: .seconds(self.interval))
             }
         }
     }
