@@ -118,8 +118,9 @@ struct DockBar: View {
                         isInteracting = true
                         let w = geo.size.width
                         let tw = tabWidth(in: w)
-                        let idx = min(max(Int(value.location.x / tw), 0), DockTab.allCases.count - 1)
-                        lensX = lensOffset(for: idx, width: w)
+                        // 内容从 padding 12 处开始
+                        let idx = min(max(Int((value.location.x - 12) / tw), 0), DockTab.allCases.count - 1)
+                        lensX = lensOffset(for: idx)
                         let newTab = DockTab.allCases[idx]
                         if newTab != selected {
                             selected = newTab
@@ -134,13 +135,13 @@ struct DockBar: View {
                 // 延迟到布局完成后设置透镜初始位置（避免 geo 尺寸未就绪）
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     withAnimation(.none) {
-                        lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0, width: geo.size.width)
+                        lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0)
                     }
                 }
             }
             .onChange(of: selected) {
                 withAnimation(.spring(duration: 0.35, bounce: 0.25)) {
-                    lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0, width: dockWidth)
+                    lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0)
                 }
             }
         }
@@ -152,10 +153,9 @@ struct DockBar: View {
         (total - 24) / CGFloat(DockTab.allCases.count)
     }
 
-    /// 透镜中心相对 Dock 中心的偏移
-    private func lensOffset(for idx: Int, width total: CGFloat) -> CGFloat {
-        let tw = tabWidth(in: total)
-        let center = (CGFloat(idx) + 0.5) * tw
-        return center - total / 2
+    /// 透镜中心相对 Dock 中心的偏移（4 tab 对称：-1.5/-0.5/+0.5/+1.5 倍 tab 宽）
+    private func lensOffset(for idx: Int) -> CGFloat {
+        let tw = tabWidth(in: dockWidth)
+        return (CGFloat(idx) - 1.5) * tw
     }
 }
