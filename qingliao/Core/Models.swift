@@ -81,11 +81,16 @@ struct NASStatus {
     var cpu: Double = 0
     var memTotal: Double = 0
     var memUsed: Double = 0
-    var mainDiskPct = 0.0
+    var disks: [NASDisk] = []
     var qingliaoAlive = false
     var qingliaoMem = 0.0
     var hermesAlive = false
     var hermesMem = 0.0
+
+    /// 最大磁盘使用率（PWA 概览语义）
+    var maxDiskPct: Double {
+        disks.map(\.pct).max() ?? 0
+    }
 
     static func parse(_ j: [String: Any]) -> NASStatus {
         var s = NASStatus()
@@ -96,23 +101,8 @@ struct NASStatus {
             s.memTotal = (mem["total"] as? Double) ?? 0
             s.memUsed = (mem["used"] as? Double) ?? 0
         }
-        // 主磁盘：volume1（最大数据盘）优先，否则 /overlay
         if let disks = j["disks"] as? [[String: Any]] {
-            for d in disks {
-                let mnt = d["mnt"] as? String ?? ""
-                if mnt == "/volume1" || mnt.hasPrefix("/volume1") {
-                    s.mainDiskPct = Double(d["pct"] as? String ?? "0") ?? 0
-                    break
-                }
-            }
-            if s.mainDiskPct == 0 {
-                for d in disks {
-                    if (d["mnt"] as? String) == "/overlay" {
-                        s.mainDiskPct = Double(d["pct"] as? String ?? "0") ?? 0
-                        break
-                    }
-                }
-            }
+            s.disks = disks.compactMap { NASDisk.parse($0) }
         }
         if let svc = j["services"] as? [String: Any] {
             s.qingliaoAlive = (svc["qingliao"] as? Bool) ?? false
@@ -136,13 +126,44 @@ struct NASStatus {
     }
 }
 
+// MARK: - NAS 磁盘
+
+struct NASDisk: Identifiable {
+    let mnt: String
+    let fs: String
+    let used: Double
+    let total: Double
+    let pct: Double
+
+    var id: String { mnt }
+    var usedText: String { byteText(used) }
+    var totalText: String { byteText(total) }
+
+    static func parse(_ d: [String: Any]) -> NASDisk? {
+        guard let mnt = d["mnt"] as? String else { return nil }
+        let fs = d["fs"] as? String ?? ""
+        let used = (d["used"] as? Double) ?? 0
+        let total = (d["total"] as? Double) ?? 0
+        let pct = Double(d["pct"] as? String ?? "0") ?? 0
+        return NASDisk(mnt: mnt, fs: fs, used: used, total: total, pct: pct)
+    }
+
+    private func byteText(_ b: Double) -> String {
+        if b >= 1_073_741_824 { return String(format: "%.1fG", b / 1_073_741_824) }
+        if b >= 1_048_576 { return String(format: "%.0fM", b / 1_048_576) }
+        return String(format: "%.0fK", b / 1024)
+    }
+}
+
 // MARK: - HA 实体（/api/ha/states）
 
-struct HAEntity {
+struct HAEntity: Identifiable {
     let entityID: String
     let state: String
     let friendlyName: String
     let attributes: [String: Any]
+
+    var id: String { entityID }
 
     static func parse(_ d: [String: Any]) -> HAEntity? {
         guard let eid = d["entity_id"] as? String else { return nil }

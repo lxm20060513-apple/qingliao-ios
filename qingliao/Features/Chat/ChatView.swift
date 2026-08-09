@@ -6,9 +6,10 @@ struct ChatView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
     @Environment(StreamClient.self) private var stream
+    @Environment(KeyboardObserver.self) private var kb
 
     @State private var inputText = ""
-    @State private var inputFocus = false
+    @FocusState private var inputFocus: Bool
     @State private var sentOK = false   // ✅送达提示条
 
     private let modelName = "deepseek-v4-flash"
@@ -36,7 +37,10 @@ struct ChatView: View {
             } onStop: {
                 stream.stop(auth: auth)
             }
+            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
+            .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
         }
+        .animation(.easeOut(duration: 0.22), value: kb.height)
         .onChange(of: stream.isStreaming) { _, streaming in
             if !streaming, !stream.content.isEmpty {
                 withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
@@ -67,6 +71,11 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
+            }
+            // 滚动消息区即收起键盘（微信式）
+            .scrollDismissesKeyboard(.immediately)
+            .onTapGesture {
+                inputFocus = false
             }
             .onChange(of: chat.messages.count) {
                 scrollBottom(proxy)
@@ -166,7 +175,7 @@ struct MessageBubble: View {
 
 struct ChatInputBar: View {
     @Binding var text: String
-    @Binding var focused: Bool
+    @FocusState.Binding var focused: Bool
     var streaming: Bool
     var onSend: () -> Void
     var onStop: () -> Void = {}
@@ -186,6 +195,7 @@ struct ChatInputBar: View {
                 .lineLimit(1...4)
                 .padding(.vertical, 7)
                 .padding(.horizontal, 2)
+                .focused($focused)
 
             Button {
                 if streaming {
@@ -211,7 +221,14 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
-        // 避开悬浮 Dock：Dock 高约 74pt + 底部 8pt + 间距 18pt
-        .padding(.bottom, 100)
+        // 键盘工具栏："完成"收起键盘（用户反馈键盘无法收回）
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { focused = false }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
     }
 }

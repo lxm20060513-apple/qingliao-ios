@@ -26,6 +26,7 @@ enum DockTab: String, CaseIterable, Identifiable {
 
 struct DockTabView: View {
     @State private var selected: DockTab = .chat
+    @Environment(KeyboardObserver.self) private var kb
 
     var body: some View {
         ZStack {
@@ -55,7 +56,11 @@ struct DockTabView: View {
 
             VStack {
                 Spacer()
+                // 键盘弹出时隐藏 Dock（微信 tab bar 行为），输入框紧贴键盘
                 DockBar(selected: $selected)
+                    .opacity(kb.isVisible ? 0 : 1)
+                    .allowsHitTesting(!kb.isVisible)
+                    .animation(.easeOut(duration: 0.2), value: kb.isVisible)
                     .padding(.bottom, 8)
             }
         }

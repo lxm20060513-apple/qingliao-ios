@@ -5,6 +5,7 @@ struct QingliaoApp: App {
     @State private var auth = AuthStore()
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()
+    @State private var keyboard = KeyboardObserver()
 
     var body: some Scene {
         WindowGroup {
@@ -12,6 +13,7 @@ struct QingliaoApp: App {
                 .environment(auth)
                 .environment(chat)
                 .environment(stream)
+                .environment(keyboard)
                 .preferredColorScheme(.dark)
         }
     }
