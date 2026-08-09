@@ -31,6 +31,18 @@ struct DockTabView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // 环境光晕（液态玻璃透出内容）
+            ZStack {
+                Circle().fill(Color.blue.opacity(0.30)).frame(width: 300, height: 300).blur(radius: 70)
+                    .offset(y: 120)
+                Circle().fill(Color.indigo.opacity(0.22)).frame(width: 240, height: 240).blur(radius: 60)
+                    .offset(x: 130, y: 90)
+                Circle().fill(Color.cyan.opacity(0.15)).frame(width: 200, height: 200).blur(radius: 55)
+                    .offset(x: -120, y: 110)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
             // 页面滑动切换（TabView page style）
             TabView(selection: $selected) {
                 ChatView().tag(DockTab.chat)
@@ -45,16 +57,17 @@ struct DockTabView: View {
             VStack {
                 Spacer()
                 DockBar(selected: $selected)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 14)
             }
         }
     }
 }
 
-// MARK: - 液态玻璃悬浮 Dock（iOS 26 Liquid Glass 风格模拟）
+// MARK: - 液态玻璃悬浮 Dock（iOS 26 glassEffect + 可拖动）
 
 struct DockBar: View {
     @Binding var selected: DockTab
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 2) {
@@ -84,29 +97,41 @@ struct DockBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background {
-            // 液态玻璃：材质 + 顶部高光渐变 + 环境光晕
-            ZStack {
-                Capsule().fill(
-                    LinearGradient(colors: [
-                        Color.white.opacity(0.10),
-                        Color.white.opacity(0.03)
-                    ], startPoint: .top, endPoint: .bottom)
-                )
-                Capsule().fill(.ultraThinMaterial)
-            }
-            .clipShape(Capsule())
+            // iOS 26 真液态玻璃（blur + 折射 + 高光，由系统渲染）
+            Capsule().fill(.regularMaterial)
         }
+        .glassEffect(.regular)
+        .clipShape(.capsule)
         .overlay {
-            // 高光描边（上亮下暗，模拟玻璃折射）
             Capsule().strokeBorder(
                 LinearGradient(colors: [
-                    Color.white.opacity(0.28),
-                    Color.white.opacity(0.08)
+                    Color.white.opacity(0.35),
+                    Color.white.opacity(0.10)
                 ], startPoint: .top, endPoint: .bottom),
-                lineWidth: 0.9
+                lineWidth: 0.8
             )
         }
-        .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
+        .shadow(color: .black.opacity(0.45), radius: 22, y: 9)
         .padding(.horizontal, 26)
+        // 液态玻璃交互：按住水平拖动，松手弹簧回弹
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { value in
+                    dragOffset = value.translation.width
+                }
+                .onEnded { value in
+                    let velocity = value.predictedEndTranslation.width
+                    withAnimation(.spring(duration: 0.5, bounce: 0.35)) {
+                        dragOffset = velocity > 300 ? 40 : (velocity < -300 ? -40 : 0)
+                    }
+                    // 短暂停留后回中
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        withAnimation(.spring(duration: 0.45, bounce: 0.3)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 }
