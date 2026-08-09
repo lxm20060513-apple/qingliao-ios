@@ -1,0 +1,65 @@
+name: Build iOS 2.0 IPA (native SwiftUI, unsigned for SideStore)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v2*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Archive (unsigned)
+        run: |
+          xcodebuild -project 轻聊.xcodeproj \
+            -scheme Qingliao \
+            -configuration Release \
+            -destination generic/platform=iOS \
+            -archivePath build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Package unsigned IPA (Payload zip, for SideStore)
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/App.xcarchive/Products/Applications/Qingliao.app build/ipa/Payload/
+          cd build/ipa && zip -qry ../qingliao-2.0-unsigned.ipa Payload/
+          ls -la ../qingliao-2.0-unsigned.ipa
+
+      - name: Verify IPA
+        run: |
+          file build/qingliao-2.0-unsigned.ipa
+          unzip -l build/qingliao-2.0-unsigned.ipa | head -8
+
+      - name: Upload IPA to GitHub Release (Hermes 下载后转存 NAS)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create qingliao-ipa-2 build/qingliao-2.0-unsigned.ipa \
+            --repo ${{ github.repository }} \
+            --title "轻聊 2.0 IPA (native, unsigned)" \
+            --notes "原生 SwiftUI · iOS 27 液态玻璃 · SideStore 导入安装" \
+            || gh release upload qingliao-ipa-2 build/qingliao-2.0-unsigned.ipa \
+               --repo ${{ github.repository }} --clobber
+          echo "RELEASE_UPLOADED"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingliao-2.0-unsigned-ipa
+          path: build/qingliao-2.0-unsigned.ipa
+          if-no-files-found: error
