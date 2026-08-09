@@ -80,13 +80,17 @@ struct DockBar: View {
                         VStack(spacing: 4) {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 21, weight: .medium))
+                                // 放大镜效果：透镜按住时，透镜下的图标放大
+                                .scaleEffect(lensIsOn(tab) ? 1.4 : 1.0)
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
+                                .scaleEffect(lensIsOn(tab) ? 1.3 : 1.0)
                         }
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .contentShape(Rectangle())
+                        .animation(.spring(duration: 0.25, bounce: 0.4), value: lensIsOn(tab))
                     }
                     .buttonStyle(.plain)
                 }
@@ -151,6 +155,11 @@ struct DockBar: View {
 
     private func tabWidth(in total: CGFloat) -> CGFloat {
         (total - 24) / CGFloat(DockTab.allCases.count)
+    }
+
+    /// 放大镜状态：按住且透镜在当前 tab 上
+    private func lensIsOn(_ tab: DockTab) -> Bool {
+        isInteracting && selected == tab
     }
 
     /// 透镜中心相对 Dock 中心的偏移（4 tab 对称：-1.5/-0.5/+0.5/+1.5 倍 tab 宽）
