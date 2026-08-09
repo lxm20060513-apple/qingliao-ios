@@ -100,21 +100,38 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(chat.messages) { msg in
-                        MessageBubble(message: msg)
-                            .id(msg.id)
+                if chat.messages.isEmpty && !stream.isStreaming {
+                    // 首次进入欢迎占位
+                    VStack(spacing: 10) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.secondary)
+                        Text("你好，我是轻聊")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Text("输入消息与 AI 对话")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
                     }
-                    if stream.isStreaming {
-                        MessageBubble(
-                            message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil)
-                        )
-                        .id("streaming")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 90)
+                } else {
+                    LazyVStack(spacing: 10) {
+                        ForEach(chat.messages) { msg in
+                            MessageBubble(message: msg)
+                                .id(msg.id)
+                        }
+                        if stream.isStreaming {
+                            MessageBubble(
+                                message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil)
+                            )
+                            .id("streaming")
+                        }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
