@@ -15,8 +15,6 @@ struct SettingsView: View {
     @State private var testResult: String?
     @State private var testing = false
 
-    var onOpenSessions: (() -> Void)? = nil   // 历史会话 → 跳 Dock 会话 tab
-
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "设置")
@@ -56,9 +54,6 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "doc.text.fill", iconColor: .orange, title: "日志", chevron: true)
                             .onTapGesture { showLogs = true }
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "clock.arrow.circlepath", iconColor: .cyan, title: "历史会话", chevron: true)
-                            .onTapGesture { onOpenSessions?() }
                     }
                     .glassListCard()
 

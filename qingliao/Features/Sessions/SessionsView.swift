@@ -45,11 +45,12 @@ struct SessionsView: View {
                                         chat.load(s)
                                         onOpenSession?()
                                     }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
+                                    .contextMenu {
                                         Button(role: .destructive) {
                                             delete(s)
                                         } label: {
-                                            Label("删除", systemImage: "trash")
+                                            Label("删除会话", systemImage: "trash")
                                         }
                                     }
                                 }
@@ -88,7 +89,9 @@ struct SessionsView: View {
         do {
             let j = try await auth.json("/api/sessions/list")
             let raw = (j["sessions"] as? [Any] ?? [])
+            // 最新 → 最旧
             sessions = raw.compactMap { ChatSession.parse($0 as? [String: Any] ?? [:]) }
+                .sorted { ($0.lastTime ?? 0) > ($1.lastTime ?? 0) }
         } catch {
             errorText = "加载失败，请检查连接"
         }

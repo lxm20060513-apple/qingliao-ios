@@ -425,7 +425,7 @@ struct HADeviceSheet: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(iconBG)
-                        Image(systemName: "lightbulb.max.fill")
+                        Image(systemName: "sun.max.fill")
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(isOn ? Color.yellow : Color.gray.opacity(0.5))
                             .shadow(color: isOn ? Color.yellow.opacity(0.8) : .clear, radius: 8)
@@ -482,7 +482,7 @@ struct HADeviceSheet: View {
         let isOn = e.state != "off" && e.state != "unavailable"
 
         return VStack(alignment: .leading, spacing: 10) {
-            // 顶部：图标 + 名称/状态 + 温度 + 电源
+            // 顶部：图标 + 名称/状态 + 电源（关闭按钮统一在最右）
             HStack(spacing: 10) {
                 Image(systemName: "snowflake")
                     .font(.system(size: 24))
@@ -496,14 +496,7 @@ struct HADeviceSheet: View {
                         .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
                 }
                 Spacer()
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(String(format: "%.0f", target))
-                        .font(.system(size: 28, weight: .bold))
-                    Text("°")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                }
-                // 电源圆钮（PWA .ha-climate-power 同款）
+                // 电源圆钮（统一贴最右）
                 Button {
                     toggle(e)
                 } label: {
@@ -520,8 +513,15 @@ struct HADeviceSheet: View {
                 .buttonStyle(.plain)
             }
 
-            // 温度步进 + 当前室温
-            HStack(spacing: 12) {
+            // 温度：目标大字 + 室温 + 步进
+            HStack(spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(String(format: "%.0f", target))
+                        .font(.system(size: 32, weight: .bold))
+                    Text("°")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                }
                 Text("室温 \(String(format: "%.0f", cur))°")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -731,6 +731,10 @@ struct DiskTile: View {
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -771,6 +775,11 @@ struct DeviceCard: View {
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        // 浅色下卡片与白底融合 → 统一加细边框（深浅色通用：深色白边/浅色黑边）
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -812,6 +821,10 @@ struct MeterCard: View {
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
@@ -835,6 +848,10 @@ struct ServiceCard: View {
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
