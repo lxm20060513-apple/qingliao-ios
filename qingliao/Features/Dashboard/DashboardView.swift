@@ -58,17 +58,13 @@ struct DashboardView: View {
     // MARK: - 数据
 
     private func refresh() async {
-        async let nasJ = auth.json("/api/nas/status")
-        async let haArr = try? auth.jsonArray("/api/ha/states")
-        do {
-            let (n, h) = try await (nasJ, haArr)
+        // 顺序请求（async let 返回值非 Sendable，Swift 6 严格并发下编译失败）
+        if let n = try? await auth.json("/api/nas/status") {
             nas = NASStatus.parse(n)
-            if let arr = h {
-                haEntities = arr.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
-                haOK = true
-            }
-        } catch {
-            // 单次失败保留旧数据
+        }
+        if let h = try? await auth.jsonArray("/api/ha/states") {
+            haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
+            haOK = true
         }
     }
 
