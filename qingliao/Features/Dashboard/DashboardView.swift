@@ -378,7 +378,7 @@ struct HADeviceSheet: View {
                     .lineLimit(1)
                 Text(isOn ? "已开启" : "已关闭")
                     .font(.system(size: 10))
-                    .foregroundStyle(isOn ? .yellow : .tertiary)
+                    .foregroundStyle(isOn ? Color.yellow : Color.secondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
