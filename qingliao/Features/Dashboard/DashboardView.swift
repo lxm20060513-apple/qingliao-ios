@@ -413,6 +413,11 @@ struct HADeviceSheet: View {
 
     private func lightCard(_ e: HAEntity) -> some View {
         let isOn = e.state == "on"
+        // 拆成 AnyShapeStyle 单一类型（三元 LinearGradient vs Color 会让编译器类型检查超时）
+        let iconBG: AnyShapeStyle = isOn
+            ? AnyShapeStyle(LinearGradient(colors: [Color.yellow.opacity(0.30), Color.orange.opacity(0.18)],
+                                           startPoint: .top, endPoint: .bottom))
+            : AnyShapeStyle(Color(uiColor: .systemGray6))
         return Button {
             toggle(e)
         } label: {
@@ -421,10 +426,7 @@ struct HADeviceSheet: View {
                     // 图标容器：点亮=黄色渐变光晕 / 熄灭=灰底
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(isOn
-                                  ? LinearGradient(colors: [Color.yellow.opacity(0.30), Color.orange.opacity(0.18)],
-                                                   startPoint: .top, endPoint: .bottom)
-                                  : Color(uiColor: .systemGray6))
+                            .fill(iconBG)
                         Image(systemName: "lightbulb.max.fill")
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(isOn ? Color.yellow : Color.gray.opacity(0.5))
