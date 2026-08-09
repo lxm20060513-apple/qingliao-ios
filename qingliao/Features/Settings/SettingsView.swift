@@ -4,12 +4,14 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
+    @AppStorage("qingliao_appearance") private var appearance = "dark"   // dark/light/system
 
     @State private var showServerSheet = false
     @State private var showPasswordSheet = false
     @State private var showFiles = false
     @State private var showTasks = false
     @State private var showLogs = false
+    @State private var showAppearanceMenu = false
     @State private var testResult: String?
     @State private var testing = false
 
@@ -63,6 +65,9 @@ struct SettingsView: View {
                     // 其他
                     SectionHeader("其他")
                     VStack(spacing: 0) {
+                        SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
+                            .onTapGesture { showAppearanceMenu = true }
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0")
                         Divider().padding(.leading, 52)
                         Button {
@@ -110,6 +115,20 @@ struct SettingsView: View {
             Button("好", role: .cancel) { testResult = nil }
         } message: {
             Text(testResult ?? "")
+        }
+        .confirmationDialog("外观", isPresented: $showAppearanceMenu, titleVisibility: .visible) {
+            Button("深色") { appearance = "dark" }
+            Button("浅色") { appearance = "light" }
+            Button("跟随系统") { appearance = "system" }
+            Button("取消", role: .cancel) {}
+        }
+    }
+
+    private var appearanceName: String {
+        switch appearance {
+        case "light": return "浅色"
+        case "system": return "跟随系统"
+        default: return "深色"
         }
     }
 
@@ -209,7 +228,6 @@ struct ServerSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
         .onAppear {
             server = auth.serverURL.replacingOccurrences(of: "http://", with: "")
                 .replacingOccurrences(of: "https://", with: "")
@@ -284,7 +302,6 @@ struct PasswordSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
     }
 
     private func changePassword() {

@@ -298,7 +298,6 @@ struct ServiceControlSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
     }
 
     private func restart() {
@@ -405,7 +404,6 @@ struct HADeviceSheet: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
         .task { await load() }
     }
 
@@ -693,7 +691,6 @@ struct DisksSheet: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
     }
 }
 

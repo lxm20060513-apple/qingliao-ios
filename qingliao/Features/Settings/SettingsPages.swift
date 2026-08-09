@@ -113,7 +113,6 @@ struct FilesView: View {
             .padding(.bottom, 18)
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
         .task { await load() }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result {
@@ -344,7 +343,6 @@ struct TasksView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
         .task { await load() }
     }
 
@@ -431,7 +429,6 @@ struct LogsView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .preferredColorScheme(.dark)
         .task { await load() }
     }
 

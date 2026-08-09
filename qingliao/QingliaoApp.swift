@@ -6,6 +6,7 @@ struct QingliaoApp: App {
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()
     @State private var keyboard = KeyboardObserver()
+    @AppStorage("qingliao_appearance") private var appearance = "dark"   // dark / light / system
 
     var body: some Scene {
         WindowGroup {
@@ -14,7 +15,16 @@ struct QingliaoApp: App {
                 .environment(chat)
                 .environment(stream)
                 .environment(keyboard)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(colorScheme)
+        }
+    }
+
+    /// 外观：跟随用户选择（深色 #000 / 白天 #FFF / 跟随系统）
+    private var colorScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "system": return nil
+        default: return .dark
         }
     }
 }

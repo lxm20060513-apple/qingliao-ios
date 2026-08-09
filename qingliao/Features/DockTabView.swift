@@ -30,7 +30,7 @@ struct DockTabView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
 
             TabView(selection: $selected) {
                 ChatView().tag(DockTab.chat)
@@ -39,7 +39,7 @@ struct DockTabView: View {
                 SettingsView(onOpenSessions: { selected = .sessions }).tag(DockTab.settings)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(Color.black)
+            .background(Color(uiColor: .systemBackground))
             .ignoresSafeArea(edges: .bottom)
 
             // 环境光晕：收敛到底部 Dock 区域、低透明度（页面主体保持纯黑，玻璃有内容可透即可）
