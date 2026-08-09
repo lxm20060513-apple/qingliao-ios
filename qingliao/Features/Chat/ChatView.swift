@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import PDFKit
 
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
@@ -12,7 +13,9 @@ struct ChatView: View {
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
     @State private var sentOK = false   // ✅送达提示条
+    @State private var showAttachmentMenu = false
     @State private var showPhotoPicker = false
+    @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
@@ -67,13 +70,23 @@ struct ChatView: View {
             } onStop: {
                 stream.stop(auth: auth)
             } onPickAttachment: {
-                showPhotoPicker = true
+                showAttachmentMenu = true
             }
             // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
             .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
+        .confirmationDialog("添加附件", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
+            Button("图片") { showPhotoPicker = true }
+            Button("文件 (PDF)") { showFileImporter = true }
+            Button("取消", role: .cancel) {}
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf]) { result in
+            if case .success(let url) = result {
+                sendPDF(url)
+            }
+        }
         .onChange(of: photoItem) { _, newItem in
             guard let newItem else { return }
             Task {
@@ -110,8 +123,10 @@ struct ChatView: View {
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(chat.messages) { msg in
-                            MessageBubble(message: msg)
-                                .id(msg.id)
+                            MessageBubble(message: msg) {
+                                regenerate(at: msg.id)
+                            }
+                            .id(msg.id)
                         }
                         if stream.isStreaming {
                             MessageBubble(
@@ -182,6 +197,59 @@ struct ChatView: View {
         }
     }
 
+    /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
+    private func sendPDF(_ url: URL) {
+        guard !stream.isStreaming else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let name = url.lastPathComponent
+        let rawText = extractPDFText(from: url) ?? ""
+        let truncated = String(rawText.prefix(12000))
+        let content = truncated.isEmpty
+            ? "[PDF 文档: \(name)]"
+            : "[PDF 文档: \(name)]\n\(truncated)"
+        chat.append(.local(role: "user", content: content))
+        let history = chat.historyPayload()
+        Task {
+            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                               provider: provider, messages: history) { success, error in
+                if !success {
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                } else {
+                    chat.upsertAssistant(stream.content)
+                    showSentOK()
+                }
+                Task { await chat.saveToServer(auth: auth) }
+            }
+        }
+    }
+
+    /// PDFKit 提取文本（文本型 PDF 才有内容；扫描件无文字层返回空）
+    private func extractPDFText(from url: URL) -> String? {
+        guard let doc = PDFDocument(url: url) else { return nil }
+        return doc.string
+    }
+
+    /// 重新生成：长按 AI 消息 → 删除该条及其后，重发
+    private func regenerate(at id: String) {
+        guard !stream.isStreaming,
+              let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
+        chat.messages.removeSubrange(idx...)
+        let history = chat.historyPayload()
+        Task {
+            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                               provider: provider, messages: history) { success, error in
+                if !success {
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                } else {
+                    chat.upsertAssistant(stream.content)
+                    showSentOK()
+                }
+                Task { await chat.saveToServer(auth: auth) }
+            }
+        }
+    }
+
     /// ✅送达提示条（仅成功时显示，2.5s 后消失）
     private func showSentOK() {
         withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
@@ -220,6 +288,7 @@ struct ChatView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    var onRegenerate: () -> Void = {}
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -267,6 +336,16 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+        // 长按 AI 消息 → 重新生成
+        .contextMenu {
+            if !message.isUser {
+                Button {
+                    onRegenerate()
+                } label: {
+                    Label("重新生成", systemImage: "arrow.clockwise")
+                }
+            }
+        }
     }
 
     /// AI 消息 markdown 渲染（解析失败回退纯文本——流式中途未闭合语法常见）
