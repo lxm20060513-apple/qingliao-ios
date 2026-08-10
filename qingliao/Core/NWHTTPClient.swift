@@ -128,16 +128,20 @@ final class NWRequestSession: @unchecked Sendable {
     private func receiveLoop() {
         connection.receiveMessage { [weak self] data, _, isComplete, error in
             guard let self else { return }
-            if let error = error {
-                self.finish(.failure(error))
-                return
-            }
             if let data {
                 self.buffer.append(data)
             }
-            // ⚠️ 不能只等 isComplete：lucky 对 POST 响应 keep-alive 不关闭连接 → 永远等不到 → 超时
-            //    必须按 Content-Length 判断 body 收满即完成（GET 响应恰好关闭所以之前正常）
-            if self.isResponseComplete() || isComplete {
+            // ⚠️ 先查完整性再报错：lucky 发完响应立即 RST 关闭（Connection: close），receiveMessage 回调 error 且丢弃已收数据
+            //    只要 Content-Length 满足（响应完整），即使带 error 也按成功处理（GET 响应小单段到达才"碰巧"正常）
+            if self.isResponseComplete() {
+                self.finish(.success(NWHTTPClient.parseResponse(self.buffer)))
+                return
+            }
+            if let error {
+                self.finish(.failure(error))
+                return
+            }
+            if isComplete {
                 self.finish(.success(NWHTTPClient.parseResponse(self.buffer)))
             } else {
                 self.receiveLoop()
