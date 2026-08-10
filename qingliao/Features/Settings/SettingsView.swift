@@ -63,10 +63,10 @@ struct SettingsView: View {
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
                             .onTapGesture { showAppearanceMenu = true }
                         Divider().padding(.leading, 52)
-                        // IPv4 直连开关（外网蜂窝连不上时打开：绕 IPv6 MTU 黑洞）
+                        // IPv6 直连开关（默认开：跳过 IPv4 尝试直达 IPv6；关=交给系统域名解析）
                         Toggle(isOn: Binding(
-                            get: { auth.useIPv4Direct },
-                            set: { auth.useIPv4Direct = $0 }
+                            get: { auth.useIPv6Direct },
+                            set: { auth.useIPv6Direct = $0 }
                         )) {
                             HStack(spacing: 12) {
                                 Image(systemName: "network.badge.shield.half.filled")
@@ -75,10 +75,10 @@ struct SettingsView: View {
                                     .frame(width: 28, height: 28)
                                     .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("IPv4 直连")
+                                    Text("IPv6 直连")
                                         .font(.system(size: 15))
                                         .foregroundStyle(.primary)
-                                    Text("外网连接超时/失败时打开")
+                                    Text("外网连不上时打开（默认开）")
                                         .font(.system(size: 10.5))
                                         .foregroundStyle(.secondary)
                                 }

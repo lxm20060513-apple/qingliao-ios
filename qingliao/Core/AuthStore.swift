@@ -27,40 +27,34 @@ final class AuthStore {
         return URLSession(configuration: cfg, delegate: certDelegate, delegateQueue: nil)
     }()
 
-    /// IPv4 直连模式（蜂窝访问家庭宽带 IPv6 常见 MTU 黑洞：TCP 通、TLS 大包丢 → 超时挂死；PWA 有成熟回退而 URLSession 连接建立后不回退）
-    var useIPv4Direct: Bool {
-        get { defaults.bool(forKey: "qingliao_ipv4_direct") }
-        set { defaults.set(newValue, forKey: "qingliao_ipv4_direct") }
+    /// IPv6 直连模式（默认开）：服务器仅 IPv6 公网（域名 A 记录是运营商 NAT 无服务），URLSession happy-eyeballs 先连 IPv4 挂起等超时才试 IPv6 → 强制 IPv6 字面量直连跳过
+    /// ⚠️ 勿做"IPv4 直连"：用户服务器无公网 IPv4，IPv4 是死路（实踩方向错误）
+    var useIPv6Direct: Bool {
+        get { defaults.object(forKey: "qingliao_ipv6_direct") == nil ? true : defaults.bool(forKey: "qingliao_ipv6_direct") }
+        set { defaults.set(newValue, forKey: "qingliao_ipv6_direct") }
     }
 
-    /// 域名解析取 IPv4 地址（getaddrinfo 强制 AF_INET）
-    private func resolveIPv4(_ host: String) -> String? {
+    /// 域名解析取 IPv6 地址（getaddrinfo 强制 AF_INET6）
+    private func resolveIPv6(_ host: String) -> String? {
         var hints = addrinfo()
-        hints.ai_family = AF_INET
+        hints.ai_family = AF_INET6
         hints.ai_socktype = SOCK_STREAM
         var result: UnsafeMutablePointer<addrinfo>?
         guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { return nil }
         defer { freeaddrinfo(result) }
-        var cur: UnsafeMutablePointer<addrinfo>? = first
-        while let c = cur {
-            if c.pointee.ai_family == AF_INET {
-                var ip = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-                c.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sa in
-                    inet_ntop(AF_INET, &sa.pointee.sin_addr, &ip, socklen_t(INET_ADDRSTRLEN))
-                }
-                return String(cString: ip)
-            }
-            cur = c.pointee.ai_next
+        var ip = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        first.pointee.ai_addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sa6 in
+            inet_ntop(AF_INET6, &sa6.pointee.sin6_addr, &ip, socklen_t(INET6_ADDRSTRLEN))
         }
-        return nil
+        return String(cString: ip)
     }
 
-    /// 构造 URL：IPv4 直连模式下把域名换成 IPv4 字面量（配套忽略证书校验）
+    /// 构造 URL：IPv6 直连模式下把域名换成 [IPv6] 字面量（配套忽略证书校验）
     private func buildURL(_ path: String) -> URL? {
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
-        if useIPv4Direct, let host = URL(string: server)?.host, let ip = resolveIPv4(host) {
-            server = server.replacingOccurrences(of: host, with: ip)
+        if useIPv6Direct, let host = URL(string: server)?.host, let ip = resolveIPv6(host) {
+            server = server.replacingOccurrences(of: host, with: "[\(ip)]")
         }
         return URL(string: server + path)
     }
@@ -197,8 +191,8 @@ final class AuthStore {
     func testConnection(server: String) async -> String {
         var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
         if !s.hasPrefix("http") { s = "http://" + s }
-        if useIPv4Direct, let host = URL(string: s)?.host, let ip = resolveIPv4(host) {
-            s = s.replacingOccurrences(of: host, with: ip)
+        if useIPv6Direct, let host = URL(string: s)?.host, let ip = resolveIPv6(host) {
+            s = s.replacingOccurrences(of: host, with: "[\(ip)]")
         }
         guard let url = URL(string: s + "/api/auth/status") else { return "服务器地址无效" }
         var req = URLRequest(url: url)
@@ -236,8 +230,8 @@ final class AuthStore {
 
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
-        if useIPv4Direct, let host = URL(string: server)?.host, let ip = resolveIPv4(host) {
-            server = server.replacingOccurrences(of: host, with: ip)
+        if useIPv6Direct, let host = URL(string: server)?.host, let ip = resolveIPv6(host) {
+            server = server.replacingOccurrences(of: host, with: "[\(ip)]")
         }
         guard let url = URL(string: server + path) else { throw APIError.badURL }
         var req = URLRequest(url: url)
