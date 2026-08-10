@@ -65,11 +65,13 @@ final class StreamHTTPClient: @unchecked Sendable {
         CFReadStreamSetClient(read, events, { _, event, info in
             guard let info else { return }
             let s = Unmanaged<StreamState>.fromOpaque(info).takeUnretainedValue()
+            s.lastEvent = Int(event.rawValue)
             StreamHTTPClient.handleReadEvent(event, state: s, read: nil)
         }, &context)
         CFWriteStreamSetClient(write, events, { _, event, info in
             guard let info else { return }
             let s = Unmanaged<StreamState>.fromOpaque(info).takeUnretainedValue()
+            s.lastEvent = Int(event.rawValue)
             StreamHTTPClient.handleWriteEvent(event, state: s, write: nil)
         }, &context)
 
@@ -102,7 +104,7 @@ final class StreamHTTPClient: @unchecked Sendable {
             throw error
         }
         guard let result = state.result else {
-            throw APIError.badResponse
+            throw APIError.badResponseDetail("noresult buf=\(state.buffer.count) ev=\(state.lastEvent) sent=\(state.sent)")
         }
         return result
     }
@@ -143,7 +145,7 @@ final class StreamHTTPClient: @unchecked Sendable {
                     return
                 }
             }
-            state.error = APIError.badResponse
+            state.error = APIError.badResponseDetail("err buf=\(state.buffer.count) ev=\(state.lastEvent)")
             state.done = true
             CFRunLoopStop(CFRunLoopGetCurrent())
         default:
@@ -165,22 +167,20 @@ final class StreamHTTPClient: @unchecked Sendable {
 
     private static func sendPayload(_ state: StreamState) {
         guard !state.sent, let write = state.write, let payload = state.payload else { return }
-        var remaining = payload
-        while !remaining.isEmpty {
+        // 从上次发送偏移续传（write 返回 0 缓冲满时不能从开头重发——会重复发送导致服务器解析错乱）
+        while state.sentOffset < payload.count {
+            let remaining = payload[state.sentOffset...]
             let n = remaining.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> CFIndex in
                 CFWriteStreamWrite(write, buf.baseAddress!.assumingMemoryBound(to: UInt8.self), buf.count)
             }
             if n < 0 {
-                if !state.buffer.isEmpty {
-                    let (body, code) = StreamHTTPClient.parseResponse(state.buffer)
-                    if code > 0 { state.result = (body, code) }
-                }
+                state.error = APIError.badResponseDetail("write err buf=\(state.buffer.count)")
                 state.done = true
                 CFRunLoopStop(CFRunLoopGetCurrent())
                 return
             }
-            if n == 0 { return }   // 缓冲满，等 CanAcceptBytes 再发
-            remaining.removeFirst(n)
+            if n == 0 { return }   // 缓冲满，等 CanAcceptBytes 再续传
+            state.sentOffset += n
         }
         state.sent = true
     }
@@ -226,6 +226,8 @@ final class StreamState: @unchecked Sendable {
     var write: CFWriteStream?
     var buffer = Data()
     var sent = false
+    var sentOffset = 0
+    var lastEvent: Int = -1
     var done = false
     var timeout = false
     var error: Error?

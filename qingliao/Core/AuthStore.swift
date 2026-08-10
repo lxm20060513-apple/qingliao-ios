@@ -245,12 +245,13 @@ final class AuthStore {
 }
 
 enum APIError: Error, LocalizedError {
-    case badURL, badResponse, badJSON, unauthorized, timeout, timeoutDetail(String), server(Int)
+    case badURL, badResponse, badResponseDetail(String), badJSON, unauthorized, timeout, timeoutDetail(String), server(Int)
 
     var errorDescription: String? {
         switch self {
         case .badURL: return "服务器地址无效"
         case .badResponse: return "服务器响应异常"
+        case .badResponseDetail(let d): return "服务器响应异常（\(d)）"
         case .badJSON: return "数据解析失败"
         case .unauthorized: return "登录已过期，请重新登录"
         case .timeout: return "请求超时"
