@@ -16,6 +16,22 @@ final class AuthStore {
     private let tokenKey = "qingliao_token"
     private let userKey = "qingliao_user"
 
+    /// 自定义 ephemeral 会话：不复用连接池（规避 HTTP/2 连接复用导致的 -1005 Network connection lost）
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 30
+        cfg.timeoutIntervalForResource = 60
+        cfg.waitsForConnectivity = true
+        return URLSession(configuration: cfg)
+    }()
+
+    /// 可重试错误：连接丢失/超时/无法连接（蜂窝访问家庭宽带非标端口时常见瞬断）
+    private func isRetryable(_ e: Error) -> Bool {
+        let code = (e as NSError).code
+        return code == NSURLErrorNetworkConnectionLost || code == NSURLErrorTimedOut
+            || code == NSURLErrorCannotConnectToHost || code == NSURLErrorNotConnectedToInternet
+    }
+
     init() {
         token = defaults.string(forKey: tokenKey) ?? ""
         username = defaults.string(forKey: userKey) ?? ""
@@ -46,25 +62,38 @@ final class AuthStore {
             "remember": remember
         ])
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse else {
-                errorMessage = "网络异常"
-                return
+            // 瞬断自动重试（蜂窝网络常见 -1005，重试大概率建立新连接成功）
+            var lastError: Error?
+            for attempt in 1...3 {
+                do {
+                    let (data, resp) = try await session.data(for: req)
+                    guard let http = resp as? HTTPURLResponse else {
+                        errorMessage = "网络异常"
+                        return
+                    }
+                    guard http.statusCode == 200,
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let tok = json["token"] as? String else {
+                        errorMessage = "用户名或密码错误"
+                        return
+                    }
+                    token = tok
+                    self.username = username
+                    defaults.set(tok, forKey: tokenKey)
+                    defaults.set(username, forKey: userKey)
+                    defaults.set(serverURL, forKey: serverKey)
+                    isLoggedIn = true
+                    return
+                } catch {
+                    lastError = error
+                    if attempt < 3, isRetryable(error) {
+                        try? await Task.sleep(for: .seconds(Double(attempt)))
+                        continue
+                    }
+                    break
+                }
             }
-            guard http.statusCode == 200,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tok = json["token"] as? String else {
-                errorMessage = "用户名或密码错误"
-                return
-            }
-            token = tok
-            self.username = username
-            defaults.set(tok, forKey: tokenKey)
-            defaults.set(username, forKey: userKey)
-            defaults.set(serverURL, forKey: serverKey)
-            isLoggedIn = true
-        } catch {
-            errorMessage = "无法连接服务器（\(error.localizedDescription)）"
+            errorMessage = "无法连接服务器（\(lastError?.localizedDescription ?? "网络异常")）"
         }
     }
 
@@ -74,7 +103,7 @@ final class AuthStore {
         defaults.removeObject(forKey: tokenKey)
     }
 
-    /// 统一 API 请求：拼服务器地址 + 注入 X-Auth-Token + 401 自动登出
+    /// 统一 API 请求：拼服务器地址 + 注入 X-Auth-Token + 401 自动登出 + 瞬断自动重试
     func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
@@ -90,18 +119,31 @@ final class AuthStore {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            throw APIError.badResponse
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                let (data, resp) = try await session.data(for: req)
+                guard let http = resp as? HTTPURLResponse else {
+                    throw APIError.badResponse
+                }
+                if http.statusCode == 401 {
+                    logout()
+                    throw APIError.unauthorized
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.server(http.statusCode)
+                }
+                return (data, http)
+            } catch {
+                lastError = error
+                if attempt < 3, isRetryable(error) {
+                    try? await Task.sleep(for: .seconds(Double(attempt)))
+                    continue
+                }
+                throw error
+            }
         }
-        if http.statusCode == 401 {
-            logout()
-            throw APIError.unauthorized
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.server(http.statusCode)
-        }
-        return (data, http)
+        throw lastError ?? APIError.badResponse
     }
 
     /// 便捷：JSON 请求 → 返回字典
@@ -140,7 +182,7 @@ final class AuthStore {
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "X-Auth-Token") }
         req.httpBody = body
-        let (data2, resp) = try await URLSession.shared.data(for: req)
+        let (data2, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.badResponse }
         if http.statusCode == 401 {
             logout()
