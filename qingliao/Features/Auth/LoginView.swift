@@ -57,6 +57,8 @@ struct LoginView: View {
 
                 // 登录按钮
                 Button {
+                    // 先提交服务器地址（登录页可修改），再登录
+                    auth.serverURL = server.trimmingCharacters(in: .whitespacesAndNewlines)
                     Task {
                         await auth.login(username: username, password: password, remember: remember)
                     }

@@ -9,6 +9,7 @@ struct SessionsView: View {
     @State private var sessions: [ChatSession] = []
     @State private var isLoading = false
     @State private var errorText: String?
+    @State private var deleteError: String?
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     var body: some View {
@@ -67,6 +68,11 @@ struct SessionsView: View {
             }
         }
         .task { await load() }
+        .alert("删除失败", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            Button("好", role: .cancel) { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
     }
 
     private var addButton: some View {
@@ -108,18 +114,29 @@ struct SessionsView: View {
         }
         Task {
             do {
-                _ = try await auth.json("/api/sessions/merge", method: "POST", body: [
+                let j = try await auth.json("/api/sessions/merge", method: "POST", body: [
                     "sessions": [] as [Any],
                     "deleted": [s.id]
                 ])
-            } catch {
-                // 后端同步失败时回滚恢复
-                if !sessions.contains(where: { $0.id == s.id }) {
-                    sessions.append(s)
-                    sessions.sort { ($0.lastTime ?? 0) > ($1.lastTime ?? 0) }
+                // 校验服务器确实删除（401 透传/异常响应不含 ok:true → 视为未同步）
+                if (j["ok"] as? Bool) != true {
+                    rollbackDelete(s)
                 }
+            } catch {
+                rollbackDelete(s)
             }
         }
+    }
+
+    /// 删除未同步到服务器：本地回滚 + 提示
+    private func rollbackDelete(_ s: ChatSession) {
+        if !sessions.contains(where: { $0.id == s.id }) {
+            withAnimation {
+                sessions.append(s)
+                sessions.sort { ($0.lastTime ?? 0) > ($1.lastTime ?? 0) }
+            }
+        }
+        deleteError = "删除未同步到服务器，请检查网络后重试"
     }
 }
 

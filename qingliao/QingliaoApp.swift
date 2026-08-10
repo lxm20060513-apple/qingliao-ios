@@ -31,9 +31,27 @@ struct QingliaoApp: App {
 
 struct RootView: View {
     @Environment(AuthStore.self) private var auth
+    @State private var showSplash = true
 
     var body: some View {
-        // 免登录模式（iOS 27 蜂窝上行挂起，密码登录请求发不出；服务器已开 AUTO_LOGIN 免鉴权）
-        DockTabView()
+        ZStack {
+            // 登录门禁：未登录显示登录页，登录后进主界面（登录状态 UserDefaults 持久化）
+            if auth.isLoggedIn {
+                DockTabView()
+            } else {
+                LoginView()
+            }
+
+            // 启动动画：一次淡入后淡出
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(.easeOut(duration: 0.45)) { showSplash = false }
+        }
     }
 }

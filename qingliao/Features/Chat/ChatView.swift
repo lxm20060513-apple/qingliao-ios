@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import PDFKit
+import UniformTypeIdentifiers
 
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
@@ -78,13 +79,16 @@ struct ChatView: View {
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .confirmationDialog("添加附件", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
             Button("图片") { showPhotoPicker = true }
-            Button("文件 (PDF)") { showFileImporter = true }
+            Button("文件 (PDF / Word / Excel / 文本)") { showFileImporter = true }
             Button("取消", role: .cancel) {}
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf]) { result in
+        .fileImporter(isPresented: $showFileImporter,
+                      allowedContentTypes: [.pdf, .plainText,
+                                            UTType(filenameExtension: "docx") ?? .data,
+                                            UTType(filenameExtension: "xlsx") ?? .data]) { result in
             if case .success(let url) = result {
-                sendPDF(url)
+                sendFile(url)
             }
         }
         .onChange(of: photoItem) { _, newItem in
@@ -122,7 +126,14 @@ struct ChatView: View {
                     .padding(.top, 90)
                 } else {
                     LazyVStack(spacing: 10) {
-                        ForEach(chat.messages) { msg in
+                        ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
+                            // 相邻消息间隔 >5 分钟：插入居中时间分隔（微信式）
+                            if idx > 0,
+                               let prevTs = chat.messages[idx - 1].timestamp,
+                               let curTs = msg.timestamp,
+                               curTs - prevTs > 300_000 {
+                                timeDivider(curTs)
+                            }
                             MessageBubble(message: msg) {
                                 regenerate(at: msg.id)
                             }
@@ -152,6 +163,24 @@ struct ChatView: View {
                 scrollBottom(proxy)
             }
         }
+    }
+
+    /// 相邻消息间隔 >5 分钟的居中时间分隔
+    private func timeDivider(_ ts: Double) -> some View {
+        let d = Date(timeIntervalSince1970: ts / 1000)
+        let text: String
+        if Calendar.current.isDateInToday(d) {
+            text = d.formatted(date: .omitted, time: .shortened)
+        } else if Calendar.current.isDateInYesterday(d) {
+            text = "昨天 " + d.formatted(date: .omitted, time: .shortened)
+        } else {
+            text = d.formatted(date: .abbreviated, time: .shortened)
+        }
+        return Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
     }
 
     private func scrollBottom(_ proxy: ScrollViewProxy) {
@@ -211,6 +240,71 @@ struct ChatView: View {
         chat.append(.local(role: "user", content: content))
         let history = chat.historyPayload()
         Task {
+            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                               provider: provider, messages: history) { success, error in
+                if !success {
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                } else {
+                    chat.upsertAssistant(stream.content)
+                    showSentOK()
+                }
+                Task { await chat.saveToServer(auth: auth) }
+            }
+        }
+    }
+
+    /// 发送任意文档：txt 直接读文本（AI 可读）；Word/Excel 无法本地提取 → 降级上传 NAS 文件管理
+    private func sendFile(_ url: URL) {
+        guard !stream.isStreaming else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let name = url.lastPathComponent
+        let ext = (name as NSString).pathExtension.lowercased()
+
+        // 文本类：直接读入对话
+        if ["txt", "md", "log", "json", "csv"].contains(ext) {
+            if let text = try? String(contentsOf: url, encoding: .utf8) {
+                let truncated = String(text.prefix(12000))
+                let content = "[文本文件: \(name)]\n\(truncated)"
+                chat.append(.local(role: "user", content: content))
+                let history = chat.historyPayload()
+                Task {
+                    await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                                       provider: provider, messages: history) { success, error in
+                        if !success {
+                            chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                        } else {
+                            chat.upsertAssistant(stream.content)
+                            showSentOK()
+                        }
+                        Task { await chat.saveToServer(auth: auth) }
+                    }
+                }
+                return
+            }
+        }
+
+        // PDF 走文本提取
+        if ext == "pdf" {
+            sendPDF(url)
+            return
+        }
+
+        // Word/Excel：本地无法提取 → 降级上传 NAS 文件管理（relay 上行限 2KB 小文件）
+        Task {
+            let content: String
+            if let data = try? Data(contentsOf: url), data.count < 2000 {
+                if let j = try? await auth.uploadMultipart("/api/files/upload", fileName: name, data: data),
+                   (j["ok"] as? Bool) == true {
+                    content = "[文档: \(name)]（已上传 NAS 文件管理）"
+                } else {
+                    content = "[文档: \(name)]（上传失败，文件未解析）"
+                }
+            } else {
+                content = "[文档: \(name)]（文件较大，请用 PWA 上传解析）"
+            }
+            chat.append(.local(role: "user", content: content))
+            let history = chat.historyPayload()
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
                 if !success {

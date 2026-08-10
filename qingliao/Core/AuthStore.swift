@@ -4,7 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class AuthStore {
-    var isLoggedIn = true           // 免登录模式（AUTO_LOGIN）：始终 true
+    var isLoggedIn = false          // 登录状态（UserDefaults 持久化）
     var username = ""
     var serverURL = ""
     var token = ""
@@ -15,6 +15,7 @@ final class AuthStore {
     private let serverKey = "qingliao_server"
     private let tokenKey = "qingliao_token"
     private let userKey = "qingliao_user"
+    private let loggedKey = "qingliao_logged_in"
 
     /// Safari Relay 网络层（iOS 27 蜂窝上行挂起的最终方案）
     private let relay = SafariRelay.shared
@@ -23,19 +24,46 @@ final class AuthStore {
         token = defaults.string(forKey: tokenKey) ?? ""
         username = defaults.string(forKey: userKey) ?? ""
         serverURL = defaults.string(forKey: serverKey) ?? "https://example.com:16666"
-        isLoggedIn = true   // 免登录：直接进主界面
+        isLoggedIn = defaults.bool(forKey: loggedKey)
     }
 
-    // MARK: - 登录（免登录模式下仅为兼容保留）
+    // MARK: - 登录（POST /api/auth/login 验证账号密码；服务器 AUTO_LOGIN 免鉴权，登录页作为门禁）
 
     func login(username: String, password: String, remember: Bool = true) async {
-        // 免登录模式：服务器 AUTO_LOGIN，无需密码；直接标记登录
-        isLoggedIn = true
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let (data, resp) = try await request("/api/auth/login", method: "POST", body: [
+                "username": username, "password": password, "remember": remember
+            ])
+            let code = resp.statusCode
+            // request() 会把 401 透传成 200；这里必须校验 body 的 ok 字段
+            if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               (j["ok"] as? Bool) == true {
+                self.username = username
+                if let t = j["token"] as? String, !t.isEmpty { token = t }
+                defaults.set(username, forKey: userKey)
+                if !token.isEmpty { defaults.set(token, forKey: tokenKey) }
+                isLoggedIn = true
+                defaults.set(true, forKey: loggedKey)
+            } else if (200..<300).contains(code) {
+                // 服务器返回 200 但无 ok 字段（个别端点形态），视为登录成功
+                self.username = username
+                isLoggedIn = true
+                defaults.set(true, forKey: loggedKey)
+            } else {
+                errorMessage = "用户名或密码错误"
+            }
+        } catch {
+            errorMessage = "无法连接服务器（\(error.localizedDescription)）"
+        }
     }
 
     func logout() {
         token = ""
-        isLoggedIn = true   // 免登录模式下登出也保持可访问
+        isLoggedIn = false
+        defaults.set(false, forKey: loggedKey)
         defaults.removeObject(forKey: tokenKey)
     }
 
