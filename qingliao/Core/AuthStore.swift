@@ -18,13 +18,52 @@ final class AuthStore {
 
     /// 自定义 ephemeral 会话：不复用连接池（规避 HTTP/2 连接复用导致的 -1005 Network connection lost）
     /// ⚠️ waitsForConnectivity 必须 false：连接挂起时若等待网络恢复会卡"登录中"长达 60s（实踩），快速失败交给重试循环
-    private let session: URLSession = {
+    private let certDelegate = CertIgnoreDelegate()
+    private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 10
         cfg.timeoutIntervalForResource = 30
         cfg.waitsForConnectivity = false
-        return URLSession(configuration: cfg)
+        return URLSession(configuration: cfg, delegate: certDelegate, delegateQueue: nil)
     }()
+
+    /// IPv4 直连模式（蜂窝访问家庭宽带 IPv6 常见 MTU 黑洞：TCP 通、TLS 大包丢 → 超时挂死；PWA 有成熟回退而 URLSession 连接建立后不回退）
+    var useIPv4Direct: Bool {
+        get { defaults.bool(forKey: "qingliao_ipv4_direct") }
+        set { defaults.set(newValue, forKey: "qingliao_ipv4_direct") }
+    }
+
+    /// 域名解析取 IPv4 地址（getaddrinfo 强制 AF_INET）
+    private func resolveIPv4(_ host: String) -> String? {
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_STREAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { return nil }
+        defer { freeaddrinfo(result) }
+        var cur: UnsafeMutablePointer<addrinfo>? = first
+        while let c = cur {
+            if c.pointee.ai_family == AF_INET {
+                var ip = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                c.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sa in
+                    inet_ntop(AF_INET, &sa.pointee.sin_addr, &ip, socklen_t(INET_ADDRSTRLEN))
+                }
+                return String(cString: ip)
+            }
+            cur = c.pointee.ai_next
+        }
+        return nil
+    }
+
+    /// 构造 URL：IPv4 直连模式下把域名换成 IPv4 字面量（配套忽略证书校验）
+    private func buildURL(_ path: String) -> URL? {
+        var server = serverURL
+        if !server.hasPrefix("http") { server = "http://" + server }
+        if useIPv4Direct, let host = URL(string: server)?.host, let ip = resolveIPv4(host) {
+            server = server.replacingOccurrences(of: host, with: ip)
+        }
+        return URL(string: server + path)
+    }
 
     /// 可重试错误：连接丢失/超时/无法连接（蜂窝访问家庭宽带非标端口时常见瞬断）
     private func isRetryable(_ e: Error) -> Bool {
@@ -50,7 +89,7 @@ final class AuthStore {
         if !server.hasPrefix("http") { server = "http://" + server }
         serverURL = server
 
-        guard let url = URL(string: server + "/api/auth/login") else {
+        guard let url = buildURL("/api/auth/login") else {
             errorMessage = "服务器地址无效"
             return
         }
@@ -106,9 +145,7 @@ final class AuthStore {
 
     /// 统一 API 请求：拼服务器地址 + 注入 X-Auth-Token + 401 自动登出 + 瞬断自动重试
     func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
-        var server = serverURL
-        if !server.hasPrefix("http") { server = "http://" + server }
-        guard let url = URL(string: server + path) else {
+        guard let url = buildURL(path) else {
             throw APIError.badURL
         }
         var req = URLRequest(url: url)
@@ -177,6 +214,9 @@ final class AuthStore {
 
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
+        if useIPv4Direct, let host = URL(string: server)?.host, let ip = resolveIPv4(host) {
+            server = server.replacingOccurrences(of: host, with: ip)
+        }
         guard let url = URL(string: server + path) else { throw APIError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -208,5 +248,18 @@ enum APIError: Error, LocalizedError {
         case .unauthorized: return "登录已过期，请重新登录"
         case .server(let code): return "服务器错误（\(code)）"
         }
+    }
+}
+
+/// 忽略证书校验的 delegate（IPv4 直连模式下 IP 与证书 CN 不匹配；自家服务可接受）
+final class CertIgnoreDelegate: NSObject, URLSessionDelegate {
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
     }
 }

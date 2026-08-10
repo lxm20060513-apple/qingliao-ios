@@ -63,6 +63,32 @@ struct SettingsView: View {
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
                             .onTapGesture { showAppearanceMenu = true }
                         Divider().padding(.leading, 52)
+                        // IPv4 直连开关（外网蜂窝连不上时打开：绕 IPv6 MTU 黑洞）
+                        Toggle(isOn: Binding(
+                            get: { auth.useIPv4Direct },
+                            set: { auth.useIPv4Direct = $0 }
+                        )) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "network.badge.shield.half.filled")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("IPv4 直连")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(.primary)
+                                    Text("外网连接超时/失败时打开")
+                                        .font(.system(size: 10.5))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .tint(Color.accentColor)
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0")
                         Divider().padding(.leading, 52)
                         Button {
