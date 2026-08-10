@@ -26,10 +26,17 @@ final class NWHTTPClient: @unchecked Sendable {
             sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, _, completion in
                 completion(true)
             }, queue)
-            sec_protocol_options_set_peer_authentication_required(tls.securityProtocolOptions, false)
             params = NWParameters(tls: tls)
         } else {
             params = NWParameters()
+        }
+
+        // 连接目标：优先 IPv6 字面量（A 记录已删只剩 AAAA；域名解析路径在蜂窝下偶发 EINVAL → state=waiting(EINVAL) 实踩，IP 直连绕开）
+        let connection: NWConnection
+        if let ip = Self.resolveIPv6(host), let addr = IPv6Address(ip) {
+            connection = NWConnection(to: .hostPort(host: .ipv6(addr), port: port), using: params)
+        } else {
+            connection = NWConnection(to: .hostPort(host: .init(host), port: port), using: params)
         }
 
         // 构造 HTTP/1.1 请求
@@ -45,10 +52,6 @@ final class NWHTTPClient: @unchecked Sendable {
         if let body { payload.append(body) }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, Int), Error>) in
-            let connection = NWConnection(
-                to: .hostPort(host: .init(host), port: port),
-                using: params
-            )
             let session = NWRequestSession(connection: connection, continuation: continuation, queue: queue)
             session.start(payload: payload)
 
@@ -58,6 +61,21 @@ final class NWHTTPClient: @unchecked Sendable {
             }
             queue.asyncAfter(deadline: .now() + timeout, execute: timer)
         }
+    }
+
+    /// 解析域名取 IPv6 地址（getaddrinfo 强制 AF_INET6；A 记录已删只剩 AAAA）
+    private static func resolveIPv6(_ host: String) -> String? {
+        var hints = addrinfo()
+        hints.ai_family = AF_INET6
+        hints.ai_socktype = SOCK_STREAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { return nil }
+        defer { freeaddrinfo(result) }
+        var ip = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        first.pointee.ai_addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sa6 in
+            inet_ntop(AF_INET6, &sa6.pointee.sin6_addr, &ip, socklen_t(INET6_ADDRSTRLEN))
+        }
+        return String(cString: ip)
     }
 
     /// 解析 HTTP 响应：状态行 + 头 + body（Connection: close 语义，数据完整到达后解析）
