@@ -45,71 +45,23 @@ final class NWHTTPClient: @unchecked Sendable {
         if let body { payload.append(body) }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, Int), Error>) in
-            var finished = false
             let connection = NWConnection(
                 to: .hostPort(host: .init(host), port: port),
                 using: params
             )
-
-            func finish(_ result: Result<(Data, Int), Error>) {
-                guard !finished else { return }
-                finished = true
-                connection.cancel()
-                continuation.resume(with: result)
-            }
-
-            var buffer = Data()
-
-            func receiveLoop() {
-                connection.receiveMessage { data, _, isComplete, error in
-                    if let error = error {
-                        finish(.failure(error))
-                        return
-                    }
-                    if let data {
-                        buffer.append(data)
-                    }
-                    if isComplete {
-                        let parsed = NWHTTPClient.parseResponse(buffer)
-                        finish(.success(parsed))
-                    } else {
-                        receiveLoop()
-                    }
-                }
-            }
-
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    connection.send(content: payload, completion: .contentProcessed { error in
-                        if let error = error {
-                            finish(.failure(error))
-                        } else {
-                            receiveLoop()
-                        }
-                    })
-                case .failed(let error):
-                    finish(.failure(error))
-                default:
-                    break
-                }
-            }
-
-            connection.start(queue: queue)
+            let session = NWRequestSession(connection: connection, continuation: continuation, queue: queue)
+            session.start(payload: payload)
 
             // 超时兜底
-            let timer = DispatchWorkItem { [weak connection] in
-                if !finished {
-                    connection?.cancel()
-                    finish(.failure(APIError.timeout))
-                }
+            let timer = DispatchWorkItem { [weak session] in
+                session?.timeout()
             }
             queue.asyncAfter(deadline: .now() + timeout, execute: timer)
         }
     }
 
     /// 解析 HTTP 响应：状态行 + 头 + body（Connection: close 语义，数据完整到达后解析）
-    private static func parseResponse(_ data: Data) -> (Data, Int) {
+    static func parseResponse(_ data: Data) -> (Data, Int) {
         guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
             return (data, 0)
         }
@@ -124,5 +76,71 @@ final class NWHTTPClient: @unchecked Sendable {
             }
         }
         return (Data(bodyPart), code)
+    }
+}
+
+/// 单次请求会话协调器（@unchecked Sendable：所有状态在内部 serial queue 上访问，闭包只捕获 self）
+final class NWRequestSession: @unchecked Sendable {
+    private let connection: NWConnection
+    private let continuation: CheckedContinuation<(Data, Int), Error>
+    private let queue: DispatchQueue
+    private var buffer = Data()
+    private var finished = false
+
+    init(connection: NWConnection,
+         continuation: CheckedContinuation<(Data, Int), Error>,
+         queue: DispatchQueue) {
+        self.connection = connection
+        self.continuation = continuation
+        self.queue = queue
+    }
+
+    func start(payload: Data) {
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                self?.connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+                    if let error = error {
+                        self?.finish(.failure(error))
+                    } else {
+                        self?.receiveLoop()
+                    }
+                })
+            case .failed(let error):
+                self?.finish(.failure(error))
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+    }
+
+    func timeout() {
+        finish(.failure(APIError.timeout))
+    }
+
+    private func receiveLoop() {
+        connection.receiveMessage { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let error = error {
+                self.finish(.failure(error))
+                return
+            }
+            if let data {
+                self.buffer.append(data)
+            }
+            if isComplete {
+                self.finish(.success(NWHTTPClient.parseResponse(self.buffer)))
+            } else {
+                self.receiveLoop()
+            }
+        }
+    }
+
+    private func finish(_ result: Result<(Data, Int), Error>) {
+        guard !finished else { return }
+        finished = true
+        connection.cancel()
+        continuation.resume(with: result)
     }
 }
