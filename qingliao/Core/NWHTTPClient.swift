@@ -86,6 +86,8 @@ final class NWRequestSession: @unchecked Sendable {
     private let queue: DispatchQueue
     private var buffer = Data()
     private var finished = false
+    /// self-retain：请求期间强引用自己（continuation 闭包不持有 session，无强引用会被 ARC 释放 → 所有 weak 回调失效 + 超时 timer 失效 = 永久挂起）
+    private var retainedSelf: NWRequestSession?
 
     init(connection: NWConnection,
          continuation: CheckedContinuation<(Data, Int), Error>,
@@ -96,6 +98,7 @@ final class NWRequestSession: @unchecked Sendable {
     }
 
     func start(payload: Data) {
+        retainedSelf = self
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
@@ -140,6 +143,7 @@ final class NWRequestSession: @unchecked Sendable {
     private func finish(_ result: Result<(Data, Int), Error>) {
         guard !finished else { return }
         finished = true
+        retainedSelf = nil
         connection.cancel()
         continuation.resume(with: result)
     }
