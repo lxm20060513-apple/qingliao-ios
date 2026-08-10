@@ -16,48 +16,6 @@ final class AuthStore {
     private let tokenKey = "qingliao_token"
     private let userKey = "qingliao_user"
 
-    /// 每次请求独立创建 ephemeral session（不复用连接——实测 GET status 建立的 h2 连接被 POST login 复用时挂起超时；每次全新 TCP+TLS 代价仅 ~50ms）
-    /// ⚠️ waitsForConnectivity 必须 false：连接挂起时若等待网络恢复会卡"登录中"长达 60s（实踩），快速失败交给重试循环
-    private func makeSession() -> URLSession {
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 10
-        cfg.timeoutIntervalForResource = 30
-        cfg.waitsForConnectivity = false
-        return URLSession(configuration: cfg, delegate: CertIgnoreDelegate(), delegateQueue: nil)
-    }
-
-    /// IPv6 直连模式（默认关）：域名 A 记录已删（只剩 AAAA），URLSession 解析自动走 IPv6、SNI/Host 正常 → 无需 IP 字面量
-    /// ⚠️ 勿默认开：IP 字面量会破坏 SNI/Host（lucky 按域名路由 404）且 iOS URLSession 对 IP 的 TLS 层失败(-1200)（实踩）
-    var useIPv6Direct: Bool {
-        get { defaults.bool(forKey: "qingliao_ipv6_direct") }
-        set { defaults.set(newValue, forKey: "qingliao_ipv6_direct") }
-    }
-
-    /// 域名解析取 IPv6 地址（getaddrinfo 强制 AF_INET6）
-    private func resolveIPv6(_ host: String) -> String? {
-        var hints = addrinfo()
-        hints.ai_family = AF_INET6
-        hints.ai_socktype = SOCK_STREAM
-        var result: UnsafeMutablePointer<addrinfo>?
-        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { return nil }
-        defer { freeaddrinfo(result) }
-        var ip = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
-        first.pointee.ai_addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { sa6 in
-            inet_ntop(AF_INET6, &sa6.pointee.sin6_addr, &ip, socklen_t(INET6_ADDRSTRLEN))
-        }
-        return String(cString: ip)
-    }
-
-    /// 构造 URL：IPv6 直连模式下把域名换成 [IPv6] 字面量（配套忽略证书校验）
-    private func buildURL(_ path: String) -> URL? {
-        var server = serverURL
-        if !server.hasPrefix("http") { server = "http://" + server }
-        if useIPv6Direct, let host = URL(string: server)?.host, let ip = resolveIPv6(host) {
-            server = server.replacingOccurrences(of: host, with: "[\(ip)]")
-        }
-        return URL(string: server + path)
-    }
-
     /// 可重试错误：连接丢失/超时/无法连接（蜂窝访问家庭宽带非标端口时常见瞬断）
     private func isRetryable(_ e: Error) -> Bool {
         let code = (e as NSError).code
@@ -82,54 +40,44 @@ final class AuthStore {
         if !server.hasPrefix("http") { server = "http://" + server }
         serverURL = server
 
-        guard let url = buildURL("/api/auth/login") else {
-            errorMessage = "服务器地址无效"
-            return
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // ⚠️ 用 upload(for:from:) 而非 dataTask：iOS URLSession 的 dataTask POST 在 IPv6+h2 下挂起超时实踩（GET 正常），uploadTask 走不同内部路径
         let bodyData = (try? JSONSerialization.data(withJSONObject: [
             "username": username,
             "password": password,
             "remember": remember
         ])) ?? Data()
-        do {
-            let session = makeSession()
-            // 瞬断自动重试（蜂窝网络常见 -1005，重试大概率建立新连接成功）
-            var lastError: Error?
-            for attempt in 1...3 {
-                do {
-                    let (data, resp) = try await session.upload(for: req, from: bodyData)
-                    guard let http = resp as? HTTPURLResponse else {
-                        errorMessage = "网络异常"
-                        return
-                    }
-                    guard http.statusCode == 200,
-                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let tok = json["token"] as? String else {
-                        errorMessage = "用户名或密码错误"
-                        return
-                    }
-                    token = tok
-                    self.username = username
-                    defaults.set(tok, forKey: tokenKey)
-                    defaults.set(username, forKey: userKey)
-                    defaults.set(serverURL, forKey: serverKey)
-                    isLoggedIn = true
+
+        let client = NWHTTPClient()
+        // 瞬断自动重试（蜂窝网络常见瞬断，重试大概率建立新连接成功）
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                let (data, code) = try await client.request(
+                    serverURL: server, path: "/api/auth/login", method: "POST",
+                    headers: ["Content-Type": "application/json"], body: bodyData
+                )
+                guard code == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tok = json["token"] as? String else {
+                    errorMessage = "用户名或密码错误"
                     return
-                } catch {
-                    lastError = error
-                    if attempt < 3, isRetryable(error) {
-                        try? await Task.sleep(for: .seconds(Double(attempt)))
-                        continue
-                    }
-                    break
                 }
+                token = tok
+                self.username = username
+                defaults.set(tok, forKey: tokenKey)
+                defaults.set(username, forKey: userKey)
+                defaults.set(serverURL, forKey: serverKey)
+                isLoggedIn = true
+                return
+            } catch {
+                lastError = error
+                if attempt < 3, isRetryable(error) {
+                    try? await Task.sleep(for: .seconds(Double(attempt)))
+                    continue
+                }
+                break
             }
-            errorMessage = "无法连接服务器（\(lastError?.localizedDescription ?? "网络异常")）"
         }
+        errorMessage = "无法连接服务器（\(lastError?.localizedDescription ?? "网络异常")）"
     }
 
     func logout() {
@@ -138,44 +86,41 @@ final class AuthStore {
         defaults.removeObject(forKey: tokenKey)
     }
 
-    /// 统一 API 请求：拼服务器地址 + 注入 X-Auth-Token + 401 自动登出 + 瞬断自动重试
+    /// 统一 API 请求：NWHTTPClient（HTTP/1.1 + SNI 域名 + 忽略证书 + 域名解析自动 IPv6）
+    /// 注入 X-Auth-Token + 401 自动登出 + 瞬断自动重试
     func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
-        guard let url = buildURL(path) else {
+        var server = serverURL
+        if !server.hasPrefix("http") { server = "http://" + server }
+        guard let url = URL(string: server + path) else {
             throw APIError.badURL
         }
-        var req = URLRequest(url: url)
-        req.httpMethod = method
+        var headers: [String: String] = [:]
         if !token.isEmpty {
-            req.setValue(token, forHTTPHeaderField: "X-Auth-Token")
+            headers["X-Auth-Token"] = token
         }
         let bodyData: Data?
         if let body {
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            headers["Content-Type"] = "application/json"
             bodyData = try? JSONSerialization.data(withJSONObject: body)
         } else {
             bodyData = nil
         }
+        let client = NWHTTPClient()
         var lastError: Error?
-        let session = makeSession()
         for attempt in 1...3 {
             do {
-                let (data, resp): (Data, URLResponse)
-                if let bodyData {
-                    // ⚠️ POST 用 uploadTask：dataTask POST 在 IPv6+h2 下挂起超时实踩（GET 正常），uploadTask 走不同内部路径
-                    (data, resp) = try await session.upload(for: req, from: bodyData)
-                } else {
-                    (data, resp) = try await session.data(for: req)
-                }
-                guard let http = resp as? HTTPURLResponse else {
-                    throw APIError.badResponse
-                }
-                if http.statusCode == 401 {
+                let (data, code) = try await client.request(
+                    serverURL: server, path: path, method: method,
+                    headers: headers, body: bodyData
+                )
+                if code == 401 {
                     logout()
                     throw APIError.unauthorized
                 }
-                guard (200..<300).contains(http.statusCode) else {
-                    throw APIError.server(http.statusCode)
+                guard (200..<300).contains(code) else {
+                    throw APIError.server(code)
                 }
+                let http = HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil)!
                 return (data, http)
             } catch {
                 lastError = error
@@ -202,20 +147,15 @@ final class AuthStore {
     func testConnection(server: String) async -> String {
         var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
         if !s.hasPrefix("http") { s = "http://" + s }
-        if useIPv6Direct, let host = URL(string: s)?.host, let ip = resolveIPv6(host) {
-            s = s.replacingOccurrences(of: host, with: "[\(ip)]")
-        }
-        guard let url = URL(string: s + "/api/auth/status") else { return "服务器地址无效" }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 8
+        let client = NWHTTPClient()
         do {
-            let session = makeSession()
-            let (_, resp) = try await session.data(for: req)
-            guard let http = resp as? HTTPURLResponse else { return "网络响应异常" }
-            if http.statusCode == 401 || http.statusCode == 200 {
+            let (_, code) = try await client.request(
+                serverURL: s, path: "/api/auth/status", timeout: 8
+            )
+            if code == 401 || code == 200 {
                 return "✅ 连接正常（服务器已响应）"
             }
-            return "⚠️ 服务器返回 \(http.statusCode)"
+            return "⚠️ 服务器返回 \(code)"
         } catch {
             return "❌ 无法连接（\(error.localizedDescription)）"
         }
@@ -242,23 +182,19 @@ final class AuthStore {
 
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
-        if useIPv6Direct, let host = URL(string: server)?.host, let ip = resolveIPv6(host) {
-            server = server.replacingOccurrences(of: host, with: "[\(ip)]")
-        }
-        guard let url = URL(string: server + path) else { throw APIError.badURL }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "X-Auth-Token") }
-        req.httpBody = body
-        let session = makeSession()
-        let (data2, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse else { throw APIError.badResponse }
-        if http.statusCode == 401 {
+        var headers: [String: String] = ["Content-Type": "multipart/form-data; boundary=\(boundary)"]
+        if !token.isEmpty { headers["X-Auth-Token"] = token }
+
+        let client = NWHTTPClient()
+        let (data2, code) = try await client.request(
+            serverURL: server, path: path, method: "POST",
+            headers: headers, body: body
+        )
+        if code == 401 {
             logout()
             throw APIError.unauthorized
         }
-        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
+        guard (200..<300).contains(code) else { throw APIError.server(code) }
         guard let json = try? JSONSerialization.jsonObject(with: data2) as? [String: Any] else {
             throw APIError.badJSON
         }
@@ -267,7 +203,7 @@ final class AuthStore {
 }
 
 enum APIError: Error, LocalizedError {
-    case badURL, badResponse, badJSON, unauthorized, server(Int)
+    case badURL, badResponse, badJSON, unauthorized, timeout, server(Int)
 
     var errorDescription: String? {
         switch self {
@@ -275,20 +211,8 @@ enum APIError: Error, LocalizedError {
         case .badResponse: return "服务器响应异常"
         case .badJSON: return "数据解析失败"
         case .unauthorized: return "登录已过期，请重新登录"
+        case .timeout: return "请求超时"
         case .server(let code): return "服务器错误（\(code)）"
         }
-    }
-}
-
-/// 忽略证书校验的 delegate（IPv4 直连模式下 IP 与证书 CN 不匹配；自家服务可接受）
-final class CertIgnoreDelegate: NSObject, URLSessionDelegate {
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        completionHandler(.useCredential, URLCredential(trust: trust))
     }
 }
