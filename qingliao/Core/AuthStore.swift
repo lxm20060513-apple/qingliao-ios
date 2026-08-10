@@ -131,7 +131,8 @@ final class AuthStore {
         for attempt in 0..<3 {
             do {
                 let (d, r) = try await session.data(for: req)
-                return (d, r.statusCode)
+                let code = (r as? HTTPURLResponse)?.statusCode ?? 0
+                return (d, code)
             } catch {
                 lastErr = error
                 let ns = error as NSError
