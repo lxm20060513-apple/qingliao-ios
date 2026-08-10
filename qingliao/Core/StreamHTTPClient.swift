@@ -32,7 +32,7 @@ final class StreamHTTPClient: @unchecked Sendable {
                 kCFStreamSSLPeerName: host as CFString,
                 kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse,
             ]
-            let sslKey = CFStreamPropertyKey(kCFStreamPropertySSLSettings as String)
+            let sslKey = CFStreamPropertyKey(kCFStreamPropertySSLSettings)
             CFReadStreamSetProperty(read, sslKey, settings as CFDictionary)
             CFWriteStreamSetProperty(write, sslKey, settings as CFDictionary)
         }
