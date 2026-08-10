@@ -104,8 +104,9 @@ struct DockBar: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background { Capsule().fill(.regularMaterial) }
-            .glassEffect(.regular)
+            // LiquidGlassKit 液态玻璃重构（参考 muhittincamdali/LiquidGlassKit）：
+            // ultraThinMaterial 更透材质 + 顶部高光带 + 渐变描边 + 内高光 + 柔和投影
+            .background { Capsule().fill(.ultraThinMaterial) }
             .clipShape(.capsule)
             .overlay {
                 // 液态玻璃透镜：跟随手指/选中项（半透明蓝，不用 glassEffect——小元素上渲染会变灰块）
@@ -116,13 +117,32 @@ struct DockBar: View {
                     .animation(.spring(duration: 0.3, bounce: 0.25), value: lensX)
             }
             .overlay {
+                // 顶部高光带（液态玻璃标志性反射，LiquidGlass 视觉签名）
+                Capsule()
+                    .fill(
+                        LinearGradient(colors: [
+                            Color.white.opacity(0.32),
+                            Color.white.opacity(0.10),
+                            Color.white.opacity(0.03),
+                            Color.clear
+                        ], startPoint: .top, endPoint: .bottom)
+                    )
+            }
+            .overlay {
+                // 外描边：白 0.38→0.10 渐变（顶部亮、底部暗）
                 Capsule().strokeBorder(
-                    LinearGradient(colors: [Color.white.opacity(0.35), Color.white.opacity(0.10)],
+                    LinearGradient(colors: [Color.white.opacity(0.38), Color.white.opacity(0.10)],
                                    startPoint: .top, endPoint: .bottom),
                     lineWidth: 0.8
                 )
             }
-            .shadow(color: .black.opacity(0.45), radius: 22, y: 9)
+            .overlay {
+                // 内高光描边（GlassShaders premiumShader：0.5pt 白 0.20）
+                Capsule()
+                    .inset(by: 1.5)
+                    .stroke(Color.white.opacity(0.20), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.38), radius: 20, x: 0, y: 8)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in

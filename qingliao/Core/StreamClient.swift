@@ -1,9 +1,10 @@
 import Foundation
 import Observation
 
-// MARK: - 流式客户端：与 PWA 相同协议（后端持流写文件，前端轮询增量）
-// POST /api/stream/start {sessionId, model, provider, messages, pushEnabled} -> {taskId}
-// GET  /api/stream/{taskId}?offset=N -> {content: 增量, done, status, error}
+// MARK: - 流式客户端：Safari Relay 版
+// 上行：POST /r/stream/start/{uid}（relay 中转，Safari 进程发请求）
+// 下行：GET  /r/stream/poll/{uid}/{taskId}/{offset}（路径参数无 query → CFStream 直连）
+// 停止：POST /r/stream/stop/{uid}/{taskId}（relay 中转）
 // 轮询间隔自适应：800ms 起 -> 有内容 500ms -> 连续 3 次空 2000ms；连续失败 10 次停止
 
 @MainActor
@@ -38,24 +39,18 @@ final class StreamClient {
         errorMessage = ""
         self.onFinished = onFinished
 
+        // 记录当前流式会话（relay uid 推导用）
+        auth.currentStreamSessionId = sessionId
+
         do {
-            let body: [String: Any] = [
-                "sessionId": sessionId,
-                "model": model,
-                "provider": provider,
-                "messages": messages,
-                "pushEnabled": false
-            ]
-            let (data, _) = try await auth.request("/api/stream/start", method: "POST", body: body)
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tid = json["taskId"] as? String else {
-                finish(success: false, error: "启动失败：服务器响应异常")
-                return
-            }
+            let tid = try await auth.streamStart(sessionId: sessionId, model: model,
+                                                 provider: provider, messages: messages)
             taskId = tid
             startPolling(auth: auth)
+        } catch APIError.relayCancelled {
+            finish(success: false, error: "已取消")
         } catch {
-            finish(success: false, error: "无法连接服务器")
+            finish(success: false, error: "启动失败：\(error.localizedDescription)")
         }
     }
 
@@ -63,16 +58,14 @@ final class StreamClient {
     func stop(auth: AuthStore) {
         stopPolling()
         if !taskId.isEmpty, !isDone {
-            Task {
-                try? await auth.request("/api/stream/\(taskId)/stop", method: "POST")
-            }
+            Task { await auth.streamStop(taskId: taskId) }
         }
         if isStreaming, !isDone {
             finish(success: false, error: "已停止")
         }
     }
 
-    // MARK: - 轮询
+    // MARK: - 轮询（直连路径参数版）
 
     private func startPolling(auth: AuthStore) {
         pollTask = Task { [weak self] in
@@ -92,25 +85,18 @@ final class StreamClient {
 
     private func pollOnce(auth: AuthStore) async {
         do {
-            let (data, _) = try await auth.request("/api/stream/\(taskId)?offset=\(offset)")
-            guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                failCount += 1
-                if failCount >= 10 { finish(success: false, error: "连接中断，请重试") }
-                return
-            }
+            let (c, done, st, err) = try await auth.streamPoll(taskId: taskId, offset: offset)
             failCount = 0
-            if let c = j["content"] as? String, !c.isEmpty {
+            if !c.isEmpty {
                 offset += c.count
                 content += c
                 idleStreak = 0
                 if interval != 0.5 { interval = 0.5 }
-            } else if !(j["done"] as? Bool ?? false) {
+            } else if !done {
                 idleStreak += 1
                 if idleStreak >= 3 && interval != 2.0 { interval = 2.0 }
             }
-            if j["done"] as? Bool ?? false {
-                let st = j["status"] as? String ?? "done"
-                let err = j["error"] as? String ?? ""
+            if done {
                 finish(success: st != "error", error: err)
             }
         } catch {

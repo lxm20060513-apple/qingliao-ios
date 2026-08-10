@@ -36,6 +36,10 @@ targets:
           NSAllowsLocalNetworking: true
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.qingliao.relay
+            CFBundleURLSchemes:
+              - qingliao
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingliao.app2

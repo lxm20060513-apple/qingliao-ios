@@ -15,5 +15,9 @@ fi
 
 echo "=== 2. parseResponse 单元测试 ==="
 $SWIFT/swiftc -o /tmp/test_parse scripts/test_parse.swift 2>&1 | head -3
-/tmp/test_parse
+/tmp/test_parse || exit 1
+
+echo "=== 3. relay 编解码单元测试 ==="
+$SWIFT/swiftc -o /tmp/test_relay scripts/test_relay.swift 2>&1 | head -3
+/tmp/test_relay
 exit $?
