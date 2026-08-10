@@ -61,23 +61,15 @@ final class AuthStore {
         if !server.hasPrefix("http") { server = "http://" + server }
         serverURL = server
 
-        let loginBody: [String: Any] = [
-            "username": username,
-            "password": password,
-            "remember": remember
-        ]
-        // ⚠️ try? 捕获不了 NSException（Invalid top-level type 会崩）→ isValidJSONObject 前置校验
-        let bodyData = (JSONSerialization.isValidJSONObject(loginBody)
-                        ? (try? JSONSerialization.data(withJSONObject: loginBody)) : nil) ?? Data()
+        // ⚠️ iOS 27 上行 body 挂起：POST 带 body 从未到达服务器（多栈实测）→ 登录改用 GET（无 body 通，服务器已加 login_get 接口）
+        let esc = { (s: String) in s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s }
+        let getPath = "/api/auth/login_get?u=\(esc(username))&p=\(esc(password))&r=\(remember ? "1" : "0")"
 
         // 瞬断自动重试（蜂窝网络常见瞬断，重试大概率建立新连接成功）
         var lastError: Error?
         for attempt in 1...3 {
             do {
-                let (data, code) = try await streamRequest(
-                    "/api/auth/login", method: "POST",
-                    headers: ["Content-Type": "application/json"], body: bodyData
-                )
+                let (data, code) = try await streamRequest(getPath, method: "GET", timeout: 10)
                 guard code == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let tok = json["token"] as? String else {
