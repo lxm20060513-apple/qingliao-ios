@@ -16,11 +16,15 @@ final class AuthStore {
     private let tokenKey = "qingliao_token"
     private let userKey = "qingliao_user"
 
-    /// 自定义 ephemeral 会话：不复用连接池（规避 HTTP/2 连接复用导致的 -1005 Network connection lost）
+    /// 每次请求独立创建 ephemeral session（不复用连接——实测 GET status 建立的 h2 连接被 POST login 复用时挂起超时；每次全新 TCP+TLS 代价仅 ~50ms）
     /// ⚠️ waitsForConnectivity 必须 false：连接挂起时若等待网络恢复会卡"登录中"长达 60s（实踩），快速失败交给重试循环
-    /// ⚠️ 勿用 lazy var：@Observable 宏的 init accessor 不支持 lazy（编译错误），session 在 init() 里创建
-    private let certDelegate = CertIgnoreDelegate()
-    private let session: URLSession
+    private func makeSession() -> URLSession {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 10
+        cfg.timeoutIntervalForResource = 30
+        cfg.waitsForConnectivity = false
+        return URLSession(configuration: cfg, delegate: CertIgnoreDelegate(), delegateQueue: nil)
+    }
 
     /// IPv6 直连模式（默认关）：域名 A 记录已删（只剩 AAAA），URLSession 解析自动走 IPv6、SNI/Host 正常 → 无需 IP 字面量
     /// ⚠️ 勿默认开：IP 字面量会破坏 SNI/Host（lucky 按域名路由 404）且 iOS URLSession 对 IP 的 TLS 层失败(-1200)（实踩）
@@ -62,12 +66,6 @@ final class AuthStore {
     }
 
     init() {
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 10
-        cfg.timeoutIntervalForResource = 30
-        cfg.waitsForConnectivity = false
-        session = URLSession(configuration: cfg, delegate: certDelegate, delegateQueue: nil)
-
         token = defaults.string(forKey: tokenKey) ?? ""
         username = defaults.string(forKey: userKey) ?? ""
         serverURL = defaults.string(forKey: serverKey) ?? "http://192.168.0.40:8080"
@@ -97,6 +95,7 @@ final class AuthStore {
             "remember": remember
         ])
         do {
+            let session = makeSession()
             // 瞬断自动重试（蜂窝网络常见 -1005，重试大概率建立新连接成功）
             var lastError: Error?
             for attempt in 1...3 {
@@ -153,6 +152,7 @@ final class AuthStore {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         var lastError: Error?
+        let session = makeSession()
         for attempt in 1...3 {
             do {
                 let (data, resp) = try await session.data(for: req)
@@ -199,6 +199,7 @@ final class AuthStore {
         var req = URLRequest(url: url)
         req.timeoutInterval = 8
         do {
+            let session = makeSession()
             let (_, resp) = try await session.data(for: req)
             guard let http = resp as? HTTPURLResponse else { return "网络响应异常" }
             if http.statusCode == 401 || http.statusCode == 200 {
@@ -240,6 +241,7 @@ final class AuthStore {
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "X-Auth-Token") }
         req.httpBody = body
+        let session = makeSession()
         let (data2, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.badResponse }
         if http.statusCode == 401 {
