@@ -18,14 +18,9 @@ final class AuthStore {
 
     /// 自定义 ephemeral 会话：不复用连接池（规避 HTTP/2 连接复用导致的 -1005 Network connection lost）
     /// ⚠️ waitsForConnectivity 必须 false：连接挂起时若等待网络恢复会卡"登录中"长达 60s（实踩），快速失败交给重试循环
+    /// ⚠️ 勿用 lazy var：@Observable 宏的 init accessor 不支持 lazy（编译错误），session 在 init() 里创建
     private let certDelegate = CertIgnoreDelegate()
-    private lazy var session: URLSession = {
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 10
-        cfg.timeoutIntervalForResource = 30
-        cfg.waitsForConnectivity = false
-        return URLSession(configuration: cfg, delegate: certDelegate, delegateQueue: nil)
-    }()
+    private let session: URLSession
 
     /// IPv6 直连模式（默认开）：服务器仅 IPv6 公网（域名 A 记录是运营商 NAT 无服务），URLSession happy-eyeballs 先连 IPv4 挂起等超时才试 IPv6 → 强制 IPv6 字面量直连跳过
     /// ⚠️ 勿做"IPv4 直连"：用户服务器无公网 IPv4，IPv4 是死路（实踩方向错误）
@@ -67,6 +62,12 @@ final class AuthStore {
     }
 
     init() {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 10
+        cfg.timeoutIntervalForResource = 30
+        cfg.waitsForConnectivity = false
+        session = URLSession(configuration: cfg, delegate: certDelegate, delegateQueue: nil)
+
         token = defaults.string(forKey: tokenKey) ?? ""
         username = defaults.string(forKey: userKey) ?? ""
         serverURL = defaults.string(forKey: serverKey) ?? "http://192.168.0.40:8080"
