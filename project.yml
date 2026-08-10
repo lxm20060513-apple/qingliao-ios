@@ -32,6 +32,7 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+          NSAllowsArbitraryLoadsInWebContent: true
           NSAllowsLocalNetworking: true
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
