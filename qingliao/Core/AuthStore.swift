@@ -17,11 +17,12 @@ final class AuthStore {
     private let userKey = "qingliao_user"
 
     /// 自定义 ephemeral 会话：不复用连接池（规避 HTTP/2 连接复用导致的 -1005 Network connection lost）
+    /// ⚠️ waitsForConnectivity 必须 false：连接挂起时若等待网络恢复会卡"登录中"长达 60s（实踩），快速失败交给重试循环
     private let session: URLSession = {
         let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 30
-        cfg.timeoutIntervalForResource = 60
-        cfg.waitsForConnectivity = true
+        cfg.timeoutIntervalForRequest = 10
+        cfg.timeoutIntervalForResource = 30
+        cfg.waitsForConnectivity = false
         return URLSession(configuration: cfg)
     }()
 
