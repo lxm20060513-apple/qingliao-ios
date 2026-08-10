@@ -67,9 +67,23 @@ final class AuthStore {
 
         // 瞬断自动重试（蜂窝网络常见瞬断，重试大概率建立新连接成功）
         var lastError: Error?
+        // ⚠️ 走 CFStream 直连（与 testConnection 同栈——CFStream GET 无参实测通；WebKit fetch 带 query/body 挂）
+        let port = UInt16(URL(string: server)?.port ?? 443)
+        let isTLS = URL(string: server)?.scheme == "https"
+        let host = URL(string: server)?.host ?? ""
         for attempt in 1...3 {
             do {
-                let (data, code) = try await streamRequest(getPath, method: "GET", timeout: 10)
+                let (data, code) = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(Data, Int), Error>) in
+                    DispatchQueue.global().async {
+                        do {
+                            let client = StreamHTTPClient()
+                            let (d, c) = try client.request(host: host, port: port, isTLS: isTLS, method: "GET", path: getPath, headers: [:], body: nil, timeout: 10)
+                            cont.resume(returning: (d, c))
+                        } catch {
+                            cont.resume(throwing: error)
+                        }
+                    }
+                }
                 guard code == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let tok = json["token"] as? String else {
