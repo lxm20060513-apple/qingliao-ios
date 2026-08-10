@@ -33,10 +33,7 @@ struct RootView: View {
     @Environment(AuthStore.self) private var auth
 
     var body: some View {
-        if auth.isLoggedIn {
-            DockTabView()
-        } else {
-            LoginView()
-        }
+        // 免登录模式（iOS 27 蜂窝上行挂起，密码登录请求发不出；服务器已开 AUTO_LOGIN 免鉴权）
+        DockTabView()
     }
 }

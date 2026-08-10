@@ -36,10 +36,9 @@ final class AuthStore {
         guard let url = URL(string: server + path) else {
             throw APIError.badURL
         }
-        var hdrs = headers
-        if !token.isEmpty { hdrs["X-Auth-Token"] = token }
+        // 免登录模式（服务器 AUTO_LOGIN 免鉴权）：不带 token header（header 上行在 iOS 27 蜂窝挂起）
         let bodyStr = body.flatMap { String(data: $0, encoding: .utf8) }
-        let (status, respStr) = try await webKit.request(url: url.absoluteString, method: method, headers: hdrs, body: bodyStr, timeout: timeout)
+        let (status, respStr) = try await webKit.request(url: url.absoluteString, method: method, headers: headers, body: bodyStr, timeout: timeout)
         guard status != 0 else { throw APIError.badResponse }
         return (Data(respStr.utf8), status)
     }
@@ -47,7 +46,7 @@ final class AuthStore {
     init() {
         token = defaults.string(forKey: tokenKey) ?? ""
         username = defaults.string(forKey: userKey) ?? ""
-        serverURL = defaults.string(forKey: serverKey) ?? "http://192.168.0.40:8080"
+        serverURL = defaults.string(forKey: serverKey) ?? "https://example.com:16666"
         isLoggedIn = !token.isEmpty
     }
 
