@@ -119,7 +119,10 @@ final class NWRequestSession: @unchecked Sendable {
     }
 
     func timeout() {
-        finish(.failure(APIError.timeout))
+        // 诊断信息：连接状态 + 已收字节数（recv=0 → 请求没发出/响应没回；recv>0 → 响应已到但读取判断未完成）
+        let state = connection.state
+        let detail = "state=\(state) recv=\(buffer.count)"
+        finish(.failure(APIError.timeoutDetail(detail)))
     }
 
     private func receiveLoop() {
