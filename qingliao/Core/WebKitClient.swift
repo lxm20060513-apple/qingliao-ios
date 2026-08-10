@@ -6,7 +6,7 @@ import WebKit
 ///       而 WebKit（Safari/PWA）POST 正常——用 WKWebView 的 fetch 与 PWA 完全同栈。
 /// 原生 UI 不变，仅网络请求改经此层。
 @MainActor
-final class WebKitClient: NSObject, WKScriptMessageHandler {
+final class WebKitClient: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     private var webView: WKWebView!
     private var pending: [String: CheckedContinuation<(Int, String), Error>] = [:]
     private var counter = 0
@@ -20,9 +20,14 @@ final class WebKitClient: NSObject, WKScriptMessageHandler {
         config.userContentController = content
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.isHidden = true
+        wv.navigationDelegate = self
         webView = wv
-        // 加载空页（同源无关紧要：服务器 CORS 允许 *）
+        // 加载空页；didFinish 后才 ready（web process 就绪，fetch 才能正常发出）
         wv.loadHTMLString("<!DOCTYPE html><html><body></body></html>", baseURL: nil)
+    }
+
+    // MARK: - WKNavigationDelegate
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         ready = true
     }
 
