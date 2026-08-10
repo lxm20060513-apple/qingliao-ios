@@ -60,9 +60,8 @@ final class StreamHTTPClient: @unchecked Sendable {
             info: Unmanaged.passUnretained(state).toOpaque(),
             retain: nil, release: nil, copyDescription: nil
         )
-        let events = CFOptionFlags(kCFStreamEventOpenCompleted) | CFOptionFlags(kCFStreamEventHasBytesAvailable)
-            | CFOptionFlags(kCFStreamEventCanAcceptBytes) | CFOptionFlags(kCFStreamEventErrorOccurred)
-            | CFOptionFlags(kCFStreamEventEndEncountered)
+        // kCFStreamEvent* 在 Swift 中不可见，用原始值：Open=1 HasBytes=2 CanAccept=4 Error=8 End=16
+        let events = CFOptionFlags(1) | CFOptionFlags(2) | CFOptionFlags(4) | CFOptionFlags(8) | CFOptionFlags(16)
         CFReadStreamSetClient(read, events, { _, event, info in
             guard let info else { return }
             let s = Unmanaged<StreamState>.fromOpaque(info).takeUnretainedValue()
@@ -112,10 +111,9 @@ final class StreamHTTPClient: @unchecked Sendable {
     private static func handleReadEvent(_ event: CFStreamEventType, state: StreamState, read: CFReadStream?) {
         guard let read = state.read else { return }
         switch event {
-        case CFStreamEventType(rawValue: kCFStreamEventOpenCompleted.rawValue):
-            // TLS 握手完成 → 发送请求
+        case CFStreamEventType(rawValue: 1):   // OpenCompleted：TLS 握手完成 → 发送请求
             sendPayload(state)
-        case CFStreamEventType(rawValue: kCFStreamEventHasBytesAvailable.rawValue):
+        case CFStreamEventType(rawValue: 2):   // HasBytesAvailable
             var buf = [UInt8](repeating: 0, count: 8192)
             while CFReadStreamHasBytesAvailable(read) {
                 let n = CFReadStreamRead(read, &buf, buf.count)
@@ -127,14 +125,14 @@ final class StreamHTTPClient: @unchecked Sendable {
                 state.done = true
                 CFRunLoopStop(CFRunLoopGetCurrent())
             }
-        case CFStreamEventType(rawValue: kCFStreamEventEndEncountered.rawValue):
+        case CFStreamEventType(rawValue: 16):  // EndEncountered（EOF）
             // EOF（服务器关闭连接）：有数据则按当前缓冲解析
             if !state.buffer.isEmpty, state.result == nil {
                 state.result = StreamHTTPClient.parseResponse(state.buffer)
             }
             state.done = true
             CFRunLoopStop(CFRunLoopGetCurrent())
-        case CFStreamEventType(rawValue: kCFStreamEventErrorOccurred.rawValue):
+        case CFStreamEventType(rawValue: 8):   // ErrorOccurred（可能 RST）
             // 错误（可能 RST）：已有缓冲且能解析出状态码 → 按成功处理（lucky 发完响应立即 RST 实测）
             if !state.buffer.isEmpty, state.result == nil {
                 let (body, code) = StreamHTTPClient.parseResponse(state.buffer)
@@ -156,9 +154,9 @@ final class StreamHTTPClient: @unchecked Sendable {
     /// write 流事件（CanAcceptBytes → 发送请求）
     private static func handleWriteEvent(_ event: CFStreamEventType, state: StreamState, write: CFWriteStream?) {
         switch event {
-        case CFStreamEventType(rawValue: kCFStreamEventOpenCompleted.rawValue):
+        case CFStreamEventType(rawValue: 1):   // OpenCompleted
             sendPayload(state)
-        case CFStreamEventType(rawValue: kCFStreamEventCanAcceptBytes.rawValue):
+        case CFStreamEventType(rawValue: 4):   // CanAcceptBytes
             sendPayload(state)
         default:
             break
