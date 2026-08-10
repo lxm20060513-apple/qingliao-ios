@@ -22,10 +22,10 @@ final class AuthStore {
     private let certDelegate = CertIgnoreDelegate()
     private let session: URLSession
 
-    /// IPv6 直连模式（默认开）：服务器仅 IPv6 公网（域名 A 记录是运营商 NAT 无服务），URLSession happy-eyeballs 先连 IPv4 挂起等超时才试 IPv6 → 强制 IPv6 字面量直连跳过
-    /// ⚠️ 勿做"IPv4 直连"：用户服务器无公网 IPv4，IPv4 是死路（实踩方向错误）
+    /// IPv6 直连模式（默认关）：域名 A 记录已删（只剩 AAAA），URLSession 解析自动走 IPv6、SNI/Host 正常 → 无需 IP 字面量
+    /// ⚠️ 勿默认开：IP 字面量会破坏 SNI/Host（lucky 按域名路由 404）且 iOS URLSession 对 IP 的 TLS 层失败(-1200)（实踩）
     var useIPv6Direct: Bool {
-        get { defaults.object(forKey: "qingliao_ipv6_direct") == nil ? true : defaults.bool(forKey: "qingliao_ipv6_direct") }
+        get { defaults.bool(forKey: "qingliao_ipv6_direct") }
         set { defaults.set(newValue, forKey: "qingliao_ipv6_direct") }
     }
 
