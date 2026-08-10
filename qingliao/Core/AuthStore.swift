@@ -190,7 +190,8 @@ final class AuthStore {
                         let r = try client.request(
                             host: host, port: port, isTLS: isTLS,
                             method: "GET", path: "/api/auth/status",
-                            headers: [:], body: nil, timeout: 8
+                            // 诊断：验证 header 上行是否被挂起（iOS27 蜂窝 query/body 上行挂，header 待验证）
+                            headers: ["X-Test": "1"], body: nil, timeout: 8
                         )
                         cont.resume(returning: r)
                     } catch {
