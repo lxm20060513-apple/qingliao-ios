@@ -33,7 +33,8 @@ final class WebKitClient: NSObject, WKScriptMessageHandler {
 
         // JS 字符串字面量安全编码（JSON 转义）
         func jsStr(_ s: String) -> String {
-            let data = (try? JSONSerialization.data(withJSONObject: s)) ?? Data("\"\"".utf8)
+            let data = (JSONSerialization.isValidJSONObject(s)
+                        ? (try? JSONSerialization.data(withJSONObject: s)) : nil) ?? Data("\"\"".utf8)
             return String(data: data, encoding: .utf8) ?? "\"\""
         }
         let urlJS = jsStr(url)

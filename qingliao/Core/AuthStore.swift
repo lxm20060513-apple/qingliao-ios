@@ -61,11 +61,14 @@ final class AuthStore {
         if !server.hasPrefix("http") { server = "http://" + server }
         serverURL = server
 
-        let bodyData = (try? JSONSerialization.data(withJSONObject: [
+        let loginBody: [String: Any] = [
             "username": username,
             "password": password,
             "remember": remember
-        ])) ?? Data()
+        ]
+        // ⚠️ try? 捕获不了 NSException（Invalid top-level type 会崩）→ isValidJSONObject 前置校验
+        let bodyData = (JSONSerialization.isValidJSONObject(loginBody)
+                        ? (try? JSONSerialization.data(withJSONObject: loginBody)) : nil) ?? Data()
 
         // 瞬断自动重试（蜂窝网络常见瞬断，重试大概率建立新连接成功）
         var lastError: Error?
@@ -121,7 +124,9 @@ final class AuthStore {
         let bodyData: Data?
         if let body {
             headers["Content-Type"] = "application/json"
-            bodyData = try? JSONSerialization.data(withJSONObject: body)
+            // ⚠️ isValidJSONObject 前置校验防 NSException 崩溃
+            bodyData = (JSONSerialization.isValidJSONObject(body)
+                        ? (try? JSONSerialization.data(withJSONObject: body)) : nil)
         } else {
             bodyData = nil
         }
