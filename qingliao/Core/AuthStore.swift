@@ -18,9 +18,38 @@ final class AuthStore {
 
     /// 可重试错误：连接丢失/超时/无法连接（蜂窝访问家庭宽带非标端口时常见瞬断）
     private func isRetryable(_ e: Error) -> Bool {
+        if e is APIError { return false }   // 协议层错误不重试
         let code = (e as NSError).code
         return code == NSURLErrorNetworkConnectionLost || code == NSURLErrorTimedOut
             || code == NSURLErrorCannotConnectToHost || code == NSURLErrorNotConnectedToInternet
+    }
+
+    /// CFStream 统一请求入口（StreamHTTPClient 同步阻塞 → 后台线程 + continuation 包装，不阻塞 MainActor）
+    private func streamRequest(_ path: String, method: String = "GET",
+                               headers: [String: String] = [:], body: Data? = nil,
+                               timeout: TimeInterval = 10) async throws -> (Data, Int) {
+        var server = serverURL
+        if !server.hasPrefix("http") { server = "http://" + server }
+        guard let url = URL(string: server), let host = url.host else {
+            throw APIError.badURL
+        }
+        let port = UInt16(url.port ?? (url.scheme == "https" ? 443 : 80))
+        let isTLS = url.scheme == "https"
+        return try await withCheckedThrowingContinuation { cont in
+            DispatchQueue.global().async {
+                do {
+                    let client = StreamHTTPClient()
+                    let (data, code) = try client.request(
+                        host: host, port: port, isTLS: isTLS,
+                        method: method, path: path, headers: headers, body: body,
+                        timeout: timeout
+                    )
+                    cont.resume(returning: (data, code))
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
     }
 
     init() {
@@ -46,13 +75,12 @@ final class AuthStore {
             "remember": remember
         ])) ?? Data()
 
-        let client = NWHTTPClient()
         // 瞬断自动重试（蜂窝网络常见瞬断，重试大概率建立新连接成功）
         var lastError: Error?
         for attempt in 1...3 {
             do {
-                let (data, code) = try await client.request(
-                    serverURL: server, path: "/api/auth/login", method: "POST",
+                let (data, code) = try await streamRequest(
+                    "/api/auth/login", method: "POST",
                     headers: ["Content-Type": "application/json"], body: bodyData
                 )
                 guard code == 200,
@@ -105,12 +133,11 @@ final class AuthStore {
         } else {
             bodyData = nil
         }
-        let client = NWHTTPClient()
         var lastError: Error?
         for attempt in 1...3 {
             do {
-                let (data, code) = try await client.request(
-                    serverURL: server, path: path, method: method,
+                let (data, code) = try await streamRequest(
+                    path, method: method,
                     headers: headers, body: bodyData
                 )
                 if code == 401 {
@@ -147,11 +174,27 @@ final class AuthStore {
     func testConnection(server: String) async -> String {
         var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
         if !s.hasPrefix("http") { s = "http://" + s }
-        let client = NWHTTPClient()
+        guard let url = URL(string: s), let host = url.host else {
+            return "❌ 服务器地址无效"
+        }
+        let port = UInt16(url.port ?? (url.scheme == "https" ? 443 : 80))
+        let isTLS = url.scheme == "https"
         do {
-            let (_, code) = try await client.request(
-                serverURL: s, path: "/api/auth/status", timeout: 8
-            )
+            let (_, code) = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(Data, Int), Error>) in
+                DispatchQueue.global().async {
+                    do {
+                        let client = StreamHTTPClient()
+                        let r = try client.request(
+                            host: host, port: port, isTLS: isTLS,
+                            method: "GET", path: "/api/auth/status",
+                            headers: [:], body: nil, timeout: 8
+                        )
+                        cont.resume(returning: r)
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+            }
             if code == 401 || code == 200 {
                 return "✅ 连接正常（服务器已响应）"
             }
@@ -185,10 +228,9 @@ final class AuthStore {
         var headers: [String: String] = ["Content-Type": "multipart/form-data; boundary=\(boundary)"]
         if !token.isEmpty { headers["X-Auth-Token"] = token }
 
-        let client = NWHTTPClient()
-        let (data2, code) = try await client.request(
-            serverURL: server, path: path, method: "POST",
-            headers: headers, body: body
+        let (data2, code) = try await streamRequest(
+            path, method: "POST",
+            headers: headers, body: body, timeout: 30
         )
         if code == 401 {
             logout()
