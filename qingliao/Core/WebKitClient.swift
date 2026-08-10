@@ -60,14 +60,27 @@ final class WebKitClient: NSObject, WKScriptMessageHandler {
         })();
         """
 
+        // 等待 WKWebView 就绪（web process 启动后才可 evaluateJavaScript）
+        while !ready {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(Int, String), Error>) in
             pending[id] = cont
-            webView.evaluateJavaScript(js, completionHandler: nil)
+            webView.evaluateJavaScript(js) { _, error in
+                if let error = error {
+                    // evaluateJavaScript 本身失败（如 web process 未就绪/JS 异常）
+                    Task { @MainActor in
+                        if let c = self.pending.removeValue(forKey: id) {
+                            c.resume(throwing: APIError.badResponseDetail("js eval fail: \(error.localizedDescription)"))
+                        }
+                    }
+                }
+            }
             // 超时兜底
             Task {
                 try? await Task.sleep(for: .seconds(timeout))
                 if let c = pending.removeValue(forKey: id) {
-                    c.resume(throwing: APIError.timeout)
+                    c.resume(throwing: APIError.timeoutDetail("wk timeout"))
                 }
             }
         }
