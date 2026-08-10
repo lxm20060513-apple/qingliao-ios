@@ -113,8 +113,8 @@ final class StreamHTTPClient: @unchecked Sendable {
     private static func handleReadEvent(_ event: CFStreamEventType, state: StreamState, read: CFReadStream?) {
         guard let read = state.read else { return }
         switch event {
-        case CFStreamEventType(rawValue: 1):   // OpenCompleted：TLS 握手完成 → 发送请求
-            sendPayload(state)
+        case CFStreamEventType(rawValue: 1):   // OpenCompleted：仅 TCP 连接完成，TLS 未就绪 → 不发送
+            break
         case CFStreamEventType(rawValue: 2):   // HasBytesAvailable
             var buf = [UInt8](repeating: 0, count: 8192)
             while CFReadStreamHasBytesAvailable(read) {
@@ -156,9 +156,9 @@ final class StreamHTTPClient: @unchecked Sendable {
     /// write 流事件（CanAcceptBytes → 发送请求）
     private static func handleWriteEvent(_ event: CFStreamEventType, state: StreamState, write: CFWriteStream?) {
         switch event {
-        case CFStreamEventType(rawValue: 1):   // OpenCompleted
-            sendPayload(state)
-        case CFStreamEventType(rawValue: 4):   // CanAcceptBytes
+        case CFStreamEventType(rawValue: 1):   // OpenCompleted：仅 TCP 连接完成，TLS 未就绪 → 不发送
+            break
+        case CFStreamEventType(rawValue: 4):   // CanAcceptBytes：TLS 握手完成后才可写 → 发送请求
             sendPayload(state)
         default:
             break
@@ -166,7 +166,7 @@ final class StreamHTTPClient: @unchecked Sendable {
     }
 
     private static func sendPayload(_ state: StreamState) {
-        guard !state.sent, let write = state.write, let payload = state.payload else { return }
+        guard !state.done, !state.sent, let write = state.write, let payload = state.payload else { return }
         // 从上次发送偏移续传（write 返回 0 缓冲满时不能从开头重发——会重复发送导致服务器解析错乱）
         while state.sentOffset < payload.count {
             let remaining = payload[state.sentOffset...]
@@ -174,9 +174,18 @@ final class StreamHTTPClient: @unchecked Sendable {
                 CFWriteStreamWrite(write, buf.baseAddress!.assumingMemoryBound(to: UInt8.self), buf.count)
             }
             if n < 0 {
-                state.error = APIError.badResponseDetail("write err buf=\(state.buffer.count)")
-                state.done = true
-                CFRunLoopStop(CFRunLoopGetCurrent())
+                // write 失败：TLS 握手可能尚未就绪 → 延迟重试（CanAcceptBytes 只触发一次，不能等事件）
+                state.writeFailCount += 1
+                if state.writeFailCount >= 5 {
+                    state.error = APIError.badResponseDetail("write fail buf=\(state.buffer.count)")
+                    state.done = true
+                    CFRunLoopStop(CFRunLoopGetCurrent())
+                    return
+                }
+                state.sentOffset = 0
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1 * Double(state.writeFailCount)) {
+                    sendPayload(state)
+                }
                 return
             }
             if n == 0 { return }   // 缓冲满，等 CanAcceptBytes 再续传
@@ -227,6 +236,7 @@ final class StreamState: @unchecked Sendable {
     var buffer = Data()
     var sent = false
     var sentOffset = 0
+    var writeFailCount = 0
     var lastEvent: Int = -1
     var done = false
     var timeout = false
