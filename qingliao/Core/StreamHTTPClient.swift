@@ -4,6 +4,7 @@ import Foundation
 /// 背景：URLSession(dataTask/uploadTask) 与 NWConnection 在 iOS 27 + 蜂窝 + IPv6 + HTTPS POST 下均失败（挂起/EINVAL）；
 ///       CFStream(NSStream) 是 CFNetwork 底层流 API，Apple 承诺向后兼容，绕开上述两个栈。
 /// 特性：HTTP/1.1、TLS 手动控制（SNI=域名 + 忽略证书校验）、域名解析走系统（A 记录已删→IPv6）。
+/// 超时：iOS 无 CFStream 读超时属性 → watchdog 线程到点强制关闭流中断阻塞读。
 final class StreamHTTPClient: @unchecked Sendable {
 
     /// 同步执行一次 HTTP 请求（在调用线程阻塞，配合全局队列/await 包装）
@@ -14,7 +15,7 @@ final class StreamHTTPClient: @unchecked Sendable {
                  timeout: TimeInterval) throws -> (Data, Int) {
         var readStream: Unmanaged<CFReadStream>?
         var writeStream: Unmanaged<CFWriteStream>?
-        CFStreamCreatePairWithSocketToHost(nil, host as CFString, port, &readStream, &writeStream)
+        CFStreamCreatePairWithSocketToHost(nil, host as CFString, UInt32(port), &readStream, &writeStream)
         guard let read = readStream?.takeRetainedValue(),
               let write = writeStream?.takeRetainedValue() else {
             throw APIError.badResponse
@@ -25,9 +26,9 @@ final class StreamHTTPClient: @unchecked Sendable {
         }
 
         if isTLS {
-            // TLS 设置：SNI=域名 + 忽略证书链校验（自家服务；证书本身是有效 Let's Encrypt）
+            // TLS 设置：SNI=域名（kCFStreamSSLPeerName）+ 忽略证书链校验（自家服务；证书本身是有效 Let's Encrypt）
             let settings: [CFString: Any] = [
-                kCFStreamSSLLevel: kCFStreamSocketSecurityLevelTLSv1_2,
+                kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL,
                 kCFStreamSSLPeerName: host,
                 kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse,
                 kCFStreamSSLAllowsExpiredCertificates: kCFBooleanTrue,
@@ -37,10 +38,15 @@ final class StreamHTTPClient: @unchecked Sendable {
             CFWriteStreamSetProperty(write, kCFStreamPropertySSLSettings, settings as CFDictionary)
         }
 
-        CFReadStreamSetProperty(read, kCFStreamPropertyReadTimeout, timeout as CFNumber)
-        CFWriteStreamSetProperty(write, kCFStreamPropertyWriteTimeout, timeout as CFNumber)
+        // 超时 watchdog：到点强制关闭流 → 中断阻塞的读写
+        let watchdog = DispatchWorkItem {
+            CFReadStreamClose(read)
+            CFWriteStreamClose(write)
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
 
         guard CFReadStreamOpen(read), CFWriteStreamOpen(write) else {
+            watchdog.cancel()
             throw APIError.badResponse
         }
 
@@ -64,25 +70,29 @@ final class StreamHTTPClient: @unchecked Sendable {
             CFWriteStreamWrite(write, buf.baseAddress!.assumingMemoryBound(to: UInt8.self), buf.count)
         }
         if written < 0 {
+            watchdog.cancel()
             throw APIError.badResponse
         }
 
-        // 读取响应（同步阻塞，读超时由 kCFStreamPropertyReadTimeout 控制）
+        // 读取响应（同步阻塞，超时由 watchdog 强制关闭中断）
         var resp = Data()
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
         defer { buffer.deallocate() }
         while true {
             let n = CFReadStreamRead(read, buffer, 4096)
             if n < 0 {
-                // 连接被 RST/关闭：如果已有数据，按 EOF 处理（lucky 发完响应立即 RST 实测）
+                // 被 watchdog 关闭 = 超时；或服务器 RST——已有数据则按 EOF 处理（lucky 发完响应立即 RST 实测）
+                if watchdog.isCancelled { break }          // 正常完成路径（watchdog 已 cancel）
                 if resp.isEmpty {
-                    throw APIError.badResponse
+                    watchdog.cancel()
+                    throw APIError.timeout
                 }
                 break
             }
             if n == 0 { break }  // EOF
             resp.append(buffer, count: n)
         }
+        watchdog.cancel()
 
         return Self.parseResponse(resp)
     }
