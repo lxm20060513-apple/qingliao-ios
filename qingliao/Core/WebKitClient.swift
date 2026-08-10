@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import UIKit
 
 /// WebKit 网络层：内嵌隐藏 WKWebView，用 JS fetch 发请求
 /// 背景：iOS 27 原生网络栈（URLSession/NWConnection/CFStream）的 POST 在蜂窝+外网全废（实测三个栈 GET 通 POST 从未到达服务器），
@@ -18,10 +19,19 @@ final class WebKitClient: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         let content = WKUserContentController()
         content.add(self, name: "qingliaoBridge")
         config.userContentController = content
-        let wv = WKWebView(frame: .zero, configuration: config)
-        wv.isHidden = true
+        let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         wv.navigationDelegate = self
         webView = wv
+        // ⚠️ 必须加入视图层级且不可隐藏：不在 window 的 WKWebView 页面未激活 → iOS WebKit 节流/挂起网络请求（fetch 永不回调；Safari 前台正常）
+        if let window = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.windows.first })
+            .first {
+            window.addSubview(wv)
+            wv.isHidden = false
+            wv.alpha = 0.01
+            wv.isOpaque = false
+            wv.backgroundColor = .clear
+        }
         // 加载空页；didFinish 后才 ready（web process 就绪，fetch 才能正常发出）
         wv.loadHTMLString("<!DOCTYPE html><html><body></body></html>", baseURL: nil)
     }
