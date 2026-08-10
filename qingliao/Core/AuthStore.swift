@@ -24,32 +24,24 @@ final class AuthStore {
             || code == NSURLErrorCannotConnectToHost || code == NSURLErrorNotConnectedToInternet
     }
 
-    /// CFStream 统一请求入口（StreamHTTPClient 同步阻塞 → 后台线程 + continuation 包装，不阻塞 MainActor）
+    /// WebKit 网络层（iOS 27 原生栈 POST 全废，WebKit fetch 与 PWA 同栈正常）
+    private let webKit = WebKitClient()
+
+    /// 统一请求：经 WebKitClient（JS fetch，与 PWA 同栈）
     private func streamRequest(_ path: String, method: String = "GET",
                                headers: [String: String] = [:], body: Data? = nil,
                                timeout: TimeInterval = 10) async throws -> (Data, Int) {
         var server = serverURL
         if !server.hasPrefix("http") { server = "http://" + server }
-        guard let url = URL(string: server), let host = url.host else {
+        guard let url = URL(string: server + path) else {
             throw APIError.badURL
         }
-        let port = UInt16(url.port ?? (url.scheme == "https" ? 443 : 80))
-        let isTLS = url.scheme == "https"
-        return try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global().async {
-                do {
-                    let client = StreamHTTPClient()
-                    let (data, code) = try client.request(
-                        host: host, port: port, isTLS: isTLS,
-                        method: method, path: path, headers: headers, body: body,
-                        timeout: timeout
-                    )
-                    cont.resume(returning: (data, code))
-                } catch {
-                    cont.resume(throwing: error)
-                }
-            }
-        }
+        var hdrs = headers
+        if !token.isEmpty { hdrs["X-Auth-Token"] = token }
+        let bodyStr = body.flatMap { String(data: $0, encoding: .utf8) }
+        let (status, respStr) = try await webKit.request(url: url.absoluteString, method: method, headers: hdrs, body: bodyStr, timeout: timeout)
+        guard status != 0 else { throw APIError.badResponse }
+        return (Data(respStr.utf8), status)
     }
 
     init() {
