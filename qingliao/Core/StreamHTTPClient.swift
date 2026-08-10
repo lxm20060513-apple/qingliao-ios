@@ -98,7 +98,7 @@ final class StreamHTTPClient: @unchecked Sendable {
         CFRunLoopRemoveTimer(runLoop, timer, CFRunLoopMode.defaultMode)
 
         if state.timeout {
-            throw APIError.timeout
+            throw APIError.timeoutDetail("buf=\(state.buffer.count) sent=\(state.sent) ev=\(state.lastEvent) wf=\(state.writeFailCount)")
         }
         if let error = state.error {
             throw error
@@ -188,7 +188,18 @@ final class StreamHTTPClient: @unchecked Sendable {
                 }
                 return
             }
-            if n == 0 { return }   // 缓冲满，等 CanAcceptBytes 再续传
+            if n == 0 {
+                // 缓冲满：CanAcceptBytes 只触发一次不再来 → 延迟重试续传（30 次 ~3s 上限）
+                state.zeroWrites += 1
+                if state.zeroWrites >= 30 {
+                    state.error = APIError.badResponseDetail("write stuck buf=\(state.buffer.count)")
+                    state.done = true
+                    CFRunLoopStop(CFRunLoopGetCurrent())
+                    return
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { sendPayload(state) }
+                return
+            }
             state.sentOffset += n
         }
         state.sent = true
@@ -237,6 +248,7 @@ final class StreamState: @unchecked Sendable {
     var sent = false
     var sentOffset = 0
     var writeFailCount = 0
+    var zeroWrites = 0
     var lastEvent: Int = -1
     var done = false
     var timeout = false
