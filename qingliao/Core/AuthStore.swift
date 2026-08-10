@@ -193,6 +193,28 @@ final class AuthStore {
         return json
     }
 
+    /// 连通性测试（登录页用）：GET /api/auth/status，401=服务器可达需鉴权（也算连接正常）
+    func testConnection(server: String) async -> String {
+        var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !s.hasPrefix("http") { s = "http://" + s }
+        if useIPv4Direct, let host = URL(string: s)?.host, let ip = resolveIPv4(host) {
+            s = s.replacingOccurrences(of: host, with: ip)
+        }
+        guard let url = URL(string: s + "/api/auth/status") else { return "服务器地址无效" }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8
+        do {
+            let (_, resp) = try await session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return "网络响应异常" }
+            if http.statusCode == 401 || http.statusCode == 200 {
+                return "✅ 连接正常（服务器已响应）"
+            }
+            return "⚠️ 服务器返回 \(http.statusCode)"
+        } catch {
+            return "❌ 无法连接（\(error.localizedDescription)）"
+        }
+    }
+
     /// 便捷：JSON 请求 → 返回数组（如 /api/ha/states 返回实体数组）
     func jsonArray(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> [Any] {
         let (data, _) = try await request(path, method: method, body: body)

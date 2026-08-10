@@ -8,6 +8,8 @@ struct LoginView: View {
     @State private var password = ""
     @State private var server = ""
     @State private var remember = true
+    @State private var testing = false
+    @State private var testResult: String?
 
     var body: some View {
         ZStack {
@@ -72,6 +74,41 @@ struct LoginView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 28)
                 .disabled(auth.isLoading)
+
+                // 测试连接按钮
+                Button {
+                    testing = true
+                    testResult = nil
+                    Task {
+                        let r = await auth.testConnection(server: server)
+                        testResult = r
+                        testing = false
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: testing ? "arrow.trianglehead.2.clockwise.rotate.90" : "network")
+                            .font(.system(size: 13))
+                        Text(testing ? "测试中..." : "测试连接")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 28)
+                .padding(.top, 10)
+                .disabled(testing || auth.isLoading)
+
+                if let tr = testResult {
+                    Text(tr)
+                        .font(.system(size: 12))
+                        .foregroundStyle(tr.hasPrefix("✅") ? Color.green : (tr.hasPrefix("⚠️") ? Color.orange : Color.red))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 6)
+                }
 
                 Spacer()
                 Spacer()
