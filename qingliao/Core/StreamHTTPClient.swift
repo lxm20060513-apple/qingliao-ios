@@ -29,7 +29,7 @@ final class StreamHTTPClient: @unchecked Sendable {
             // TLS 设置：SNI=域名（kCFStreamSSLPeerName）+ 忽略证书链校验（自家服务；证书本身是有效 Let's Encrypt）
             let settings: [CFString: Any] = [
                 kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL,
-                kCFStreamSSLPeerName: host,
+                kCFStreamSSLPeerName: host as CFString,
                 kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse,
             ]
             let sslKey = CFStreamPropertyKey(kCFStreamPropertySSLSettings as String)
