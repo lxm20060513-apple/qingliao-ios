@@ -31,11 +31,10 @@ final class StreamHTTPClient: @unchecked Sendable {
                 kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL,
                 kCFStreamSSLPeerName: host,
                 kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse,
-                kCFStreamSSLAllowsExpiredCertificates: kCFBooleanTrue,
-                kCFStreamSSLAllowsAnyRoot: kCFBooleanTrue,
             ]
-            CFReadStreamSetProperty(read, kCFStreamPropertySSLSettings, settings as CFDictionary)
-            CFWriteStreamSetProperty(write, kCFStreamPropertySSLSettings, settings as CFDictionary)
+            let sslKey = CFStreamPropertyKey(kCFStreamPropertySSLSettings as String)
+            CFReadStreamSetProperty(read, sslKey, settings as CFDictionary)
+            CFWriteStreamSetProperty(write, sslKey, settings as CFDictionary)
         }
 
         // 超时 watchdog：到点强制关闭流 → 中断阻塞的读写
