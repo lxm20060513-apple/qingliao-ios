@@ -132,12 +132,29 @@ final class NWRequestSession: @unchecked Sendable {
             if let data {
                 self.buffer.append(data)
             }
-            if isComplete {
+            // ⚠️ 不能只等 isComplete：lucky 对 POST 响应 keep-alive 不关闭连接 → 永远等不到 → 超时
+            //    必须按 Content-Length 判断 body 收满即完成（GET 响应恰好关闭所以之前正常）
+            if self.isResponseComplete() || isComplete {
                 self.finish(.success(NWHTTPClient.parseResponse(self.buffer)))
             } else {
                 self.receiveLoop()
             }
         }
+    }
+
+    /// 按 Content-Length 判断响应是否完整（无 Content-Length 时返回 false，交给 isComplete）
+    private func isResponseComplete() -> Bool {
+        guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let headerText = String(data: buffer[..<headerEnd.lowerBound], encoding: .utf8) ?? ""
+        for line in headerText.split(separator: "\r\n") {
+            if line.lowercased().hasPrefix("content-length:"),
+               let lenStr = line.split(separator: ":").last?.trimmingCharacters(in: .whitespaces),
+               let len = Int(lenStr) {
+                let bodyLen = buffer.count - headerEnd.upperBound
+                return bodyLen >= len
+            }
+        }
+        return false
     }
 
     private func finish(_ result: Result<(Data, Int), Error>) {
