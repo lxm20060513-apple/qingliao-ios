@@ -89,18 +89,19 @@ final class AuthStore {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+        // ⚠️ 用 upload(for:from:) 而非 dataTask：iOS URLSession 的 dataTask POST 在 IPv6+h2 下挂起超时实踩（GET 正常），uploadTask 走不同内部路径
+        let bodyData = (try? JSONSerialization.data(withJSONObject: [
             "username": username,
             "password": password,
             "remember": remember
-        ])
+        ])) ?? Data()
         do {
             let session = makeSession()
             // 瞬断自动重试（蜂窝网络常见 -1005，重试大概率建立新连接成功）
             var lastError: Error?
             for attempt in 1...3 {
                 do {
-                    let (data, resp) = try await session.data(for: req)
+                    let (data, resp) = try await session.upload(for: req, from: bodyData)
                     guard let http = resp as? HTTPURLResponse else {
                         errorMessage = "网络异常"
                         return
@@ -147,15 +148,24 @@ final class AuthStore {
         if !token.isEmpty {
             req.setValue(token, forHTTPHeaderField: "X-Auth-Token")
         }
+        let bodyData: Data?
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            bodyData = try? JSONSerialization.data(withJSONObject: body)
+        } else {
+            bodyData = nil
         }
         var lastError: Error?
         let session = makeSession()
         for attempt in 1...3 {
             do {
-                let (data, resp) = try await session.data(for: req)
+                let (data, resp): (Data, URLResponse)
+                if let bodyData {
+                    // ⚠️ POST 用 uploadTask：dataTask POST 在 IPv6+h2 下挂起超时实踩（GET 正常），uploadTask 走不同内部路径
+                    (data, resp) = try await session.upload(for: req, from: bodyData)
+                } else {
+                    (data, resp) = try await session.data(for: req)
+                }
                 guard let http = resp as? HTTPURLResponse else {
                     throw APIError.badResponse
                 }
