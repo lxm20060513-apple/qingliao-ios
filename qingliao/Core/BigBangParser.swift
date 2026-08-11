@@ -30,7 +30,7 @@ enum BigBangParser {
             let gap = ns.substring(with: NSRange(location: from, length: to - from))
             var i = 0
             for scalar in gap.unicodeScalars {
-                let ch = String(UnicodeScalar(scalar)!)
+                let ch = String(scalar)
                 if !scalar.properties.isWhitespace {
                     words.append(BigBangWord(id: words.count, text: ch))
                 }
