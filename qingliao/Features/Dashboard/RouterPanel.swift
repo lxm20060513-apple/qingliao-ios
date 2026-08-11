@@ -44,7 +44,7 @@ struct RouterStatus {
     }
 }
 
-/// 路由器板块：2x2 卡片（状态 / Clash 状态 / 启动 Clash / 关闭 Clash），刷新在标题旁
+/// 路由器板块：NAS 同款卡片风格（MeterCard/ServiceCard）+ Clash 开关
 struct RouterPanel: View {
     let router: RouterStatus
     var onStart: (() -> Void)? = nil
@@ -75,88 +75,59 @@ struct RouterPanel: View {
                 .disabled(router.busy)
             }
 
-            // 2x2 卡片
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                // 卡1：路由器状态（在线/负载/温度）
-                routerCard(title: "路由器", value: router.ok ? "在线" : (router.error.isEmpty ? "检测中" : "离线"),
-                           sub: router.ok ? "负载 \(router.load) · \(router.temp)" : router.error,
-                           color: router.ok ? .green : .red,
-                           icon: "wifi", busy: router.busy) { onRefresh?() }
-                // 卡2：Clash 状态（运行中/已停止）
-                routerCard(title: "Clash", value: router.clashRunning ? "运行中" : "已停止",
-                           sub: router.clashRunning ? "代理已生效" : "点击启动",
-                           color: router.clashRunning ? .green : .gray,
-                           icon: "bolt.fill", busy: router.busy) { onStart?() }
-                // 卡3：启动 Clash（快捷指令）
-                actionCard(title: "启动 Clash", icon: "play.fill", color: .green,
-                           busy: router.busy, subtitle: "开启代理加速") { onStart?() }
-                // 卡4：关闭 Clash（快捷指令）
-                actionCard(title: "关闭 Clash", icon: "stop.fill", color: .red,
-                           busy: router.busy, subtitle: "恢复直连") { onStop?() }
+            // 2x2 指标卡（同 NAS 面板 MeterCard/ServiceCard 风格）
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                MeterCard(name: "CPU", value: router.load,
+                          sub: "负载", ratio: loadRatio, color: .blue)
+                MeterCard(name: "内存", value: router.memUsedText,
+                          sub: "/ \(String(format: "%.1fG", router.memTotal))", ratio: router.memPct, color: .green)
+                ServiceCard(name: "运行时间", running: true, detail: router.uptime)
+                ServiceCard(name: "Clash", running: router.clashRunning,
+                            detail: router.clashRunning ? "代理已生效" : "已停止")
             }
-        }
-    }
 
-    private func routerCard(title: String, value: String, sub: String, color: Color, icon: String, busy: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 5) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(color)
-                    Text(title)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Circle()
-                        .fill(color)
-                        .frame(width: 7, height: 7)
-                }
-                Text(value)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(sub)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            .padding(11)
-            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(busy)
-    }
-
-    private func actionCard(title: String, icon: String, color: Color, busy: Bool, subtitle: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 5) {
-                    if busy { ProgressView().tint(color).scaleEffect(0.7) }
-                    else {
-                        Image(systemName: icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(color)
+            // Clash 开关（快捷指令）
+            HStack(spacing: 8) {
+                Button {
+                    onStart?()
+                } label: {
+                    HStack(spacing: 5) {
+                        if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
+                        else { Image(systemName: "play.fill").font(.system(size: 11)) }
+                        Text("启动 Clash")
                     }
-                    Text(title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 }
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                .buttonStyle(.plain)
+                .disabled(router.busy)
+
+                Button {
+                    onStop?()
+                } label: {
+                    HStack(spacing: 5) {
+                        if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
+                        else { Image(systemName: "stop.fill").font(.system(size: 11)) }
+                        Text("关闭 Clash")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(router.busy)
             }
-            .padding(11)
-            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
-            .background(Color(color.opacity(0.12)),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .disabled(busy)
+    }
+
+    /// 负载 → 进度比例（OpenWrt 常见 4 核：load/4 封顶 1）
+    private var loadRatio: Double {
+        let v = Double(router.load.components(separatedBy: " ").first ?? "0") ?? 0
+        return min(v / 4.0, 1.0)
     }
 }

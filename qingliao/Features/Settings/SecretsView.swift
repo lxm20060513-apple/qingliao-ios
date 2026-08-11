@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 // MARK: - 密码管理（NAS SSH / 路由器 / 其他凭据，服务器端 Fernet 加密存储）
 
@@ -21,8 +22,58 @@ struct SecretsView: View {
     @State private var showEdit = false
     @State private var editing: SecretEntry?
     @State private var toast = ""
+    // Face ID / 生物识别解锁
+    @State private var locked = true
+    @State private var authFailed = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            if locked {
+                // 生物识别锁屏：验证通过才显示内容
+                VStack(spacing: 16) {
+                    Spacer()
+                    ZStack {
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.12))
+                            .frame(width: 76, height: 76)
+                        Image(systemName: "faceid")
+                            .font(.system(size: 34))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Text("密码管理已锁定")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("使用 Face ID / 面容验证解锁")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    if authFailed {
+                        Text("验证失败，请重试")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                    }
+                    Button {
+                        authenticate()
+                    } label: {
+                        Text("解锁")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 44).padding(.vertical, 11)
+                            .background(Color.accentColor, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .background(Color(uiColor: .systemBackground))
+            } else {
+                content
+            }
+        }
+        .task {
+            if locked { authenticate() }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("🔐 密码管理")
@@ -94,6 +145,27 @@ struct SecretsView: View {
                     .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
                     .padding(.bottom, 20)
                     .transition(.opacity)
+            }
+        }
+    }
+
+    /// Face ID / 面容验证（失败可重试）
+    private func authenticate() {
+        let ctx = LAContext()
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {
+            authFailed = true
+            return
+        }
+        ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                           localizedReason: "验证后查看已加密保存的 NAS / 路由器密码") { success, _ in
+            DispatchQueue.main.async {
+                if success {
+                    locked = false
+                    authFailed = false
+                } else {
+                    authFailed = true
+                }
             }
         }
     }

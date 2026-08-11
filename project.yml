@@ -42,6 +42,7 @@ targets:
               - qingliao
         NSMicrophoneUsageDescription: 按住说话语音输入需要麦克风权限
         NSSpeechRecognitionUsageDescription: 语音输入需要将语音转换为文字
+        NSFaceIDUsageDescription: 密码管理使用 Face ID 解锁查看凭据
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingliao.app2
