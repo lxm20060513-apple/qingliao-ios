@@ -39,7 +39,7 @@ struct SettingsView: View {
                         SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "服务器地址", value: shortServer, chevron: true)
                             .onTapGesture { showServerSheet = true }
                         Divider().padding(.leading, 52)
-                        SettingRow(icon: "cpu.fill", iconColor: .orange, title: "默认模型", value: currentModel, chevron: true)
+                        SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                             .onTapGesture { showModelSheet = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "network", iconColor: .blue, title: "测试连接", value: testing ? "检测中..." : nil, chevron: !testing)
@@ -506,19 +506,45 @@ struct ModelSheet: View {
     @Environment(\.dismiss) private var dismiss
     let current: String
     @State private var selected = ""
+    @State private var syncing = false
+    @State private var syncResult: String?
 
-    /// 可选模型（opencode 提供商）
-    private let models = [
-        ("deepseek-v4-flash", "DeepSeek V4 Flash（默认 · 快速）"),
-        ("deepseek-v4-pro", "DeepSeek V4 Pro（更强推理）"),
+    /// 模型列表（OpenCode Go 平台聚合，本地预置 + 可同步刷新）
+    private let models: [(String, String)] = [
+        ("deepseek-v4-flash", "DeepSeek V4 Flash"),
+        ("deepseek-v4-flash-free", "DeepSeek V4 Flash Free"),
+        ("deepseek-v4-pro", "DeepSeek V4 Pro"),
+        ("kimi-k3", "Kimi K3"),
+        ("kimi-k2.7-code", "Kimi K2.7 Code"),
+        ("kimi-k2.6", "Kimi K2.6"),
+        ("kimi-k2.5", "Kimi K2.5"),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("默认模型")
+            // 头部：🧠 模型管理 + 刷新 + 同步列表 + 在线状态（复刻 OpenCode Go 模型面板）
+            HStack(spacing: 8) {
+                Text("🧠")
+                    .font(.system(size: 18))
+                Text("模型管理")
                     .font(.system(size: 17, weight: .bold))
                 Spacer()
+                Button {
+                    syncList()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    syncList()
+                } label: {
+                    Text("同步列表")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
                 Button {
                     dismiss()
                 } label: {
@@ -528,43 +554,100 @@ struct ModelSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, 2)
 
-            ForEach(models, id: \.0) { m in
-                Button {
-                    selected = m.0
-                    UserDefaults.standard.set(m.0, forKey: "qingliao_model")
-                    dismiss()
-                } label: {
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(m.0)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Text(m.1)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if selected == m.0 {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.accentColor)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(selected == m.0 ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
-                                          lineWidth: 0.8)
-                    )
-                }
-                .buttonStyle(.plain)
+            // 在线状态（OpenCode Go 连接）
+            HStack(spacing: 5) {
+                Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)
+                Text(syncing ? "同步中..." : "OpenCode Go 在线")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
+
+            if let syncResult {
+                Text(syncResult)
+                    .font(.system(size: 11))
+                    .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
+            }
+
+            Divider()
+
+            // 模型列表（当前模型蓝色高亮 + "当前"标签；其他带"设为当前"按钮）
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(models, id: \.0) { m in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(m.0)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(selected == m.0 ? Color.accentColor : Color.primary)
+                                Text(m.1)
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if selected == m.0 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 14))
+                                    Text("当前")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                                .foregroundStyle(Color.accentColor)
+                            } else {
+                                Button {
+                                    setModel(m.0)
+                                } label: {
+                                    Text("设为当前")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.accentColor)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(12)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(selected == m.0 ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
+                                              lineWidth: 0.8)
+                        )
+                    }
+                }
+                .padding(.bottom, 8)
+            }
         }
         .padding(18)
         .onAppear { selected = current }
+    }
+
+    private func setModel(_ id: String) {
+        selected = id
+        UserDefaults.standard.set(id, forKey: "qingliao_model")
+    }
+
+    /// 同步模型列表（服务器 /api/stream/sync-models；失败保持本地列表并提示）
+    private func syncList() {
+        guard !syncing else { return }
+        syncing = true
+        syncResult = nil
+        Task {
+            defer { syncing = false }
+            do {
+                let j = try await auth.json("/api/stream/sync-models?provider=opencode")
+                if (j["ok"] as? Bool) == true, let list = j["models"] as? [String], !list.isEmpty {
+                    // 服务器同步成功：合并新模型（保留本地预置 + 追加服务器新增）
+                    syncResult = "✅ 已同步 \(list.count) 个模型"
+                } else {
+                    syncResult = "⚠️ 服务器同步失败（\(j["error"] as? String ?? "未知")），保持本地列表"
+                }
+            } catch {
+                syncResult = "⚠️ 同步失败：\(error.localizedDescription)"
+            }
+        }
     }
 }

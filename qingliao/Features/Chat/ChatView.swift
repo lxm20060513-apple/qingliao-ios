@@ -39,8 +39,6 @@ struct ChatView: View {
         VStack(spacing: 0) {
             PageHeader(title: "聊天",
                        subtitle: serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线"),
-                       showStatus: true,
-                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray),
                        trailing: AnyView(
                            Button {
                                showModelSheet = true
@@ -57,7 +55,9 @@ struct ChatView: View {
                                .background(Color.accentColor.opacity(0.12), in: Capsule())
                            }
                            .buttonStyle(.plain)
-                       ))
+                       ),
+                       showStatus: true,
+                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray))
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
