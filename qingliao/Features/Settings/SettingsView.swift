@@ -584,7 +584,16 @@ struct ModelSheet: View {
             }
         }
         .padding(18)
-        .onAppear { selected = current }
+        .onAppear {
+            selected = current
+            // 恢复上次同步的模型（UserDefaults 持久化，无需每次点同步）
+            if let s = UserDefaults.standard.array(forKey: "qingliao_models_stepfun") as? [String] {
+                stepfunModels = s
+            }
+            if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] {
+                deepseekModels = d
+            }
+        }
     }
 
     /// 分组标题 + 模型行
@@ -654,8 +663,14 @@ struct ModelSheet: View {
         Task {
             let s = await fetchModels("stepfun")
             let d = await fetchModels("deepseek")
-            if let s { stepfunModels = s }
-            if let d { deepseekModels = d }
+            if let s {
+                stepfunModels = s
+                UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
+            }
+            if let d {
+                deepseekModels = d
+                UserDefaults.standard.set(d, forKey: "qingliao_models_deepseek")
+            }
             syncResult = "✅ 已同步（stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
             syncing = false
         }

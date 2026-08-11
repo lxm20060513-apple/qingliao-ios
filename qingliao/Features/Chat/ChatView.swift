@@ -37,27 +37,6 @@ struct ChatView: View {
         UserDefaults.standard.string(forKey: "qingliao_provider") ?? "opencode"
     }
 
-    /// 头部模型快速切换按钮（独立表达式，避免类型检查超时）
-    private var modelHeaderButton: AnyView {
-        AnyView(
-            Button {
-                showModelSheet = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "cpu")
-                        .font(.system(size: 11))
-                    Text(modelName)
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundStyle(Color.accentColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.accentColor.opacity(0.12), in: Capsule())
-            }
-            .buttonStyle(.plain)
-        )
-    }
-
     /// 头部状态文案/颜色（独立计算属性，避免 body 内嵌套三元）
     private var headerSubtitle: String {
         serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线")
@@ -70,7 +49,6 @@ struct ChatView: View {
         VStack(spacing: 0) {
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
-                       trailing: modelHeaderButton,
                        showStatus: true,
                        statusColor: headerColor)
             if sentOK {
@@ -139,8 +117,8 @@ struct ChatView: View {
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
-            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
-            .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
+            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 60pt 避让贴底 Dock（不再大段留空）
+            .padding(.bottom, kb.isVisible ? kb.height + 10 : 60)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
@@ -607,19 +585,44 @@ struct MessageBubble: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 if !message.content.isEmpty {
-                    Text(message.isUser ? AttributedString(message.content) : markdownText)
-                        .font(.system(size: 14))
-                        .lineSpacing(3)
-                        .foregroundStyle(message.isUser ? .white : .primary)
-                        .textSelection(.enabled)   // 长按选中复制（参考 web 版排版体验）
+                    if message.isUser {
+                        Text(AttributedString(message.content))
+                            .font(.system(size: 14))
+                            .lineSpacing(3)
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 9)
+                            .background(Color(red: 0.13, green: 0.22, blue: 0.45))
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    } else {
+                        // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(contentBlocks) { block in
+                                switch block {
+                                case .markdown(let text):
+                                    Text((try? AttributedString(markdown: text)) ?? AttributedString(text))
+                                        .font(.system(size: 14))
+                                        .lineSpacing(3)
+                                        .textSelection(.enabled)
+                                case .code(let text):
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        Text(text)
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .padding(10)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .background(Color.black.opacity(0.06))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                            }
+                        }
                         .padding(.horizontal, 13)
                         .padding(.vertical, 9)
-                        .background(
-                            message.isUser
-                                ? Color(red: 0.13, green: 0.22, blue: 0.45)                 // 深蓝 navy 气泡
-                                : Color(uiColor: .systemGray5)
-                        )
+                        .background(Color(uiColor: .systemGray5))
                         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
                 }
             }
             .frame(maxWidth: 290, alignment: message.isUser ? .trailing : .leading)
@@ -646,9 +649,32 @@ struct MessageBubble: View {
         }
     }
 
-    /// AI 消息 markdown 渲染（解析失败回退纯文本——流式中途未闭合语法常见）
-    private var markdownText: AttributedString {
-        (try? AttributedString(markdown: message.content)) ?? AttributedString(message.content)
+    /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
+    private enum ContentBlock: Identifiable {
+        case markdown(String)
+        case code(String)
+        var id: Int {
+            switch self {
+            case .markdown(let s): return s.hashValue
+            case .code(let s): return s.hashValue
+            }
+        }
+    }
+
+    private var contentBlocks: [ContentBlock] {
+        let parts = message.content.components(separatedBy: "```")
+        var blocks: [ContentBlock] = []
+        for (i, p) in parts.enumerated() {
+            if i % 2 == 1 {
+                // 代码块：去掉语言标记行
+                let lines = p.split(separator: "\n", maxSplits: 1).map(String.init)
+                let body = lines.count > 1 ? lines[1] : p
+                blocks.append(.code(body.trimmingCharacters(in: .whitespacesAndNewlines)))
+            } else if !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(.markdown(p))
+            }
+        }
+        return blocks.isEmpty ? [.markdown(message.content)] : blocks
     }
 
     private func dataURLImage(_ urlStr: String) -> UIImage? {
@@ -712,9 +738,10 @@ struct ChatInputBar: View {
             } else {
                 TextField("输入消息...", text: $text, axis: .vertical)
                     .font(.system(size: 15))
-                    .lineLimit(1...5)
+                    .lineLimit(2...6)
                     .padding(.vertical, 9)
                     .padding(.horizontal, 2)
+                    .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
                     .focused($focused)
             }
 

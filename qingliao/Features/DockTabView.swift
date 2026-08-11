@@ -27,6 +27,8 @@ enum DockTab: String, CaseIterable, Identifiable {
 struct DockTabView: View {
     @State private var selected: DockTab = .chat
     @Environment(KeyboardObserver.self) private var kb
+    // @Observable 单例必须 @State 持有，body 才能观察其属性变化（否则 hidden 更新不触发重绘）
+    @State private var dockVisibility = DockVisibility.shared
 
     var body: some View {
         ZStack {
@@ -62,10 +64,10 @@ struct DockTabView: View {
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 // 下滑隐藏 / 上滑显示（DockVisibility 由各页面 ScrollView 驱动）
                 DockBar(selected: $selected)
-                    .offset(y: (kb.isVisible || DockVisibility.shared.hidden) ? 120 : 0)
-                    .opacity((kb.isVisible || DockVisibility.shared.hidden) ? 0 : 1)
-                    .allowsHitTesting(!kb.isVisible && !DockVisibility.shared.hidden)
-                    .animation(.spring(duration: 0.5, bounce: 0.25), value: DockVisibility.shared.hidden)
+                    .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
+                    .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
+                    .allowsHitTesting(!kb.isVisible && !dockVisibility.hidden)
+                    .animation(.spring(duration: 0.5, bounce: 0.25), value: dockVisibility.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
                     .padding(.bottom, 2)
             }

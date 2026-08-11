@@ -271,6 +271,13 @@ struct CronTask: Identifiable {
     let name: String
     let cron: String
     let prompt: String
+    let enabled: Bool
+    let nextRunAt: String?
+
+    var nextRunText: String {
+        guard let nextRunAt, !nextRunAt.isEmpty else { return "待定" }
+        return nextRunAt
+    }
 }
 
 struct TasksView: View {
@@ -340,13 +347,31 @@ struct TasksView: View {
                                     Text(t.cron)
                                         .font(.system(size: 10.5, design: .monospaced))
                                         .foregroundStyle(.secondary)
+                                    if t.enabled {
+                                        Text("运行中 · \(t.nextRunText)")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Color.green)
+                                    } else {
+                                        Text("已停用")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Color.secondary)
+                                    }
                                 }
                                 Spacer()
+                                // 启用/禁用切换
+                                Button {
+                                    toggleTask(t)
+                                } label: {
+                                    Image(systemName: t.enabled ? "pause.circle.fill" : "play.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(t.enabled ? Color.orange : Color.green)
+                                }
+                                .buttonStyle(.plain)
                                 // 立即运行
                                 Button {
                                     runTask(t)
                                 } label: {
-                                    Image(systemName: "play.circle.fill")
+                                    Image(systemName: "bolt.circle.fill")
                                         .font(.system(size: 20))
                                         .foregroundStyle(Color.accentColor)
                                 }
@@ -390,9 +415,12 @@ struct TasksView: View {
             let arr = try await auth.jsonArray("/api/cron/tasks")
             tasks = arr.compactMap { d in
                 guard let d = d as? [String: Any], let id = d["id"] as? String else { return nil }
-                return CronTask(id: id, name: d["name"] as? String ?? "未命名",
+                return CronTask(id: id,
+                                name: d["name"] as? String ?? "未命名",
                                 cron: d["cron"] as? String ?? "",
-                                prompt: d["prompt"] as? String ?? "")
+                                prompt: d["prompt"] as? String ?? "",
+                                enabled: (d["enabled"] as? Bool) ?? true,
+                                nextRunAt: d["next_run_at"] as? String)
             }
         } catch {
             tasks = []
@@ -403,6 +431,15 @@ struct TasksView: View {
     private func runTask(_ t: CronTask) {
         Task {
             _ = try? await auth.request("/api/cron/tasks/\(t.id)/run", method: "POST", body: nil)
+            await load()
+        }
+    }
+
+    /// 启用/禁用任务（PATCH /api/cron/tasks/{id}）
+    private func toggleTask(_ t: CronTask) {
+        Task {
+            _ = try? await auth.request("/api/cron/tasks/\(t.id)", method: "PATCH",
+                                        body: ["enabled": !t.enabled])
             await load()
         }
     }
