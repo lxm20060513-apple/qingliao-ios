@@ -11,6 +11,16 @@ struct BigBangPayload: Identifiable {
     let text: String
 }
 
+/// AI 消息内容分段（代码块 / markdown 段）
+struct MessageContentBlock: Identifiable {
+    let id = UUID()
+    enum Kind {
+        case markdown(String)
+        case code(String)
+    }
+    let kind: Kind
+}
+
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
 struct ChatView: View {
@@ -617,7 +627,7 @@ struct MessageBubble: View {
                         // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(contentBlocks) { block in
-                                switch block {
+                                switch block.kind {
                                 case .markdown(let text):
                                     // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
                                     // markdown 字体属性（加粗/标题/代码等），导致排版失效
@@ -677,31 +687,20 @@ struct MessageBubble: View {
     }
 
     /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
-    private enum ContentBlock: Identifiable {
-        case markdown(String)
-        case code(String)
-        var id: Int {
-            switch self {
-            case .markdown(let s): return s.hashValue
-            case .code(let s): return s.hashValue
-            }
-        }
-    }
-
-    private var contentBlocks: [ContentBlock] {
+    private var contentBlocks: [MessageContentBlock] {
         let parts = message.content.components(separatedBy: "```")
-        var blocks: [ContentBlock] = []
+        var blocks: [MessageContentBlock] = []
         for (i, p) in parts.enumerated() {
             if i % 2 == 1 {
                 // 代码块：去掉语言标记行
                 let lines = p.split(separator: "\n", maxSplits: 1).map(String.init)
                 let body = lines.count > 1 ? lines[1] : p
-                blocks.append(.code(body.trimmingCharacters(in: .whitespacesAndNewlines)))
+                blocks.append(.init(kind: .code(body.trimmingCharacters(in: .whitespacesAndNewlines))))
             } else if !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                blocks.append(.markdown(p))
+                blocks.append(.init(kind: .markdown(p)))
             }
         }
-        return blocks.isEmpty ? [.markdown(message.content)] : blocks
+        return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
     }
 
     private func dataURLImage(_ urlStr: String) -> UIImage? {
