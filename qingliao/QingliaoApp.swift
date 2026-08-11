@@ -16,6 +16,10 @@ struct QingliaoApp: App {
                 .environment(stream)
                 .environment(keyboard)
                 .preferredColorScheme(colorScheme)
+                .task {
+                    // v2.0.36：请求本地通知权限（AI 回复完成提醒）
+                    NotificationHelper.requestAuth()
+                }
         }
     }
 

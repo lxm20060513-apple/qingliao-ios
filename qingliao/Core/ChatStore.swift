@@ -95,4 +95,35 @@ final class ChatStore {
             "deleted": [] as [Any]
         ])
     }
+
+    // MARK: - v2.0.36
+
+    /// 导出当前会话为纯文本（用户/AI 消息 + 时间）
+    func exportText() -> String {
+        var lines: [String] = []
+        lines.append("轻聊会话导出 · " + (title.isEmpty ? "未命名会话" : title))
+        lines.append("===================================")
+        for m in messages {
+            let who = m.isUser ? "我" : "AI"
+            let t = m.timestamp.map { ts -> String in
+                let d = Date(timeIntervalSince1970: ts / 1000)
+                let f = DateFormatter()
+                f.dateFormat = "MM-dd HH:mm"
+                return f.string(from: d)
+            } ?? ""
+            var content = m.content
+            if m.imageDataURL != nil {
+                let c = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                content = c.isEmpty ? "[图片]" : c + "\n[图片]"
+            }
+            lines.append("\n[\(who) \(t)]")
+            lines.append(content)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 清空当前会话消息（保留会话 id 与标题）
+    func clearMessages() {
+        messages = []
+    }
 }

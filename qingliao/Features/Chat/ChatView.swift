@@ -34,13 +34,31 @@ struct MessageBlockView: View {
                 .lineSpacing(3)
                 .textSelection(.enabled)
         case .code(let text):
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(text)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // v2.0.36：代码块加复制按钮（右上角）
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("代码")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Button {
+                        UIPasteboard.general.string = text
+                    } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(text)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(.bottom, 4)
+                }
             }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.black.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
@@ -59,6 +77,13 @@ struct ChatView: View {
     @FocusState private var inputFocus: Bool
     @State private var sentOK = false
     @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）
+    // v2.0.36：引用回复 / 图片查看器 / 导出
+    @State private var quotedMessage: ChatMessage?
+    @State private var viewerPayload: ImageViewPayload?
+    @State private var showMoreMenu = false
+    @State private var showExporter = false
+    @State private var exportText = ""
+    @State private var showVoiceDenied = false   // v2.0.36 录音权限被拒提示
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -95,7 +120,28 @@ struct ChatView: View {
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
                        showStatus: true,
-                       statusColor: headerColor)
+                       statusColor: headerColor,
+                       trailing: AnyView(
+                           Button {
+                               showMoreMenu = true
+                           } label: {
+                               Image(systemName: "ellipsis.circle")
+                                   .font(.system(size: 17, weight: .semibold))
+                                   .foregroundStyle(Color.accentColor)
+                           }
+                           .buttonStyle(.plain)
+                       ))
+            .confirmationDialog("聊天操作", isPresented: $showMoreMenu, titleVisibility: .visible) {
+                Button("导出会话记录") {
+                    exportText = chat.exportText()
+                    showExporter = true
+                }
+                Button("清空本会话消息", role: .destructive) {
+                    chat.clearMessages()
+                    Task { await chat.saveToServer(auth: auth) }
+                }
+                Button("取消", role: .cancel) {}
+            }
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
@@ -146,6 +192,32 @@ struct ChatView: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8))
+                .padding(.horizontal, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // v2.0.36：引用回复条（发送后自动清除）
+            if let q = quotedMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "quote.opening")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.accentColor)
+                    Text(String(q.content.prefix(60)))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        quotedMessage = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.horizontal, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -222,6 +294,22 @@ struct ChatView: View {
                                 regenerate(at: msg.id)
                             } onBigBang: {
                                 bigBangPayload = BigBangPayload(text: msg.content)
+                            } onQuote: {
+                                // v2.0.36：引用回复（点击回复时输入框聚焦）
+                                quotedMessage = msg
+                                inputFocus = true
+                            } onDelete: {
+                                // v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
+                                if let idx = chat.messages.firstIndex(where: { $0.timestamp == msg.timestamp && $0.role == msg.role && $0.content == msg.content }) {
+                                    withAnimation { chat.messages.remove(at: idx) }
+                                    Task { await chat.saveToServer(auth: auth) }
+                                }
+                            } onShare: {
+                                shareText(msg.content)
+                            } onImageTap: {
+                                if let img = dataURLImage(msg.imageDataURL ?? "") {
+                                    viewerPayload = ImageViewPayload(image: img)
+                                }
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
@@ -293,6 +381,26 @@ struct ChatView: View {
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
         }
+        // v2.0.36：图片大图查看器
+        .fullScreenCover(item: $viewerPayload) { p in
+            ImageViewer(image: p.image)
+        }
+        // v2.0.36：导出会话记录
+        .fileExporter(isPresented: $showExporter,
+                      document: ChatLogDocument(text: exportText),
+                      contentType: .plainText,
+                      defaultFilename: "轻聊会话") { _ in }
+        // v2.0.36：录音权限被拒提示
+        .alert("无法使用语音输入", isPresented: $showVoiceDenied) {
+            Button("去设置", role: .cancel) {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("麦克风权限被拒绝，请在系统设置中允许轻聊使用麦克风")
+        }
     }
 
     /// 思考中动画（三点跳动）
@@ -343,12 +451,20 @@ struct ChatView: View {
     // MARK: - 发送
 
     private func send() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let img = pendingImageData
         guard (!text.isEmpty || img != nil), !stream.isStreaming else { return }
+        // v2.0.36：引用回复（markdown 引用块注入，AI 可见上下文）
+        if let q = quotedMessage, !text.isEmpty {
+            let quoted = q.content.replacingOccurrences(of: "\n", with: "\n> ")
+            text = "> " + quoted + "\n\n" + text
+        }
         inputText = ""
+        quotedMessage = nil
         pendingImage = nil
         pendingImageData = nil
+        // v2.0.36：发送触感反馈
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         chat.append(.local(role: "user", content: text, imageDataURL: img))
         let history = chat.historyPayload()
@@ -366,10 +482,24 @@ struct ChatView: View {
                 } else {
                     chat.upsertAssistant(stream.content)
                     showSentOK()
+                    // v2.0.36：App 退后台时 AI 回复完成发本地通知
+                    if UIApplication.shared.applicationState != .active {
+                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看")
+                    }
                 }
                 // 保存会话到后端（会话记录同步）
                 Task { await chat.saveToServer(auth: auth) }
             }
+        }
+    }
+
+    /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
+    private func shareText(_ text: String) {
+        guard !text.isEmpty else { return }
+        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(av, animated: true)
         }
     }
 
@@ -394,6 +524,10 @@ struct ChatView: View {
                 } else {
                     chat.upsertAssistant(stream.content)
                     showSentOK()
+                    // v2.0.36：App 退后台时 AI 回复完成发本地通知
+                    if UIApplication.shared.applicationState != .active {
+                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看")
+                    }
                 }
                 Task { await chat.saveToServer(auth: auth) }
             }
@@ -526,7 +660,13 @@ struct ChatView: View {
     private func startVoice() {
         guard !voiceBusy, !isRecording else { return }
         AVAudioApplication.requestRecordPermission { granted in
-            guard granted else { return }
+            guard granted else {
+                // v2.0.36：权限被拒明确提示（不再静默失败）
+                DispatchQueue.main.async {
+                    showVoiceDenied = true
+                }
+                return
+            }
             DispatchQueue.main.async {
                 let url = FileManager.default.temporaryDirectory
                     .appendingPathComponent("voice-\(Int(Date().timeIntervalSince1970)).m4a")
@@ -614,6 +754,10 @@ struct MessageBubble: View {
     let message: ChatMessage
     var onRegenerate: () -> Void = {}
     var onBigBang: () -> Void = {}
+    var onQuote: () -> Void = {}      // v2.0.36 引用回复
+    var onDelete: () -> Void = {}     // v2.0.36 单条删除
+    var onShare: () -> Void = {}      // v2.0.36 分享文本
+    var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -638,6 +782,8 @@ struct MessageBubble: View {
                         .scaledToFill()
                         .frame(maxWidth: 200, maxHeight: 200)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        // v2.0.36：点击查看大图
+                        .onTapGesture { onImageTap() }
                 }
                 if !message.content.isEmpty {
                     if message.isUser {
@@ -672,12 +818,22 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
-        // 长按：复制（全部消息）/ 大爆炸 / 重新生成（AI 消息）
+        // 长按：复制 / 引用 / 删除 / 分享 / 大爆炸 / 重新生成（AI 消息）
         .contextMenu {
             Button {
                 UIPasteboard.general.string = message.content
             } label: {
                 Label("复制", systemImage: "doc.on.doc")
+            }
+            Button {
+                onQuote()
+            } label: {
+                Label("引用", systemImage: "quote.opening")
+            }
+            Button {
+                onShare()
+            } label: {
+                Label("分享", systemImage: "square.and.arrow.up")
             }
             Button {
                 onBigBang()
@@ -690,6 +846,11 @@ struct MessageBubble: View {
                 } label: {
                     Label("重新生成", systemImage: "arrow.clockwise")
                 }
+            }
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("删除", systemImage: "trash")
             }
         }
     }
@@ -814,5 +975,79 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - v2.0.36 图片大图查看器（双击/捏合缩放 + 保存相册）
+
+struct ImageViewPayload: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+struct ImageViewer: View {
+    let image: UIImage
+    @Environment(\.dismiss) private var dismiss
+    @State private var scale: CGFloat = 1
+    @State private var saved = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .animation(.spring(duration: 0.25), value: scale)
+                .gesture(MagnificationGesture()
+                    .onChanged { scale = max(1, min($0, 4)) })
+                .onTapGesture(count: 2) {
+                    scale = scale == 1 ? 2.2 : 1
+                }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .shadow(radius: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(16)
+                }
+                Spacer()
+                Button {
+                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                    saved = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
+                } label: {
+                    Label(saved ? "已保存" : "保存到相册", systemImage: saved ? "checkmark" : "square.and.arrow.down")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 9)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 44)
+            }
+        }
+    }
+}
+
+// MARK: - v2.0.36 会话导出文档（.txt）
+
+struct ChatLogDocument: FileDocument {
+    var text: String
+    static var readableContentTypes: [UTType] { [.plainText] }
+    init(text: String) { self.text = text }
+    init(configuration: ReadConfiguration) throws {
+        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }

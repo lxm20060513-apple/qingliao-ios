@@ -11,11 +11,58 @@ struct SessionsView: View {
     @State private var errorText: String?
     @State private var scrollPos = ScrollPosition()
     @State private var deleteError: String?
+    // v2.0.36：搜索 + 置顶
+    @State private var searchText = ""
+    @State private var searchResults: [[String: Any]] = []
+    @State private var searching = false
+    @State private var searchTask: Task<Void, Never>?
+    @State private var pinnedIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_pinned_sessions") ?? [])
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
+
+    private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "会话", trailing: AnyView(addButton))
+            // v2.0.36：会话搜索框
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                TextField("搜索会话与消息", text: $searchText)
+                    .font(.system(size: 14))
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .onChange(of: searchText) { _, new in
+                        searchTask?.cancel()
+                        guard !new.trimmingCharacters(in: .whitespaces).isEmpty else {
+                            searchResults = []
+                            return
+                        }
+                        let q = new
+                        searchTask = Task {
+                            try? await Task.sleep(for: .milliseconds(450))
+                            guard !Task.isCancelled else { return }
+                            await search(q)
+                        }
+                    }
+                if isSearching {
+                    Button {
+                        searchText = ""
+                        searchResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
             if isLoading && sessions.isEmpty {
                 Spacer()
                 ProgressView()
@@ -34,26 +81,51 @@ struct SessionsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 10) {
-                        BotCard()
-                        if sessions.isEmpty {
-                            Text("暂无会话记录")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.tertiary)
-                                .padding(.top, 30)
-                        } else {
-                            // 每条会话独立卡片 + 间隔（会话条目间距）
-                            VStack(spacing: 8) {
-                                ForEach(sessions) { s in
-                                    SessionRow(session: s) {
-                                        chat.load(s)
-                                        onOpenSession?()
+                        if isSearching {
+                            // v2.0.36：搜索结果
+                            if searching {
+                                ProgressView().tint(.secondary).padding(.top, 30)
+                            } else if searchResults.isEmpty {
+                                Text("未找到相关内容")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 30)
+                            } else {
+                                VStack(spacing: 8) {
+                                    ForEach(searchResults, id: \.self) { r in
+                                        SearchResultRow(result: r) {
+                                            openSearchResult(r)
+                                        }
                                     }
-                                    // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            delete(s)
-                                        } label: {
-                                            Label("删除会话", systemImage: "trash")
+                                }
+                            }
+                        } else {
+                            BotCard()
+                            if sessions.isEmpty {
+                                Text("暂无会话记录")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 30)
+                            } else {
+                                // 每条会话独立卡片 + 间隔（会话条目间距）
+                                VStack(spacing: 8) {
+                                    ForEach(sortedSessions) { s in
+                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id)) {
+                                            chat.load(s)
+                                            onOpenSession?()
+                                        }
+                                        // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
+                                        .contextMenu {
+                                            Button {
+                                                togglePin(s)
+                                            } label: {
+                                                Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
+                                            }
+                                            Button(role: .destructive) {
+                                                delete(s)
+                                            } label: {
+                                                Label("删除会话", systemImage: "trash")
+                                            }
                                         }
                                     }
                                 }
@@ -68,7 +140,7 @@ struct SessionsView: View {
                     DockVisibility.shared.update(y ?? 0)
                 }
                 .refreshable {
-                    await load()
+                    if !isSearching { await load() }
                 }
             }
         }
@@ -91,6 +163,49 @@ struct SessionsView: View {
                 .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - v2.0.36 搜索 / 置顶
+
+    /// 置顶优先，其余按最新→最旧
+    private var sortedSessions: [ChatSession] {
+        sessions.sorted {
+            let a = pinnedIDs.contains($0.id) ? 1 : 0
+            let b = pinnedIDs.contains($1.id) ? 1 : 0
+            if a != b { return a > b }
+            return ($0.lastTime ?? 0) > ($1.lastTime ?? 0)
+        }
+    }
+
+    private func togglePin(_ s: ChatSession) {
+        if pinnedIDs.contains(s.id) {
+            pinnedIDs.remove(s.id)
+        } else {
+            pinnedIDs.insert(s.id)
+        }
+        UserDefaults.standard.set(Array(pinnedIDs), forKey: "qingliao_pinned_sessions")
+    }
+
+    private func search(_ q: String) async {
+        searching = true
+        defer { searching = false }
+        guard let j = try? await auth.json("/api/sessions/search", method: "POST", body: ["q": q]),
+              let arr = j["results"] as? [[String: Any]] else {
+            searchResults = []
+            return
+        }
+        searchResults = arr
+    }
+
+    /// 搜索结果 → 打开对应会话（按 id 从完整列表找到并加载）
+    private func openSearchResult(_ r: [String: Any]) {
+        let sid = r["id"] as? String ?? ""
+        if let s = sessions.first(where: { $0.id == sid }) {
+            chat.load(s)
+            searchText = ""
+            searchResults = []
+            onOpenSession?()
+        }
     }
 
     // MARK: - 数据
@@ -205,10 +320,59 @@ struct BotCard: View {
     }
 }
 
+// MARK: - v2.0.36 搜索结果行（会话标题 + 命中片段）
+
+struct SearchResultRow: View {
+    let result: [String: Any]
+    var action: () -> Void = {}
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.green.opacity(0.18), Color.teal.opacity(0.12)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.green.opacity(0.8))
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(result["title"] as? String ?? "新对话")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let hits = result["hits"] as? [[String: Any]], let first = hits.first {
+                    Text((first["snippet"] as? String) ?? "")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { action() }
+    }
+}
+
 // MARK: - 会话行
 
 struct SessionRow: View {
     let session: ChatSession
+    var pinned: Bool = false
     var action: () -> Void = {}
 
     var body: some View {
@@ -224,10 +388,17 @@ struct SessionRow: View {
             .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.title.isEmpty ? "新对话" : session.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    if pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.orange)
+                    }
+                    Text(session.title.isEmpty ? "新对话" : session.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
                 Text(session.lastMessageText)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

@@ -22,6 +22,13 @@ struct FilesView: View {
     @State private var showImporter = false
     @State private var toast = ""
     @State private var downloading = false
+    // v2.0.36：删除 / 重命名 / 新建文件夹
+    @State private var showNewFolder = false
+    @State private var newFolderName = ""
+    @State private var renameTarget: FileEntry?
+    @State private var renameText = ""
+    @State private var confirmDelete: FileEntry?
+    @State private var opError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +84,20 @@ struct FilesView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(entries) { e in
                             fileRow(e)
+                                // v2.0.36：长按操作（重命名/删除）
+                                .contextMenu {
+                                    Button {
+                                        renameTarget = e
+                                        renameText = e.name
+                                    } label: {
+                                        Label("重命名", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        confirmDelete = e
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
                             Divider().padding(.leading, 44)
                         }
                         if entries.isEmpty {
@@ -93,22 +114,35 @@ struct FilesView: View {
                 .refreshable { await load() }
             }
 
-            // 上传按钮
-            Button {
-                showImporter = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("上传文件到当前目录")
-                        .font(.system(size: 14, weight: .semibold))
+            // 上传按钮 + 新建文件夹（v2.0.36）
+            HStack(spacing: 10) {
+                Button {
+                    showImporter = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("上传文件")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(.plain)
+                Button {
+                    newFolderName = ""
+                    showNewFolder = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 44, height: 44)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(.horizontal, 14)
             .padding(.top, 10)
             .padding(.bottom, 18)
@@ -119,6 +153,33 @@ struct FilesView: View {
             if case .success(let url) = result {
                 Task { await upload(url) }
             }
+        }
+        // v2.0.36：新建文件夹
+        .alert("新建文件夹", isPresented: $showNewFolder) {
+            TextField("文件夹名称", text: $newFolderName)
+            Button("创建") { Task { await mkdir() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将在当前目录创建")
+        }
+        // v2.0.36：重命名
+        .alert("重命名", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+            TextField("新名称", text: $renameText)
+            Button("确定") { Task { await rename() } }
+            Button("取消", role: .cancel) {}
+        }
+        // v2.0.36：删除确认
+        .alert("确认删除", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
+            Button("删除", role: .destructive) { Task { await delete() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将删除「\(confirmDelete?.name ?? "")」\(confirmDelete?.isDir == true ? "（目录及其内容）" : "")，此操作不可恢复")
+        }
+        // v2.0.36：操作失败提示
+        .alert("操作失败", isPresented: Binding(get: { opError != nil }, set: { if !$0 { opError = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(opError ?? "")
         }
         .overlay(alignment: .top) {
             if !toast.isEmpty {
@@ -243,6 +304,63 @@ struct FilesView: View {
         } catch {
             toast = "上传失败"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+        }
+    }
+
+    // MARK: - v2.0.36 目录操作
+
+    private func relPath(_ name: String) -> String {
+        cwd.isEmpty ? name : cwd + "/" + name
+    }
+
+    private func mkdir() async {
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        do {
+            let j = try await auth.json("/api/files/mkdir", method: "POST", body: ["path": relPath(name)])
+            if (j["ok"] as? Bool) == true {
+                showNewFolder = false
+                toast = "已创建"
+                await load()
+            } else {
+                opError = (j["error"] as? String) ?? "创建失败"
+            }
+        } catch {
+            opError = "请求失败"
+        }
+    }
+
+    private func rename() async {
+        guard let t = renameTarget else { return }
+        let newName = renameText.trimmingCharacters(in: .whitespaces)
+        guard !newName.isEmpty else { return }
+        do {
+            let j = try await auth.json("/api/files/rename", method: "POST", body: ["path": relPath(t.name), "new_name": newName])
+            if (j["ok"] as? Bool) == true {
+                renameTarget = nil
+                toast = "已重命名"
+                await load()
+            } else {
+                opError = (j["error"] as? String) ?? "重命名失败"
+            }
+        } catch {
+            opError = "请求失败"
+        }
+    }
+
+    private func delete() async {
+        guard let t = confirmDelete else { return }
+        do {
+            let j = try await auth.json("/api/files/delete", method: "POST", body: ["path": relPath(t.name)])
+            if (j["ok"] as? Bool) == true {
+                confirmDelete = nil
+                toast = "已删除"
+                await load()
+            } else {
+                opError = (j["error"] as? String) ?? "删除失败"
+            }
+        } catch {
+            opError = "请求失败"
         }
     }
 
