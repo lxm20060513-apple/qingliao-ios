@@ -626,7 +626,8 @@ struct MessageBubble: View {
                     } else {
                         // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(contentBlocks) { block in
+                            // 显式 id 参数：避开 Xcode16 ForEach(Binding) 重载的泛型推断歧义
+                            ForEach(contentBlocks, id: \.id) { block in
                                 switch block.kind {
                                 case .markdown(let text):
                                     // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
