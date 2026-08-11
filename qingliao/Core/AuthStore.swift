@@ -71,12 +71,11 @@ final class AuthStore {
 
     // MARK: - 统一请求入口（新路由层）
 
-    /// 统一 API 请求：自动判定直连/relay
-    /// - 无参 GET（无 query/body/header）→ CFStream 直连（iOS 27 蜂窝唯一通的形态）
-    /// - 带 query 的 GET / 任何 POST → Safari Relay（借 Safari 进程上行）
+    /// 统一 API 请求：网络分流
+    /// - Wi-Fi/其他：URLSession 直连（免 relay 弹窗）
+    /// - 蜂窝：CFStream 直连优先（纯 socket 绕 iOS 27 管控），失败降级 Safari relay
     /// 返回 (data, HTTPURLResponse)
     func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> (Data, HTTPURLResponse) {
-        let hasQuery = path.contains("?")
         let bodyData: Data?
         var headers: [String: String] = [:]
         if let body {
@@ -87,15 +86,14 @@ final class AuthStore {
             bodyData = nil
         }
 
-        // 判定：无参 GET 走直连，其余走 relay
-        let canDirect = (method == "GET") && !hasQuery && bodyData == nil
-
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
-            // 蜂窝：iOS 27 管控 → 无参 GET 走 CFStream 直连，其余走 Safari relay（弹窗不可避免）
-            if canDirect {
-                (data, code) = try await relay.directGET(path: path, headers: headers, timeout: 10)
-            } else {
+            // 蜂窝：CFStream 直连优先（纯 socket 层绕开 iOS 27 管控，免 relay 弹窗）；
+            // 直连失败（真被管控挂起/超时）才降级 Safari relay 兜底
+            do {
+                (data, code) = try await relay.directRequest(method: method, path: path,
+                                                             headers: headers, body: bodyData, timeout: 10)
+            } catch {
                 (data, code) = try await relay.relay(method: method, path: path,
                                                      headers: headers, body: bodyData,
                                                      timeout: 30)
@@ -177,15 +175,23 @@ final class AuthStore {
 
         let (respData, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
-            // 大文件 relay 传不下（URL 4KB 限制）→ 限制 2KB 以下小文件
-            guard data.count < 2000 else {
-                throw APIError.badResponseDetail("文件过大（蜂窝下 relay 限 2KB，请用 PWA 上传）")
+            // 蜂窝：CFStream 直连上传（socket 层无 URL 4KB 限制，免弹窗），失败降级 relay（限 2KB 小文件）
+            do {
+                (respData, code) = try await relay.directRequest(
+                    method: "POST", path: path,
+                    headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
+                    body: body, timeout: 20
+                )
+            } catch {
+                guard data.count < 2000 else {
+                    throw APIError.badResponseDetail("文件过大（蜂窝下 relay 限 2KB，请用 PWA 上传）")
+                }
+                (respData, code) = try await relay.relay(
+                    method: "POST", path: path,
+                    headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
+                    body: body, timeout: 30
+                )
             }
-            (respData, code) = try await relay.relay(
-                method: "POST", path: path,
-                headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
-                body: body, timeout: 30
-            )
         } else {
             (respData, code) = try await directHTTP(
                 method: "POST", path: path,
@@ -215,12 +221,20 @@ final class AuthStore {
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
-            let uid = RelayIdentity.uid(for: sessionId)
-            (data, code) = try await relay.relay(
-                method: "POST", path: "/r/stream/start/\(uid)",
-                headers: ["Content-Type": "application/json"],
-                body: bodyData, timeout: 30
-            )
+            // 蜂窝：CFStream 直连 POST 标准端点（免弹窗），失败降级 relay 路径参数版
+            do {
+                (data, code) = try await relay.directRequest(
+                    method: "POST", path: "/api/stream/start",
+                    headers: ["Content-Type": "application/json"], body: bodyData, timeout: 12
+                )
+            } catch {
+                let uid = RelayIdentity.uid(for: sessionId)
+                (data, code) = try await relay.relay(
+                    method: "POST", path: "/r/stream/start/\(uid)",
+                    headers: ["Content-Type": "application/json"],
+                    body: bodyData, timeout: 30
+                )
+            }
         } else {
             (data, code) = try await directHTTP(
                 method: "POST", path: "/api/stream/start",
@@ -239,8 +253,15 @@ final class AuthStore {
     func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String) {
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
-            let uid = RelayIdentity.uid(for: currentStreamSessionId)
-            (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)", timeout: 10)
+            // 蜂窝：CFStream 直连标准 poll（带 query，socket 层不受管控），失败降级路径参数版
+            do {
+                (data, code) = try await relay.directRequest(
+                    method: "GET", path: "/api/stream/\(taskId)?offset=\(offset)", timeout: 10
+                )
+            } catch {
+                let uid = RelayIdentity.uid(for: currentStreamSessionId)
+                (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)", timeout: 10)
+            }
         } else {
             (data, code) = try await directHTTP(method: "GET", path: "/api/stream/\(taskId)?offset=\(offset)",
                                                 headers: [:], body: nil)
@@ -256,11 +277,15 @@ final class AuthStore {
         return (content, done, status, error)
     }
 
-    /// 流式停止：蜂窝 → relay POST /r/stream/stop/{uid}/{taskId}；Wi-Fi → 直连 POST /api/stream/{taskId}/stop
+    /// 流式停止：蜂窝 → CFStream 直连 POST（免弹窗），失败降级 relay；Wi-Fi → 直连
     func streamStop(taskId: String) async {
         if NetworkMonitor.shared.isCellular {
-            let uid = RelayIdentity.uid(for: currentStreamSessionId)
-            _ = try? await relay.relay(method: "POST", path: "/r/stream/stop/\(uid)/\(taskId)", timeout: 10)
+            do {
+                _ = try await relay.directRequest(method: "POST", path: "/api/stream/\(taskId)/stop", timeout: 8)
+            } catch {
+                let uid = RelayIdentity.uid(for: currentStreamSessionId)
+                _ = try? await relay.relay(method: "POST", path: "/r/stream/stop/\(uid)/\(taskId)", timeout: 10)
+            }
         } else {
             _ = try? await directHTTP(method: "POST", path: "/api/stream/\(taskId)/stop", headers: [:], body: nil)
         }
@@ -281,7 +306,7 @@ final class AuthStore {
         do {
             let (_, code): (Data, Int)
             if NetworkMonitor.shared.isCellular {
-                (_, code) = try await relay.directGET(path: "/api/auth/status", timeout: 8)
+                (_, code) = try await relay.directRequest(method: "GET", path: "/api/auth/status", timeout: 8)
             } else {
                 (_, code) = try await directHTTP(method: "GET", path: "/api/auth/status", headers: [:], body: nil)
             }

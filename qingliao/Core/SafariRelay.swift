@@ -29,9 +29,11 @@ final class SafariRelay: NSObject {
 
     // MARK: - 公开 API
 
-    /// 直连 GET（CFStream 无参栈）：下行读操作用这个（已验证唯一通的形态）
+    /// CFStream 直连任意请求（GET/POST，带 query/body）——纯 socket 层，蜂窝下也走这条路径
+    /// （directGET 已验证蜂窝通；method/body 只是同一实现的参数，管控在 URLSession 高层，socket 不受影响）
     /// 返回 (data, statusCode)
-    func directGET(path: String, headers: [String: String] = [:], timeout: TimeInterval = 10) async throws -> (Data, Int) {
+    func directRequest(method: String, path: String, headers: [String: String] = [:],
+                       body: Data? = nil, timeout: TimeInterval = 15) async throws -> (Data, Int) {
         guard let server = Self.currentServer(),
               let url = URL(string: server + path),
               let host = url.host else {
@@ -44,14 +46,20 @@ final class SafariRelay: NSObject {
                 do {
                     let client = StreamHTTPClient()
                     let r = try client.request(host: host, port: port, isTLS: isTLS,
-                                               method: "GET", path: path,
-                                               headers: headers, body: nil, timeout: timeout)
+                                               method: method, path: path,
+                                               headers: headers, body: body, timeout: timeout)
                     cont.resume(returning: r)
                 } catch {
                     cont.resume(throwing: error)
                 }
             }
         }
+    }
+
+    /// 直连 GET（CFStream 无参栈）：下行读操作用这个（已验证唯一通的形态）
+    /// 返回 (data, statusCode)
+    func directGET(path: String, headers: [String: String] = [:], timeout: TimeInterval = 10) async throws -> (Data, Int) {
+        try await directRequest(method: "GET", path: path, headers: headers, body: nil, timeout: timeout)
     }
 
     /// Relay 请求：经 Safari 进程发任意请求（GET/POST，带 query/body/header）
