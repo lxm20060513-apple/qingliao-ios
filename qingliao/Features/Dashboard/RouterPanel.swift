@@ -6,6 +6,7 @@ struct RouterStatus {
     var ok = false
     var hostname = "--"
     var load = "--"
+    var cpuPct = 0.0
     var uptime = "--"
     var memTotal = 0.0
     var memFree = 0.0
@@ -26,6 +27,7 @@ struct RouterStatus {
         r.ok = (j["ok"] as? Bool) ?? false
         r.hostname = j["hostname"] as? String ?? "--"
         r.load = j["load"] as? String ?? "--"
+        r.cpuPct = j["cpu_pct"] as? Double ?? 0
         r.uptime = j["uptime"] as? String ?? "--"
         r.memTotal = j["mem_total_gb"] as? Double ?? 0
         r.memFree = j["mem_free_gb"] as? Double ?? 0
@@ -44,12 +46,14 @@ struct RouterStatus {
     }
 }
 
-/// 路由器板块：NAS 同款卡片风格（MeterCard/ServiceCard）+ Clash 开关
+/// 路由器板块：NAS 同款卡片风格（MeterCard/ServiceCard）+ Clash 弹窗操作
 struct RouterPanel: View {
     let router: RouterStatus
     var onStart: (() -> Void)? = nil
     var onStop: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
+
+    @State private var showClashSheet = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -77,57 +81,103 @@ struct RouterPanel: View {
 
             // 2x2 指标卡（同 NAS 面板 MeterCard/ServiceCard 风格）
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                MeterCard(name: "CPU", value: router.load,
-                          sub: "负载", ratio: loadRatio, color: .blue)
+                MeterCard(name: "CPU", value: String(format: "%.1f%%", router.cpuPct),
+                          sub: "使用率", ratio: router.cpuPct / 100.0, color: .blue)
                 MeterCard(name: "内存", value: router.memUsedText,
                           sub: "/ \(String(format: "%.1fG", router.memTotal))", ratio: router.memPct, color: .green)
                 ServiceCard(name: "运行时间", running: true, detail: router.uptime)
+                // Clash 卡：点击弹窗（同智能家居开关卡交互）
                 ServiceCard(name: "Clash", running: router.clashRunning,
-                            detail: router.clashRunning ? "代理已生效" : "已停止")
-            }
-
-            // Clash 开关（快捷指令）
-            HStack(spacing: 8) {
-                Button {
-                    onStart?()
-                } label: {
-                    HStack(spacing: 5) {
-                        if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                        else { Image(systemName: "play.fill").font(.system(size: 11)) }
-                        Text("启动 Clash")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(router.busy)
-
-                Button {
-                    onStop?()
-                } label: {
-                    HStack(spacing: 5) {
-                        if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                        else { Image(systemName: "stop.fill").font(.system(size: 11)) }
-                        Text("关闭 Clash")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(router.busy)
+                            detail: router.clashRunning ? "代理已生效 · 点击管理" : "已停止 · 点击管理")
+                    .onTapGesture { showClashSheet = true }
             }
         }
+        .sheet(isPresented: $showClashSheet) {
+            ClashSheet(router: router, onStart: { onStart?() }, onStop: { onStop?() })
+                .presentationDetents([.height(240)])
+        }
     }
+}
 
-    /// 负载 → 进度比例（OpenWrt 常见 4 核：load/4 封顶 1）
-    private var loadRatio: Double {
-        let v = Double(router.load.components(separatedBy: " ").first ?? "0") ?? 0
-        return min(v / 4.0, 1.0)
+/// Clash 管理弹窗（两张操作卡：打开 / 关闭）
+struct ClashSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let router: RouterStatus
+    let onStart: () -> Void
+    let onStop: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack {
+                Text("⚡ Clash 管理")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+                Circle()
+                    .fill(router.clashRunning ? Color.green : Color.gray)
+                    .frame(width: 8, height: 8)
+                Text(router.clashRunning ? "运行中" : "已停止")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 12) {
+                // 打开 Clash
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onStart() }
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
+                        Text("打开 Clash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("开启代理加速")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(router.busy)
+
+                // 关闭 Clash
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onStop() }
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
+                        Text("关闭 Clash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("恢复直连")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(router.busy)
+            }
+            Spacer()
+        }
+        .padding(18)
+        .padding(.top, 6)
     }
 }

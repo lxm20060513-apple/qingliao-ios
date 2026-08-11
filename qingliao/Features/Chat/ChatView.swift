@@ -238,28 +238,29 @@ struct ChatView: View {
                         }
                         if stream.isStreaming {
                             if stream.content.isEmpty {
-                                // 思考中动画（三点跳动）
-                                HStack(alignment: .top, spacing: 8) {
+                                // 思考中动画（三点跳动，气泡加大版）
+                                HStack(alignment: .top, spacing: 10) {
                                     ZStack {
                                         Circle()
                                             .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
                                         Image(systemName: "brain.head.profile")
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.system(size: 15, weight: .medium))
                                             .foregroundStyle(.white)
                                     }
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: 38, height: 38)
                                     TypingIndicator()
-                                        .padding(.horizontal, 13)
+                                        .padding(.horizontal, 16)
                                         .overlay(alignment: .bottomTrailing) {
                                             Text("思考中")
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(.tertiary)
-                                                .padding(.trailing, 14)
-                                                .padding(.bottom, -14)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                                .padding(.trailing, 18)
+                                                .padding(.bottom, -16)
                                         }
-                                        .padding(.vertical, 12)
+                                        .padding(.vertical, 15)
                                         .background(Color(uiColor: .systemGray5))
-                                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                        .frame(minHeight: 44)
                                     Spacer(minLength: 48)
                                 }
                                 .id("streaming")
@@ -311,14 +312,13 @@ struct ChatView: View {
     struct TypingIndicator: View {
         @State private var animating = false
         var body: some View {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
                     Circle()
-                        .fill(Color.secondary.opacity(0.55))
-                        .frame(width: 6, height: 6)
-                        .offset(y: animating ? -3 : 3)
-                        .animation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.14), value: animating)
+                        .fill(Color.secondary.opacity(0.6))
+                        .frame(width: 8, height: 8)
+                        .offset(y: animating ? -4 : 4)
+                        .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(Double(i) * 0.15), value: animating)
                 }
             }
             .onAppear { animating = true }
