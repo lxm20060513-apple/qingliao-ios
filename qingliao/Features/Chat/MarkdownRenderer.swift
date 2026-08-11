@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import SwiftUI
 
 /// 轻量 Markdown → AttributedString 渲染器（v2.0.34 修复"AI 回复纯文本无排版"）
@@ -80,8 +81,8 @@ enum MarkdownRenderer {
             } else if token.hasPrefix("[") {
                 // [text](url) → 蓝色文本
                 let body = String(token.dropFirst().dropLast())
-                if let close = body.firstIndex(of: "](") {
-                    out += styled(String(body[..<close]), font, .systemBlue)
+                if let close = body.range(of: "](") {
+                    out += styled(String(body[..<close.lowerBound]), font, .systemBlue)
                 }
             }
             pos = r.location + r.length
@@ -94,8 +95,10 @@ enum MarkdownRenderer {
 
     private static func styled(_ s: String, _ font: UIFont, _ color: UIColor) -> AttributedString {
         var a = AttributedString(s)
-        a.font = font
-        a.foregroundColor = color
+        // UIKit 属性下标（类型稳定：font=UIFont / foregroundColor=UIColor），
+        // 不用 AttributedString.font 快捷属性（其类型是 SwiftUI Font，直接赋 UIFont 编译错误）
+        a[AttributeScopes.UIKitAttributes.fontAttribute] = font
+        a[AttributeScopes.UIKitAttributes.foregroundColorAttribute] = color
         return a
     }
 }
