@@ -36,7 +36,8 @@ struct ScrollOffsetKey: PreferenceKey {
 }
 
 extension View {
-    /// 挂到 ScrollView 上：上报滚动方向 → Dock 下滑隐藏/上滑显示
+    /// 挂到**可滚动内容**上（VStack/LazyVStack 内部）：上报滚动方向 → Dock 下滑隐藏/上滑显示
+    /// 注意：必须挂在内容上而非 ScrollView 外层（外层 background 不随滚动，offset 恒定）
     func dockScrollAware() -> some View {
         self
             .background(

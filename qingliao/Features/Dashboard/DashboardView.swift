@@ -46,11 +46,11 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
+                .dockScrollAware()   // 挂内容（随滚动上报）
             }
             .refreshable {
                 await refresh()
             }
-            .dockScrollAware()
             .sheet(item: $activeSheet) { s in
                 switch s {
                 case .lights:

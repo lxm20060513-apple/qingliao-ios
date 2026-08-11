@@ -103,7 +103,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
-                .dockScrollAware()
+                .dockScrollAware()   // 挂内容（随滚动上报）
             }
         }
         .sheet(isPresented: $showServerSheet) {

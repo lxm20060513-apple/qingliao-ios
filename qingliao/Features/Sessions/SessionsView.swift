@@ -61,11 +61,11 @@ struct SessionsView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 90)
+                    .dockScrollAware()   // 挂内容（随滚动上报）
                 }
                 .refreshable {
                     await load()
                 }
-                .dockScrollAware()
             }
         }
         .task { await load() }
@@ -79,6 +79,7 @@ struct SessionsView: View {
     private var addButton: some View {
         Button {
             chat.newSession()
+            DockVisibility.shared.reset()   // 新建会话后 Dock 恢复显示
             onOpenSession?()
         } label: {
             Image(systemName: "plus")
@@ -107,10 +108,11 @@ struct SessionsView: View {
 
     private func delete(_ s: ChatSession) {
         // 本地先移除，再同步到后端（merge deleted）
+        let deletingId = s.id
         withAnimation {
-            sessions.removeAll { $0.id == s.id }
+            sessions.removeAll { $0.id == deletingId }
         }
-        if chat.sessionId == s.id {
+        if chat.sessionId == deletingId {
             chat.newSession()
         }
         Task {

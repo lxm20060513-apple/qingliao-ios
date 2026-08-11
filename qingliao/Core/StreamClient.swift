@@ -94,7 +94,8 @@ final class StreamClient {
                 if interval != 0.5 { interval = 0.5 }
             } else if !done {
                 idleStreak += 1
-                if idleStreak >= 3 && interval != 2.0 { interval = 2.0 }
+                // 空 poll 保持高频（0.8s 上限）——首 token 延迟时避免 2s 一跳造成"一股脑"感
+                if idleStreak >= 3 && interval != 0.8 { interval = 0.8 }
             }
             if done {
                 finish(success: st != "error", error: err)

@@ -199,6 +199,12 @@ struct FilesView: View {
     private func download(_ e: FileEntry) async {
         downloading = true
         defer { downloading = false }
+        // 蜂窝下 Safari relay 的 URL 有 4KB 限制：大文件必须 Wi-Fi 直连
+        if NetworkMonitor.shared.isCellular && e.size > 2000 {
+            toast = "文件较大（\(Int(e.size / 1024))KB），蜂窝下载受限，请连接 Wi-Fi 后重试"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { toast = "" }
+            return
+        }
         let path = ((cwd.isEmpty ? "" : cwd + "/") + e.name).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         do {
             let (data, code) = try await auth.downloadFile("/api/files/download?path=\(path)")

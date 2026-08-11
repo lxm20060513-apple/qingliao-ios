@@ -214,11 +214,11 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
+                    .dockScrollAware()   // 挂消息内容（随滚动上报，Dock 下滑隐藏/上滑显示）
                 }
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
-            .dockScrollAware()
             .onTapGesture {
                 inputFocus = false
             }
