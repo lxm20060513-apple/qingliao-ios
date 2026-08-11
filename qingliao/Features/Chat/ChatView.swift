@@ -117,8 +117,8 @@ struct ChatView: View {
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
-            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 60pt 避让贴底 Dock（不再大段留空）
-            .padding(.bottom, kb.isVisible ? kb.height + 10 : 60)
+            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 86pt 避让贴底 Dock（不被遮挡也不留大空）
+            .padding(.bottom, kb.isVisible ? kb.height + 10 : 86)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)

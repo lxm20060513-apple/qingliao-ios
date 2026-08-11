@@ -323,9 +323,27 @@ struct TasksView: View {
                 Spacer()
             } else if tasks.isEmpty {
                 Spacer()
-                Text("暂无定时任务")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.tertiary)
+                VStack(spacing: 10) {
+                    Text("暂无定时任务")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tertiary)
+                    if let loadError {
+                        Text(loadError)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
+                        Button("重试") {
+                            Task { await load() }
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    } else {
+                        Text("下拉可刷新")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
                 Spacer()
             } else {
                 ScrollView {
@@ -407,6 +425,7 @@ struct TasksView: View {
     }
 
     @State private var showNewTask = false
+    @State private var loadError: String?
 
     private func load() async {
         loading = true
@@ -422,8 +441,10 @@ struct TasksView: View {
                                 enabled: (d["enabled"] as? Bool) ?? true,
                                 nextRunAt: d["next_run_at"] as? String)
             }
+            loadError = nil
         } catch {
             tasks = []
+            loadError = "加载失败：\(error.localizedDescription)"
         }
     }
 
