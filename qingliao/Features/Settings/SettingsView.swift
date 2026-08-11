@@ -17,6 +17,8 @@ struct SettingsView: View {
     @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var showModelSheet = false
     @State private var showAbout = false
+    @State private var showSecrets = false
+    @State private var secretCount = 0
     @State private var testResult: String?
     @State private var testing = false
 
@@ -55,6 +57,9 @@ struct SettingsView: View {
                     // 功能
                     SectionHeader("功能")
                     VStack(spacing: 0) {
+                        SettingRow(icon: "key.fill", iconColor: .teal, title: "密码管理", value: "\(secretCount) 条凭据", chevron: true)
+                            .onTapGesture { showSecrets = true }
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "folder.fill", iconColor: .indigo, title: "文件管理", chevron: true)
                             .onTapGesture { showFiles = true }
                         Divider().padding(.leading, 52)
@@ -141,6 +146,15 @@ struct SettingsView: View {
         .sheet(isPresented: $showAbout) {
             AboutView()
                 .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showSecrets) {
+            SecretsView()
+                .presentationDetents([.large])
+        }
+        .task {
+            if let j = try? await auth.json("/api/secrets") {
+                secretCount = (j["secrets"] as? [Any])?.count ?? 0
+            }
         }
         .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
             Button("好", role: .cancel) { testResult = nil }

@@ -12,6 +12,7 @@ struct DashboardView: View {
 
     @State private var nas = NASStatus()
     @State private var haEntities: [HAEntity] = []
+    @State private var router = RouterStatus()
     @State private var scrollPos = ScrollPosition()
     @State private var loaded = false
     @State private var activeSheet: DashboardSheet?
@@ -44,6 +45,13 @@ struct DashboardView: View {
                         ServiceCard(name: "Hermes 网关", running: nas.hermesAlive, detail: nas.hermesMemText)
                         ServiceCard(name: "运行时间", running: true, detail: nas.uptime)
                     }
+
+                    sectionTitle("路由器")
+                    RouterPanel(router: router,
+                                onStart: { clashAction("start") },
+                                onStop: { clashAction("stop") },
+                                onRefresh: { Task { await loadRouter() } })
+                        .onAppear { Task { await loadRouter() } }
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
@@ -86,6 +94,24 @@ struct DashboardView: View {
     }
 
     // MARK: - 数据
+
+    private func loadRouter() async {
+        if let j = try? await auth.json("/api/router/status") {
+            router = RouterStatus.parse(j)
+        }
+    }
+
+    /// 快捷指令：启动/关闭 Clash
+    private func clashAction(_ action: String) {
+        router.busy = true
+        Task {
+            defer { router.busy = false }
+            if let j = try? await auth.json("/api/router/clash/\(action)", method: "POST", body: nil) {
+                router = RouterStatus.merge(router, with: j)
+            }
+            await loadRouter()
+        }
+    }
 
     private func refresh() async {
         // 顺序请求（async let 返回值非 Sendable，Swift 6 严格并发下编译失败）
