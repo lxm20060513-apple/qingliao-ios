@@ -29,7 +29,7 @@ final class DockVisibility {
 
 /// ScrollView 滚动 offset 上报（配合 DockVisibility）
 struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    nonisolated static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
