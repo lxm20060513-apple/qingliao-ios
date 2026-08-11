@@ -40,6 +40,8 @@ targets:
           - CFBundleURLName: com.qingliao.relay
             CFBundleURLSchemes:
               - qingliao
+        NSMicrophoneUsageDescription: 按住说话语音输入需要麦克风权限
+        NSSpeechRecognitionUsageDescription: 语音输入需要将语音转换为文字
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingliao.app2

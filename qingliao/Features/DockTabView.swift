@@ -73,6 +73,7 @@ struct DockTabView: View {
 
 struct DockBar: View {
     @Binding var selected: DockTab
+    @Environment(\.colorScheme) private var scheme
     @State private var lensX: CGFloat = 0
     @State private var isInteracting = false
     @State private var hoverIdx: Int? = nil   // 手指所在 tab（放大镜用）
@@ -106,10 +107,9 @@ struct DockBar: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             // LiquidGlassKit 液态玻璃重构（参考 muhittincamdali/LiquidGlassKit）：
-            // ultraThinMaterial 更透材质 + 顶部高光带 + 渐变描边 + 内高光 + 柔和投影
+            // 玻璃材质分模式：深色 ultraThin / 浅色 thin（透出页面内容与环境光晕，避免白块）
             .background {
-                // 浅色下 ultraThinMaterial 几乎不可见 → 用 regularMaterial 增强玻璃感
-                Capsule().fill(.regularMaterial)
+                Capsule().fill(scheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.thinMaterial))
             }
             .clipShape(.capsule)
             .overlay {

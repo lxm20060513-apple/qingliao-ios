@@ -2,6 +2,8 @@ import SwiftUI
 import PhotosUI
 import PDFKit
 import UniformTypeIdentifiers
+import AVFoundation
+import Speech
 
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
@@ -14,7 +16,12 @@ struct ChatView: View {
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
     @State private var sentOK = false
-    @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）   // ✅送达提示条
+    @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）
+    // 语音输入（按住说话 → SFSpeechRecognizer 转写）
+    @State private var isRecording = false
+    @State private var voiceBusy = false
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
@@ -33,7 +40,24 @@ struct ChatView: View {
             PageHeader(title: "聊天",
                        subtitle: serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线"),
                        showStatus: true,
-                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray))
+                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray),
+                       trailing: AnyView(
+                           Button {
+                               showModelSheet = true
+                           } label: {
+                               HStack(spacing: 4) {
+                                   Image(systemName: "cpu")
+                                       .font(.system(size: 11))
+                                   Text(modelName)
+                                       .font(.system(size: 11, weight: .medium))
+                               }
+                               .foregroundStyle(Color.accentColor)
+                               .padding(.horizontal, 10)
+                               .padding(.vertical, 5)
+                               .background(Color.accentColor.opacity(0.12), in: Capsule())
+                           }
+                           .buttonStyle(.plain)
+                       ))
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
@@ -73,7 +97,10 @@ struct ChatView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 6)
             }
-            ChatInputBar(text: $inputText, focused: $inputFocus, streaming: stream.isStreaming) {
+            ChatInputBar(text: $inputText, focused: $inputFocus, streaming: stream.isStreaming,
+                         isRecording: isRecording,
+                         onVoiceStart: { startVoice() },
+                         onVoiceEnd: { endVoice() }) {
                 send()
             } onStop: {
                 stream.stop(auth: auth)
@@ -151,10 +178,32 @@ struct ChatView: View {
                             .animation(.spring(duration: 0.3, bounce: 0.2), value: chat.messages.count)
                         }
                         if stream.isStreaming {
-                            MessageBubble(
-                                message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil)
-                            )
-                            .id("streaming")
+                            if stream.content.isEmpty {
+                                // 思考中动画（三点跳动）
+                                HStack(alignment: .top, spacing: 8) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        Image(systemName: "brain.head.profile")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(width: 30, height: 30)
+                                    TypingIndicator()
+                                        .padding(.horizontal, 13)
+                                        .padding(.vertical, 12)
+                                        .background(Color(uiColor: .systemGray5))
+                                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                    Spacer(minLength: 48)
+                                }
+                                .id("streaming")
+                                .transition(.opacity)
+                            } else {
+                                MessageBubble(
+                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil)
+                                )
+                                .id("streaming")
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -178,6 +227,28 @@ struct ChatView: View {
             // 服务器连接状态检测（真实绿点）
             let r = await auth.testConnection(server: auth.serverURL)
             serverOnline = r.hasPrefix("✅")
+        }
+        .sheet(isPresented: $showModelSheet) {
+            ModelSheet(current: modelName)
+                .presentationDetents([.medium])
+        }
+    }
+
+    /// 思考中动画（三点跳动）
+    struct TypingIndicator: View {
+        @State private var animating = false
+        var body: some View {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Color.secondary.opacity(0.55))
+                        .frame(width: 6, height: 6)
+                        .offset(y: animating ? -3 : 3)
+                        .animation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.14), value: animating)
+                }
+            }
+            .onAppear { animating = true }
         }
     }
 
@@ -369,6 +440,68 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - 语音输入（按住说话 → 录音 → SFSpeechRecognizer 转写填入输入框）
+
+    private func startVoice() {
+        guard !voiceBusy, !isRecording else { return }
+        AVAudioApplication.requestRecordPermission { granted in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("voice-\(Int(Date().timeIntervalSince1970)).m4a")
+                let settings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: 16000,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+                ]
+                do {
+                    let rec = try AVAudioRecorder(url: url, settings: settings)
+                    rec.record()
+                    audioRecorder = rec
+                    isRecording = true
+                    inputFocus = false
+                } catch {}
+            }
+        }
+    }
+
+    private func endVoice() {
+        guard isRecording else { return }
+        isRecording = false
+        voiceBusy = true
+        let url = audioRecorder?.url
+        audioRecorder?.stop()
+        audioRecorder = nil
+        guard let url, FileManager.default.fileExists(atPath: url.path) else {
+            voiceBusy = false
+            return
+        }
+        transcribe(url)
+    }
+
+    private func transcribe(_ url: URL) {
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN")),
+              recognizer.isAvailable else {
+            voiceBusy = false
+            return
+        }
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        recognizer.recognitionTask(with: request) { result, error in
+            if let result {
+                let t = result.bestTranscription.formattedString
+                DispatchQueue.main.async {
+                    inputText = t
+                    voiceBusy = false
+                }
+            } else if error != nil {
+                DispatchQueue.main.async {
+                    voiceBusy = false
+                }
+            }
+        }
+    }
+
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
     private func compressImage(_ image: UIImage) -> String? {
         let maxSide: CGFloat = 1280
@@ -486,6 +619,10 @@ struct ChatInputBar: View {
     var onSend: () -> Void
     var onStop: () -> Void = {}
     var onPickAttachment: () -> Void = {}
+    // 语音输入（按住说话）
+    var isRecording: Bool = false
+    var onVoiceStart: () -> Void = {}
+    var onVoiceEnd: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
@@ -497,12 +634,40 @@ struct ChatInputBar: View {
             }
             .buttonStyle(.plain)
 
-            TextField("输入消息...", text: $text, axis: .vertical)
-                .font(.system(size: 14))
-                .lineLimit(1...4)
+            // 语音输入：按住说话（类微信）
+            Image(systemName: isRecording ? "mic.fill" : "mic")
+                .font(.system(size: 17))
+                .foregroundStyle(isRecording ? Color.red : Color.secondary)
+                .padding(4)
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.15, pressing: { pressing in
+                    if pressing && !isRecording {
+                        onVoiceStart()
+                    } else if !pressing && isRecording {
+                        onVoiceEnd()
+                    }
+                }, perform: {})
+                .animation(.easeOut(duration: 0.15), value: isRecording)
+
+            if isRecording {
+                // 录音中：红点 + 提示
+                HStack(spacing: 5) {
+                    Circle().fill(Color.red).frame(width: 7, height: 7)
+                    Text("松开结束")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.red)
+                }
                 .padding(.vertical, 7)
-                .padding(.horizontal, 2)
-                .focused($focused)
+                .frame(maxWidth: .infinity)
+                .background(Color.red.opacity(0.08), in: Capsule())
+            } else {
+                TextField("输入消息...", text: $text, axis: .vertical)
+                    .font(.system(size: 14))
+                    .lineLimit(1...4)
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 2)
+                    .focused($focused)
+            }
 
             Button {
                 if streaming {

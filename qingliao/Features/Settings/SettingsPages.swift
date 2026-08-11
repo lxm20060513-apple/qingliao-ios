@@ -328,9 +328,26 @@ struct TasksView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
+                                // 立即运行
+                                Button {
+                                    runTask(t)
+                                } label: {
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
+                            // 长按删除
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    deleteTask(t)
+                                } label: {
+                                    Label("删除任务", systemImage: "trash")
+                                }
+                            }
                             Divider().padding(.leading, 62)
                         }
                     }
@@ -359,6 +376,22 @@ struct TasksView: View {
             }
         } catch {
             tasks = []
+        }
+    }
+
+    /// 立即运行任务（POST /api/cron/tasks/{id}/run）
+    private func runTask(_ t: CronTask) {
+        Task {
+            _ = try? await auth.request("/api/cron/tasks/\(t.id)/run", method: "POST", body: nil)
+            await load()
+        }
+    }
+
+    /// 删除任务（DELETE /api/cron/tasks/{id}）
+    private func deleteTask(_ t: CronTask) {
+        Task {
+            _ = try? await auth.request("/api/cron/tasks/\(t.id)", method: "DELETE", body: nil)
+            await load()
         }
     }
 }
@@ -436,11 +469,11 @@ struct LogsView: View {
         loading = true
         defer { loading = false }
         do {
-            let j = try await auth.json("/api/logs/sys?level=info")
+            let j = try await auth.json("/api/logs/sys")
             if let arr = j["logs"] as? [String] {
                 logs = arr
             } else if let arr = j["logs"] as? [[String: Any]] {
-                logs = arr.compactMap { $0["message"] as? String ?? $0["line"] as? String }
+                logs = arr.compactMap { $0["msg"] as? String ?? $0["message"] as? String ?? $0["line"] as? String }
             }
         } catch {
             logs = []
