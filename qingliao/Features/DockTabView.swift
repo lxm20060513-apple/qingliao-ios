@@ -62,7 +62,7 @@ struct DockTabView: View {
                     .opacity(kb.isVisible ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
-                    .padding(.bottom, 30)
+                    .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
