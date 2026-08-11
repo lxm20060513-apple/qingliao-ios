@@ -25,15 +25,19 @@ struct MessageContentBlock: Identifiable {
 struct MessageBlockView: View {
     let block: MessageContentBlock
 
+    /// markdown 容错解析选项（畸形语法保留已解析部分，不整体回退纯文本）
+    private static var markdownOptions: AttributedString.MarkdownParsingOptions {
+        var opts = AttributedString.MarkdownParsingOptions()
+        opts.failurePolicy = .returnPartiallyParsedIfPossible
+        return opts
+    }
+
     var body: some View {
         switch block.kind {
         case .markdown(let text):
             // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
             // markdown 字体属性（加粗/标题/代码等），导致排版失效
-            // failurePolicy: 畸形 markdown（未闭合语法）保留已解析部分，不整体回退纯文本
-            var opts = AttributedString.MarkdownParsingOptions()
-            opts.failurePolicy = .returnPartiallyParsedIfPossible
-            Text((try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text))
+            Text((try? AttributedString(markdown: text, options: Self.markdownOptions)) ?? AttributedString(text))
                 .lineSpacing(3)
                 .textSelection(.enabled)
         case .code(let text):
