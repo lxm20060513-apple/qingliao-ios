@@ -22,7 +22,10 @@ struct ChatView: View {
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
 
-    private let modelName = "deepseek-v4-flash"
+    // 模型可从设置页选择（UserDefaults 持久化，默认 deepseek-v4-flash）
+    private var modelName: String {
+        UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
+    }
     private let provider = "opencode"
 
     var body: some View {
@@ -142,6 +145,10 @@ struct ChatView: View {
                                 regenerate(at: msg.id)
                             }
                             .id(msg.id)
+                            // 气泡出现动效：淡入 + 轻微上移（灵动）
+                            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                                    removal: .opacity))
+                            .animation(.spring(duration: 0.3, bounce: 0.2), value: chat.messages.count)
                         }
                         if stream.isStreaming {
                             MessageBubble(
@@ -422,6 +429,7 @@ struct MessageBubble: View {
                         .font(.system(size: 14))
                         .lineSpacing(3)
                         .foregroundStyle(message.isUser ? .white : .primary)
+                        .textSelection(.enabled)   // 长按选中复制（参考 web 版排版体验）
                         .padding(.horizontal, 13)
                         .padding(.vertical, 9)
                         .background(

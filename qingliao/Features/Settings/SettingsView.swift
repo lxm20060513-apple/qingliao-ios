@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var showAppearanceOptions = false
     @State private var showSessionLocSheet = false
     @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
+    @State private var showModelSheet = false
     @State private var testResult: String?
     @State private var testing = false
 
@@ -38,7 +39,8 @@ struct SettingsView: View {
                         SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "服务器地址", value: shortServer, chevron: true)
                             .onTapGesture { showServerSheet = true }
                         Divider().padding(.leading, 52)
-                        SettingRow(icon: "cpu.fill", iconColor: .orange, title: "默认模型", value: "v4-flash")
+                        SettingRow(icon: "cpu.fill", iconColor: .orange, title: "默认模型", value: currentModel, chevron: true)
+                            .onTapGesture { showModelSheet = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "network", iconColor: .blue, title: "测试连接", value: testing ? "检测中..." : nil, chevron: !testing)
                             .onTapGesture { testConnection() }
@@ -125,6 +127,10 @@ struct SettingsView: View {
             SessionLocSheet(currentPath: sessionLoc)
                 .presentationDetents([.medium])
         }
+        .sheet(isPresented: $showModelSheet) {
+            ModelSheet(current: currentModel)
+                .presentationDetents([.medium])
+        }
         .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
             Button("好", role: .cancel) { testResult = nil }
         } message: {
@@ -171,6 +177,11 @@ struct SettingsView: View {
             return "…/" + parts.suffix(2).joined(separator: "/")
         }
         return sessionLoc.isEmpty ? "默认" : sessionLoc
+    }
+
+    /// 当前默认模型（UserDefaults）
+    private var currentModel: String {
+        UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
     }
 
     private func testConnection() {
@@ -486,5 +497,74 @@ struct SessionLocSheet: View {
                 result = "❌ 请求失败：\(error.localizedDescription)"
             }
         }
+    }
+}
+
+// MARK: - 默认模型选择（阶段3：设置模块完善，对标 web 端模型切换）
+
+struct ModelSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let current: String
+    @State private var selected = ""
+
+    /// 可选模型（opencode 提供商）
+    private let models = [
+        ("deepseek-v4-flash", "DeepSeek V4 Flash（默认 · 快速）"),
+        ("deepseek-v4-pro", "DeepSeek V4 Pro（更强推理）"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("默认模型")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 4)
+
+            ForEach(models, id: \.0) { m in
+                Button {
+                    selected = m.0
+                    UserDefaults.standard.set(m.0, forKey: "qingliao_model")
+                    dismiss()
+                } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.0)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Text(m.1)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if selected == m.0 {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(selected == m.0 ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
+                                          lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(18)
+        .onAppear { selected = current }
     }
 }

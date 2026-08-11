@@ -62,8 +62,9 @@ struct DockTabView: View {
                     .opacity(kb.isVisible ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
-                    .padding(.bottom, 26)
+                    .padding(.bottom, 30)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -82,7 +83,7 @@ struct DockBar: View {
             HStack(spacing: 2) {
                 ForEach(DockTab.allCases) { tab in
                     Button {
-                        withAnimation(.spring(duration: 0.35, bounce: 0.3)) { selected = tab }
+                        withAnimation(.spring(duration: 0.5, bounce: 0.35)) { selected = tab }
                     } label: {
                         VStack(spacing: 4) {
                             Image(systemName: tab.icon)

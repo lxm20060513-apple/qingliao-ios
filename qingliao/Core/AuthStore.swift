@@ -225,7 +225,7 @@ final class AuthStore {
             do {
                 (data, code) = try await relay.directRequest(
                     method: "POST", path: "/api/stream/start",
-                    headers: ["Content-Type": "application/json"], body: bodyData, timeout: 12
+                    headers: ["Content-Type": "application/json"], body: bodyData, timeout: 25
                 )
             } catch {
                 let uid = RelayIdentity.uid(for: sessionId)

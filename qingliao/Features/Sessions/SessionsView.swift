@@ -40,7 +40,8 @@ struct SessionsView: View {
                                 .foregroundStyle(.tertiary)
                                 .padding(.top, 30)
                         } else {
-                            VStack(spacing: 0) {
+                            // 每条会话独立卡片 + 间隔（会话条目间距）
+                            VStack(spacing: 8) {
                                 ForEach(sessions) { s in
                                     SessionRow(session: s) {
                                         chat.load(s)
@@ -56,7 +57,6 @@ struct SessionsView: View {
                                     }
                                 }
                             }
-                            .glassListCard()
                         }
                     }
                     .padding(.horizontal, 14)

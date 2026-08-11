@@ -30,10 +30,6 @@ struct DashboardView: View {
                         DeviceCard(name: "猫眼", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
                         DeviceCard(name: "安防", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
                         DeviceCard(name: "温度", value: haTemp, sub: "室内温度", status: .on)
-                        DeviceCard(name: "NAS插座", value: nasSocketOn ? "已开启" : "已关闭", sub: "点击控制", status: nasSocketOn ? .on : .off)
-                            .onTapGesture { toggleNAS() }
-                        DeviceCard(name: "消毒柜", value: disinfectorOn ? "工作中" : "已关闭", sub: "点击控制", status: disinfectorOn ? .on : .off)
-                            .onTapGesture { toggleDisinfector() }
                     }
 
                     sectionTitle("NAS 面板")
@@ -654,7 +650,9 @@ struct HADeviceSheet: View {
     // MARK: - 服务调用（Task 内只捕获 Sendable 值）
 
     private func toggle(_ e: HAEntity) {
-        callService(domain: domain, service: "toggle", entityID: e.entityID, extra: nil)
+        // switch 域实体（NAS 插座/消毒柜追加进灯列表）用 switch 服务域
+        let d = e.entityID.hasPrefix("switch.") ? "switch" : domain
+        callService(domain: d, service: "toggle", entityID: e.entityID, extra: nil)
     }
 
     private func setMode(_ e: HAEntity, mode: String) {
@@ -688,9 +686,19 @@ struct HADeviceSheet: View {
     private func load() async {
         if let arr = try? await auth.jsonArray("/api/ha/states") {
             let all = arr.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
-            entities = all.filter {
+            var list = all.filter {
                 $0.entityID.hasPrefix(domain + ".") && !$0.state.contains("unavailable")
             }
+            if domain == "light" {
+                // 灯列表过滤指示灯（NAS 查询指示灯等不参与），追加 NAS 插座/消毒柜 switch 实体（可控制）
+                list = list.filter { !$0.entityID.contains("indicator_light") }
+                let extraSwitches = all.filter {
+                    ["switch.chuangmi_cn_237985068_m3_on_p_2_1",
+                     "switch.lumi_cn_lumi_158d00039bca0b_v1_on_p_2_1"].contains($0.entityID)
+                }
+                list.append(contentsOf: extraSwitches)
+            }
+            entities = list
         }
         loading = false
     }
