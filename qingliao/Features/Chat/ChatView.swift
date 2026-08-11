@@ -5,6 +5,12 @@ import UniformTypeIdentifiers
 import AVFoundation
 import Speech
 
+/// BigBang 全屏炸开载荷（fullScreenCover(item:) 需要 Identifiable）
+struct BigBangPayload: Identifiable {
+    let id = UUID()
+    let text: String
+}
+
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
 struct ChatView: View {
@@ -23,6 +29,8 @@ struct ChatView: View {
     @State private var audioRecorder: AVAudioRecorder?
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
+    // 大爆炸（BigBang）文本炸开
+    @State private var bigBangPayload: BigBangPayload?
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
@@ -175,6 +183,8 @@ struct ChatView: View {
                             }
                             MessageBubble(message: msg) {
                                 regenerate(at: msg.id)
+                            } onBigBang: {
+                                bigBangPayload = BigBangPayload(text: msg.content)
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
@@ -236,7 +246,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showModelSheet) {
             ModelSheet(current: modelName)
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
+        }
+        .fullScreenCover(item: $bigBangPayload) { payload in
+            BigBangView(text: payload.text)
         }
     }
 
@@ -559,6 +572,7 @@ struct ChatView: View {
 struct MessageBubble: View {
     let message: ChatMessage
     var onRegenerate: () -> Void = {}
+    var onBigBang: () -> Void = {}
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -633,12 +647,17 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
-        // 长按：复制（全部消息）/ 重新生成（AI 消息）
+        // 长按：复制（全部消息）/ 大爆炸 / 重新生成（AI 消息）
         .contextMenu {
             Button {
                 UIPasteboard.general.string = message.content
             } label: {
                 Label("复制", systemImage: "doc.on.doc")
+            }
+            Button {
+                onBigBang()
+            } label: {
+                Label("大爆炸", systemImage: "burst.fill")
             }
             if !message.isUser {
                 Button {
