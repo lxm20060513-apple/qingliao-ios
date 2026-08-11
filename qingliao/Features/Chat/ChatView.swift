@@ -163,7 +163,7 @@ struct ChatView: View {
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
             // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 86pt 避让贴底 Dock（不被遮挡也不留大空）
-            .padding(.bottom, kb.isVisible ? kb.height + 10 : 86)
+            .padding(.bottom, kb.isVisible ? kb.height + 6 : 86)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
@@ -241,15 +241,9 @@ struct ChatView: View {
                                             .foregroundStyle(.white)
                                     }
                                     .frame(width: 38, height: 38)
+                                    // v2.0.35：去掉"思考中"文字（用户要求），保留三点跳动动画
                                     TypingIndicator()
                                         .padding(.horizontal, 16)
-                                        .overlay(alignment: .bottomTrailing) {
-                                            Text("思考中")
-                                                .font(.system(size: 12, weight: .medium))
-                                                .foregroundStyle(.secondary)
-                                                .padding(.trailing, 18)
-                                                .padding(.bottom, -16)
-                                        }
                                         .padding(.vertical, 15)
                                         .background(Color(uiColor: .systemGray5))
                                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -780,7 +774,7 @@ struct ChatInputBar: View {
                 // placeholder 在 lineLimit(2...6) 多行高下顶部对齐，视觉不居中）
                 TextField("", text: $text, axis: .vertical)
                     .font(.system(size: 15))
-                    .lineLimit(2...6)
+                    .lineLimit(1...6)   // v2.0.35：1行起（原来2...6最小2行高→单行光标/文字偏上不居中）
                     .padding(.vertical, 9)
                     .padding(.horizontal, 2)
                     .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见

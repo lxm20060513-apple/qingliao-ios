@@ -121,6 +121,9 @@ struct DashboardView: View {
         if let h = try? await auth.jsonArray("/api/ha/states") {
             haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
         }
+        // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
+        // 路由器重启后状态永远停在红点/离线，不会自动恢复）
+        await loadRouter()
     }
 
     // MARK: - HA 派生（与 PWA 相同挑选规则）
