@@ -94,11 +94,12 @@ enum MarkdownRenderer {
     }
 
     private static func styled(_ s: String, _ font: UIFont, _ color: UIColor) -> AttributedString {
-        var a = AttributedString(s)
-        // UIKit 属性下标（类型稳定：font=UIFont / foregroundColor=UIColor），
-        // 不用 AttributedString.font 快捷属性（其类型是 SwiftUI Font，直接赋 UIFont 编译错误）
-        a[AttributeScopes.UIKitAttributes.fontAttribute] = font
-        a[AttributeScopes.UIKitAttributes.foregroundColorAttribute] = color
-        return a
+        // NSAttributedString 桥接最稳（基础 API 全版本可用）：UIKit 字体/颜色属性
+        // 转换后 Text(AttributedString) 直接按属性渲染
+        let ns = NSAttributedString(string: s, attributes: [
+            NSAttributedString.Key.font: font,
+            NSAttributedString.Key.foregroundColor: color
+        ])
+        return AttributedString(ns)
     }
 }
