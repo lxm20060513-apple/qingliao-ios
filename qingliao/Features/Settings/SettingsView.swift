@@ -19,6 +19,8 @@ struct SettingsView: View {
     @State private var showAbout = false
     @State private var showSecrets = false
     @State private var secretCount = 0
+    @State private var showHASettings = false
+    @State private var haAddress = ""
     @State private var testResult: String?
     @State private var testing = false
 
@@ -51,6 +53,9 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "tray.full.fill", iconColor: .teal, title: "会话存储位置", value: sessionLocShort, chevron: true)
                             .onTapGesture { showSessionLocSheet = true }
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: haAddress.isEmpty ? nil : "\(haAddress)", chevron: true)
+                            .onTapGesture { showHASettings = true }
                     }
                     .glassListCard()
 
@@ -151,9 +156,16 @@ struct SettingsView: View {
             SecretsView()
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showHASettings) {
+            HASettingsSheet()
+                .presentationDetents([.medium])
+        }
         .task {
             if let j = try? await auth.json("/api/secrets") {
                 secretCount = (j["secrets"] as? [Any])?.count ?? 0
+            }
+            if let j = try? await auth.json("/api/ha/config") {
+                haAddress = j["address"] as? String ?? ""
             }
         }
         .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
