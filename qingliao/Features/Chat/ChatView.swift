@@ -31,6 +31,7 @@ struct ChatView: View {
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
     @State private var bigBangPayload: BigBangPayload?
+    @State private var scrollPos = ScrollPosition()
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
@@ -224,8 +225,11 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .dockScrollAware()   // 挂消息内容（随滚动上报，Dock 下滑隐藏/上滑显示）
                 }
+            }
+            .scrollPosition($scrollPos)
+            .onChange(of: scrollPos.y) { _, y in
+                DockVisibility.shared.update(y ?? 0)
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
@@ -617,7 +621,10 @@ struct MessageBubble: View {
                                 case .markdown(let text):
                                     // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
                                     // markdown 字体属性（加粗/标题/代码等），导致排版失效
-                                    Text((try? AttributedString(markdown: text)) ?? AttributedString(text))
+                                    // failurePolicy: 畸形 markdown（未闭合语法）保留已解析部分，不整体回退纯文本
+                                    var opts = AttributedString.MarkdownParsingOptions()
+                                    opts.failurePolicy = .returnPartiallyParsedIfPossible
+                                    Text((try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text))
                                         .lineSpacing(3)
                                         .textSelection(.enabled)
                                 case .code(let text):

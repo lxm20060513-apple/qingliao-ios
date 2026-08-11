@@ -9,6 +9,7 @@ struct SessionsView: View {
     @State private var sessions: [ChatSession] = []
     @State private var isLoading = false
     @State private var errorText: String?
+    @State private var scrollPos = ScrollPosition()
     @State private var deleteError: String?
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
@@ -61,7 +62,10 @@ struct SessionsView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 90)
-                    .dockScrollAware()   // 挂内容（随滚动上报）
+                }
+                .scrollPosition($scrollPos)
+                .onChange(of: scrollPos.y) { _, y in
+                    DockVisibility.shared.update(y ?? 0)
                 }
                 .refreshable {
                     await load()

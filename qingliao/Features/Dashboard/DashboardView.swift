@@ -12,6 +12,7 @@ struct DashboardView: View {
 
     @State private var nas = NASStatus()
     @State private var haEntities: [HAEntity] = []
+    @State private var scrollPos = ScrollPosition()
     @State private var loaded = false
     @State private var activeSheet: DashboardSheet?
 
@@ -46,7 +47,10 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
-                .dockScrollAware()   // 挂内容（随滚动上报）
+            }
+            .scrollPosition($scrollPos)
+            .onChange(of: scrollPos.y) { _, y in
+                DockVisibility.shared.update(y ?? 0)
             }
             .refreshable {
                 await refresh()

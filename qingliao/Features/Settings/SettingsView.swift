@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var showTasks = false
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
+    @State private var scrollPos = ScrollPosition()
     @State private var showSessionLocSheet = false
     @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var showModelSheet = false
@@ -103,7 +104,10 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
-                .dockScrollAware()   // 挂内容（随滚动上报）
+            }
+            .scrollPosition($scrollPos)
+            .onChange(of: scrollPos.y) { _, y in
+                DockVisibility.shared.update(y ?? 0)
             }
         }
         .sheet(isPresented: $showServerSheet) {

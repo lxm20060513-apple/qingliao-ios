@@ -91,11 +91,11 @@ final class StreamClient {
                 offset += c.count
                 content += c
                 idleStreak = 0
-                if interval != 0.5 { interval = 0.5 }
+                if interval != 0.3 { interval = 0.3 }   // 有内容时 0.3s 高频轮询（打字机更细）
             } else if !done {
                 idleStreak += 1
-                // 空 poll 保持高频（0.8s 上限）——首 token 延迟时避免 2s 一跳造成"一股脑"感
-                if idleStreak >= 3 && interval != 0.8 { interval = 0.8 }
+                // 空 poll 保持 0.5s——首 token 延迟时避免等待感
+                if idleStreak >= 3 && interval != 0.5 { interval = 0.5 }
             }
             if done {
                 finish(success: st != "error", error: err)
