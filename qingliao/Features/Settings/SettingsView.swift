@@ -11,7 +11,9 @@ struct SettingsView: View {
     @State private var showFiles = false
     @State private var showTasks = false
     @State private var showLogs = false
-    @State private var showAppearanceMenu = false
+    @State private var showAppearanceOptions = false
+    @State private var showSessionLocSheet = false
+    @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var testResult: String?
     @State private var testing = false
 
@@ -40,6 +42,9 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "network", iconColor: .blue, title: "测试连接", value: testing ? "检测中..." : nil, chevron: !testing)
                             .onTapGesture { testConnection() }
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "tray.full.fill", iconColor: .teal, title: "会话存储位置", value: sessionLocShort, chevron: true)
+                            .onTapGesture { showSessionLocSheet = true }
                     }
                     .glassListCard()
 
@@ -61,7 +66,17 @@ struct SettingsView: View {
                     SectionHeader("其他")
                     VStack(spacing: 0) {
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
-                            .onTapGesture { showAppearanceMenu = true }
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAppearanceOptions.toggle() } }
+                        if showAppearanceOptions {
+                            // 内联三选（非弹窗）
+                            HStack(spacing: 8) {
+                                appearanceOption("深色", value: "dark")
+                                appearanceOption("浅色", value: "light")
+                                appearanceOption("跟随系统", value: "system")
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 10)
+                        }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0")
                         Divider().padding(.leading, 52)
@@ -106,17 +121,39 @@ struct SettingsView: View {
             LogsView()
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showSessionLocSheet) {
+            SessionLocSheet(currentPath: sessionLoc)
+                .presentationDetents([.medium])
+        }
         .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
             Button("好", role: .cancel) { testResult = nil }
         } message: {
             Text(testResult ?? "")
         }
-        .confirmationDialog("外观", isPresented: $showAppearanceMenu, titleVisibility: .visible) {
-            Button("深色") { appearance = "dark" }
-            Button("浅色") { appearance = "light" }
-            Button("跟随系统") { appearance = "system" }
-            Button("取消", role: .cancel) {}
+        .task {
+            // 拉取服务器端会话存储位置
+            if let j = try? await auth.json("/api/sessions/location") {
+                sessionLoc = j["path"] as? String ?? ""
+            }
         }
+    }
+
+    private func appearanceOption(_ name: String, value: String) -> some View {
+        Button {
+            appearance = value
+            withAnimation(.easeOut(duration: 0.2)) { showAppearanceOptions = false }
+        } label: {
+            Text(name)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(appearance == value ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(appearance == value ? Color.accentColor : Color(uiColor: .systemGray5))
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private var appearanceName: String {
@@ -125,6 +162,15 @@ struct SettingsView: View {
         case "system": return "跟随系统"
         default: return "深色"
         }
+    }
+
+    /// 会话存储位置短显（取路径后两段）
+    private var sessionLocShort: String {
+        let parts = sessionLoc.split(separator: "/").filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return "…/" + parts.suffix(2).joined(separator: "/")
+        }
+        return sessionLoc.isEmpty ? "默认" : sessionLoc
     }
 
     private func testConnection() {
@@ -370,5 +416,75 @@ struct SettingRow: View {
         .padding(.vertical, 11)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - 会话存储位置设置（NAS 目录，服务器持久化）
+
+struct SessionLocSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    let currentPath: String
+    @State private var path = ""
+    @State private var result: String?
+    @State private var saving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("会话存储位置")
+                .font(.system(size: 17, weight: .bold))
+            Text("设置 NAS 上存储会话记录的目录（需为服务器可写路径）")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            TextField("如 /volume1/docker/轻聊数据/sessions", text: $path)
+                .font(.system(size: 14, design: .monospaced))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            if let result {
+                Text(result)
+                    .font(.system(size: 12))
+                    .foregroundStyle(result.hasPrefix("✅") ? Color.green : Color.red)
+            }
+            Button {
+                save()
+            } label: {
+                HStack {
+                    Spacer()
+                    if saving { ProgressView().tint(.white) } else { Text("保存") }
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .foregroundStyle(.white)
+                .font(.system(size: 15, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(saving)
+            Spacer()
+        }
+        .padding(20)
+        .onAppear { path = currentPath }
+    }
+
+    private func save() {
+        saving = true
+        result = nil
+        let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            defer { saving = false }
+            do {
+                let j = try await auth.json("/api/sessions/location", method: "POST", body: ["path": p])
+                if (j["ok"] as? Bool) == true {
+                    result = "✅ 已保存：" + (j["path"] as? String ?? p)
+                } else {
+                    result = "❌ " + ((j["error"] as? String) ?? "保存失败")
+                }
+            } catch {
+                result = "❌ 请求失败：\(error.localizedDescription)"
+            }
+        }
     }
 }

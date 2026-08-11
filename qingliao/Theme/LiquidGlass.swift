@@ -4,15 +4,22 @@ import SwiftUI
 
 struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 18
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // 浅色下 ultraThinMaterial 几乎不可见 → regularMaterial + 白描边 0.6 增强玻璃感
+            .background(
+                scheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(.white.opacity(0.14), lineWidth: 0.8)
+                    .strokeBorder(scheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.60),
+                                  lineWidth: 0.8)
             )
-            .shadow(color: .black.opacity(0.25), radius: 14, y: 5)
+            .shadow(color: scheme == .dark ? Color.black.opacity(0.25) : Color.black.opacity(0.12),
+                    radius: 14, y: 5)
     }
 }
 
@@ -39,6 +46,9 @@ struct PageHeader: View {
     let title: String
     var subtitle: String? = nil
     var trailing: AnyView? = nil
+    // 真实状态点：默认不显示（装饰性绿点已废弃），需要状态指示的页面显式传入
+    var showStatus: Bool = false
+    var statusColor: Color = .green
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -50,7 +60,9 @@ struct PageHeader: View {
             }
             if let subtitle {
                 HStack(spacing: 5) {
-                    Circle().fill(.green).frame(width: 6, height: 6)
+                    if showStatus {
+                        Circle().fill(statusColor).frame(width: 6, height: 6)
+                    }
                     Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)

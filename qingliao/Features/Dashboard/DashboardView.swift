@@ -30,6 +30,10 @@ struct DashboardView: View {
                         DeviceCard(name: "猫眼", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
                         DeviceCard(name: "安防", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
                         DeviceCard(name: "温度", value: haTemp, sub: "室内温度", status: .on)
+                        DeviceCard(name: "NAS插座", value: nasSocketOn ? "已开启" : "已关闭", sub: "点击控制", status: nasSocketOn ? .on : .off)
+                            .onTapGesture { toggleNAS() }
+                        DeviceCard(name: "消毒柜", value: disinfectorOn ? "工作中" : "已关闭", sub: "点击控制", status: disinfectorOn ? .on : .off)
+                            .onTapGesture { toggleDisinfector() }
                     }
 
                     sectionTitle("NAS 面板")
@@ -82,6 +86,25 @@ struct DashboardView: View {
 
     // MARK: - 数据
 
+    /// NAS 插座开关（#8）
+    private func toggleNAS() {
+        toggleSwitch(entityID: "switch.chuangmi_cn_237985068_m3_on_p_2_1")
+    }
+
+    /// 消毒柜开关（#9）
+    private func toggleDisinfector() {
+        toggleSwitch(entityID: "switch.lumi_cn_lumi_158d00039bca0b_v1_on_p_2_1")
+    }
+
+    private func toggleSwitch(entityID: String) {
+        let id = entityID
+        Task {
+            _ = try? await auth.request("/api/ha/services/switch/toggle", method: "POST",
+                                        body: ["entity_id": id])
+            await refresh()
+        }
+    }
+
     private func refresh() async {
         // 顺序请求（async let 返回值非 Sendable，Swift 6 严格并发下编译失败）
         if let n = try? await auth.json("/api/nas/status") {
@@ -95,9 +118,33 @@ struct DashboardView: View {
     // MARK: - HA 派生（与 PWA 相同挑选规则）
 
     private var lights: [HAEntity] {
-        haEntities.filter { $0.entityID.hasPrefix("light.") && !$0.state.contains("unavailable") }
+        // 过滤指示灯（NAS 查询指示灯等不参与灯列表，改由 switch 开关实体控制）
+        haEntities.filter {
+            $0.entityID.hasPrefix("light.") && !$0.state.contains("unavailable")
+                && !$0.entityID.contains("indicator_light")
+        }
     }
     private var lightsOn: Int { lights.filter { $0.state != "off" }.count }
+
+    /// NAS 插座开关实体（#8：查询指示灯 → 插座开关）
+    private var nasSocket: HAEntity? {
+        haEntities.first { $0.entityID == "switch.chuangmi_cn_237985068_m3_on_p_2_1" }
+    }
+    private var nasSocketOn: Bool { nasSocket?.state == "on" }
+
+    /// 消毒柜插座开关实体（#9）
+    private var disinfector: HAEntity? {
+        haEntities.first { $0.entityID == "switch.lumi_cn_lumi_158d00039bca0b_v1_on_p_2_1" }
+    }
+    private var disinfectorOn: Bool { disinfector?.state == "on" }
+
+    /// 开关卡（switch 域实体列表：NAS 插座等）
+    private var switches: [HAEntity] {
+        haEntities.filter {
+            $0.entityID.hasPrefix("switch.") && !$0.state.contains("unavailable")
+                && ($0.friendlyName.contains("NAS插座") || $0.friendlyName.contains("消毒柜插座"))
+        }
+    }
     private var haLights: String { "\(lightsOn)/\(lights.count) 盏" }
 
     private var climates: [HAEntity] {
@@ -162,6 +209,7 @@ struct ServiceControlSheet: View {
 
     @State private var busy = false
     @State private var info = "管理轻聊后端服务"
+    @State private var running: Bool?   // 真实运行状态
     @State private var showStopConfirm = false
 
     var body: some View {
@@ -204,16 +252,25 @@ struct ServiceControlSheet: View {
                 }
                 Spacer()
                 HStack(spacing: 5) {
-                    Circle().fill(.green).frame(width: 7, height: 7)
-                    Text("运行中")
+                    Circle()
+                        .fill(running == true ? Color.green : (running == false ? Color.red : Color.gray))
+                        .frame(width: 7, height: 7)
+                    Text(running == true ? "运行中" : (running == false ? "已停止" : "检测中"))
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(running == true ? Color.green : (running == false ? Color.red : Color.secondary))
                 }
             }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 16)
+            .task {
+                // 真实运行状态
+                if let n = try? await auth.json("/api/nas/status") {
+                    let st = NASStatus.parse(n)
+                    running = st.qingliaoAlive
+                }
+            }
 
             // 重试卡
             Button {
@@ -479,6 +536,8 @@ struct HADeviceSheet: View {
         let target = (attrs["temperature"] as? Double) ?? 24
         let step = (attrs["target_temp_step"] as? Double) ?? 1
         let modes = (attrs["hvac_modes"] as? [String]) ?? ["off", "auto", "cool", "dry", "heat", "fan_only"]
+        // 关闭模式统一置顶（所有空调卡片一致）
+        let orderedModes = ["off"] + modes.filter { $0 != "off" }
         let isOn = e.state != "off" && e.state != "unavailable"
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -548,7 +607,7 @@ struct HADeviceSheet: View {
 
             // 模式按钮行
             HStack(spacing: 8) {
-                ForEach(modes, id: \.self) { m in
+                ForEach(orderedModes, id: \.self) { m in
                     Button {
                         setMode(e, mode: m)
                     } label: {
@@ -804,7 +863,10 @@ struct MeterCard: View {
             HStack {
                 Text(name).font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
-                Circle().fill(.green).frame(width: 8, height: 8)
+                // 真实状态点：按使用率阈值（<75% 绿 / 75-90% 橙 / >90% 红）
+                Circle()
+                    .fill(ratio > 0.9 ? Color.red : (ratio > 0.75 ? Color.orange : Color.green))
+                    .frame(width: 8, height: 8)
             }
             Text(value).font(.system(size: 18, weight: .bold)).padding(.top, 6)
             if let sub {

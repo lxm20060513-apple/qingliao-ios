@@ -13,7 +13,8 @@ struct ChatView: View {
 
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
-    @State private var sentOK = false   // ✅送达提示条
+    @State private var sentOK = false
+    @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）   // ✅送达提示条
     @State private var showAttachmentMenu = false
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
@@ -26,7 +27,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "聊天", subtitle: "在线")
+            PageHeader(title: "聊天",
+                       subtitle: serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线"),
+                       showStatus: true,
+                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray))
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
@@ -162,6 +166,11 @@ struct ChatView: View {
             .onChange(of: stream.content) {
                 scrollBottom(proxy)
             }
+        }
+        .task {
+            // 服务器连接状态检测（真实绿点）
+            let r = await auth.testConnection(server: auth.serverURL)
+            serverOnline = r.hasPrefix("✅")
         }
     }
 
@@ -430,8 +439,13 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
-        // 长按 AI 消息 → 重新生成
+        // 长按：复制（全部消息）/ 重新生成（AI 消息）
         .contextMenu {
+            Button {
+                UIPasteboard.general.string = message.content
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+            }
             if !message.isUser {
                 Button {
                     onRegenerate()

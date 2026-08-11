@@ -253,15 +253,10 @@ final class AuthStore {
     func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String) {
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
-            // 蜂窝：CFStream 直连标准 poll（带 query，socket 层不受管控），失败降级路径参数版
-            do {
-                (data, code) = try await relay.directRequest(
-                    method: "GET", path: "/api/stream/\(taskId)?offset=\(offset)", timeout: 10
-                )
-            } catch {
-                let uid = RelayIdentity.uid(for: currentStreamSessionId)
-                (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)", timeout: 10)
-            }
+            // 蜂窝：必须用路径参数形态（/r/stream/poll/... 无 query）——CFStream 带 query 会挂起 10s 超时，
+            // 标准端点带 query 在蜂窝不可用（v2.0.5 实踩：流式输出失效）
+            let uid = RelayIdentity.uid(for: currentStreamSessionId)
+            (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)", timeout: 10)
         } else {
             (data, code) = try await directHTTP(method: "GET", path: "/api/stream/\(taskId)?offset=\(offset)",
                                                 headers: [:], body: nil)

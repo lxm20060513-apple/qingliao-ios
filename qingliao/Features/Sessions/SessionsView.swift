@@ -143,6 +143,9 @@ struct SessionsView: View {
 // MARK: - 机器人卡
 
 struct BotCard: View {
+    @Environment(AuthStore.self) private var auth
+    @State private var online: Bool?
+
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -163,10 +166,12 @@ struct BotCard: View {
             }
             Spacer()
             HStack(spacing: 4) {
-                Circle().fill(.green).frame(width: 6, height: 6)
-                Text("在线")
+                Circle()
+                    .fill(online == true ? Color.green : (online == false ? Color.red : Color.gray))
+                    .frame(width: 6, height: 6)
+                Text(online == true ? "在线" : (online == false ? "离线" : "检测中"))
                     .font(.system(size: 10))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(online == true ? Color.green : (online == false ? Color.red : Color.secondary))
             }
         }
         .padding(13)
@@ -179,6 +184,11 @@ struct BotCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.blue.opacity(0.25), lineWidth: 0.8)
         )
+        .task {
+            // 真实连接状态
+            let r = await auth.testConnection(server: auth.serverURL)
+            online = r.hasPrefix("✅")
+        }
     }
 }
 
@@ -224,6 +234,12 @@ struct SessionRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+        // 会话条目边框（深浅色通用细描边）
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(Rectangle())
         // 用 tap 手势而非 Button 包裹（Button 会与 swipeActions 滑动手势冲突，导致滑动删除失效）
         .onTapGesture { action() }

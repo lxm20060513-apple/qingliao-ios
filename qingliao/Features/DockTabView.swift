@@ -62,7 +62,7 @@ struct DockTabView: View {
                     .opacity(kb.isVisible ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 26)
             }
         }
     }
@@ -106,7 +106,10 @@ struct DockBar: View {
             .padding(.vertical, 9)
             // LiquidGlassKit 液态玻璃重构（参考 muhittincamdali/LiquidGlassKit）：
             // ultraThinMaterial 更透材质 + 顶部高光带 + 渐变描边 + 内高光 + 柔和投影
-            .background { Capsule().fill(.ultraThinMaterial) }
+            .background {
+                // 浅色下 ultraThinMaterial 几乎不可见 → 用 regularMaterial 增强玻璃感
+                Capsule().fill(.regularMaterial)
+            }
             .clipShape(.capsule)
             .overlay {
                 // 液态玻璃透镜：跟随手指/选中项（半透明蓝，不用 glassEffect——小元素上渲染会变灰块）
