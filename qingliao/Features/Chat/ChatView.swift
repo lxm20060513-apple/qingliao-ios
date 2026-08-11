@@ -58,11 +58,14 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 拆局部变量避免类型检查超时（三元嵌套 + AnyView 组合）
+            let headerSubtitle = serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线")
+            let headerColor: Color = serverOnline == true ? .green : (serverOnline == false ? .red : .gray)
             PageHeader(title: "聊天",
-                       subtitle: serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线"),
+                       subtitle: headerSubtitle,
                        trailing: modelHeaderButton,
                        showStatus: true,
-                       statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray))
+                       statusColor: headerColor)
             if sentOK {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
