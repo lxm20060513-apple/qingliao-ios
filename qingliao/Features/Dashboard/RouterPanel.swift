@@ -12,6 +12,7 @@ struct RouterStatus {
     var memFree = 0.0
     var temp = "--"
     var clashRunning = false
+    var onlineDevices = 0   // v2.0.37：在线设备数（替代 hostname 显示）
     var error = ""
     var busy = false
 
@@ -33,6 +34,7 @@ struct RouterStatus {
         r.memFree = j["mem_free_gb"] as? Double ?? 0
         r.temp = j["temp"] as? String ?? "--"
         r.clashRunning = (j["clash_running"] as? Bool) ?? false
+        r.onlineDevices = (j["online_devices"] as? Int) ?? 0
         r.error = j["error"] as? String ?? ""
         return r
     }
@@ -57,11 +59,11 @@ struct RouterPanel: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // 标题行：路由器名 + 刷新按钮（在标题旁）
+            // 标题行：路由器 + 在线设备数（v2.0.37 替代 hostname）+ 状态点
             HStack(spacing: 6) {
                 Text("📡 路由器")
                     .font(.system(size: 13, weight: .semibold))
-                Text(router.hostname)
+                Text("\(router.onlineDevices) 台在线")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Circle()

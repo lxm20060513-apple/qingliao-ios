@@ -234,8 +234,11 @@ struct ChatView: View {
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
-            // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 86pt 避让贴底 Dock（不被遮挡也不留大空）
-            .padding(.bottom, kb.isVisible ? kb.height + 6 : 86)
+            // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
+            // 收起时留 86pt 避让贴底 Dock
+            .padding(.bottom, kb.isVisible
+                     ? max(0, UIScreen.main.bounds.height - kb.topY)
+                     : 86)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)

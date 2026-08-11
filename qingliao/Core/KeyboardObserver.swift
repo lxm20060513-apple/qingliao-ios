@@ -9,6 +9,7 @@ import UIKit
 @Observable
 final class KeyboardObserver: NSObject {
     var height: CGFloat = 0
+    var topY: CGFloat = 0   // v2.0.37：键盘顶部 y（屏幕坐标，精确贴键盘用）
     var isVisible: Bool { height > 0 }
 
     override init() {
@@ -21,11 +22,15 @@ final class KeyboardObserver: NSObject {
     }
 
     @objc private func kbWillShow(_ note: Notification) {
-        height = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect)?.height ?? 0
+        if let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+            height = rect.height
+            topY = rect.minY
+        }
     }
 
     @objc private func kbWillHide(_ note: Notification) {
         height = 0
+        topY = 0
     }
 
     deinit {
