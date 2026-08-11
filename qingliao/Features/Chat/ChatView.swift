@@ -25,19 +25,12 @@ struct MessageContentBlock: Identifiable {
 struct MessageBlockView: View {
     let block: MessageContentBlock
 
-    /// markdown 容错解析选项（畸形语法保留已解析部分，不整体回退纯文本）
-    private static var markdownOptions: AttributedString.MarkdownParsingOptions {
-        var opts = AttributedString.MarkdownParsingOptions()
-        opts.failurePolicy = .returnPartiallyParsedIfPossible
-        return opts
-    }
-
     var body: some View {
         switch block.kind {
         case .markdown(let text):
-            // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
-            // markdown 字体属性（加粗/标题/代码等），导致排版失效
-            Text((try? AttributedString(markdown: text, options: Self.markdownOptions)) ?? AttributedString(text))
+            // v2.0.34：改用自研轻量渲染器（标题/加粗/斜体/代码/列表/引用），
+            // 不再依赖 AttributedString(markdown:) 系统解析（iOS 上输出纯文本不可控）
+            Text(MarkdownRenderer.render(text))
                 .lineSpacing(3)
                 .textSelection(.enabled)
         case .code(let text):
@@ -783,13 +776,24 @@ struct ChatInputBar: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.red.opacity(0.08), in: Capsule())
             } else {
-                TextField("输入消息...", text: $text, axis: .vertical)
+                // v2.0.34：placeholder 用 overlay 自定义（vertical axis 的 TextField 自带
+                // placeholder 在 lineLimit(2...6) 多行高下顶部对齐，视觉不居中）
+                TextField("", text: $text, axis: .vertical)
                     .font(.system(size: 15))
                     .lineLimit(2...6)
                     .padding(.vertical, 9)
                     .padding(.horizontal, 2)
                     .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
                     .focused($focused)
+                    .overlay {
+                        if text.isEmpty {
+                            Text("输入消息...")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
 
             Button {
