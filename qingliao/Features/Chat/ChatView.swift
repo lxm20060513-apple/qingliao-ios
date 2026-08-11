@@ -601,8 +601,9 @@ struct MessageBubble: View {
                             ForEach(contentBlocks) { block in
                                 switch block {
                                 case .markdown(let text):
+                                    // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
+                                    // markdown 字体属性（加粗/标题/代码等），导致排版失效
                                     Text((try? AttributedString(markdown: text)) ?? AttributedString(text))
-                                        .font(.system(size: 14))
                                         .lineSpacing(3)
                                         .textSelection(.enabled)
                                 case .code(let text):
