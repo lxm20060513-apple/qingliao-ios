@@ -250,6 +250,13 @@ struct ChatView: View {
                                     .frame(width: 30, height: 30)
                                     TypingIndicator()
                                         .padding(.horizontal, 13)
+                                        .overlay(alignment: .bottomTrailing) {
+                                            Text("思考中")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.tertiary)
+                                                .padding(.trailing, 14)
+                                                .padding(.bottom, -14)
+                                        }
                                         .padding(.vertical, 12)
                                         .background(Color(uiColor: .systemGray5))
                                         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))

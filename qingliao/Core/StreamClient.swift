@@ -91,11 +91,11 @@ final class StreamClient {
                 offset += c.count
                 content += c
                 idleStreak = 0
-                if interval != 0.3 { interval = 0.3 }   // 有内容时 0.3s 高频轮询（打字机更细）
+                if interval != 0.15 { interval = 0.15 }   // 有内容时 0.15s 高频轮询（接近逐字）
             } else if !done {
                 idleStreak += 1
-                // 空 poll 保持 0.5s——首 token 延迟时避免等待感
-                if idleStreak >= 3 && interval != 0.5 { interval = 0.5 }
+                // 空 poll 保持 0.4s——首 token 思考期（10-20s）不增加等待感
+                if idleStreak >= 3 && interval != 0.4 { interval = 0.4 }
             }
             if done {
                 finish(success: st != "error", error: err)

@@ -44,7 +44,7 @@ struct RouterStatus {
     }
 }
 
-/// 路由器板块：状态卡（主机/负载/内存/温度/Clash）+ 快捷指令（启动/关闭 Clash）
+/// 路由器板块：2x2 卡片（状态 / Clash 状态 / 启动 Clash / 关闭 Clash），刷新在标题旁
 struct RouterPanel: View {
     let router: RouterStatus
     var onStart: (() -> Void)? = nil
@@ -53,118 +53,110 @@ struct RouterPanel: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(colors: [Color.teal, Color.cyan],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                        Image(systemName: "wifi")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 38, height: 38)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text("路由器")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(router.hostname)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Circle()
-                                .fill(router.ok ? Color.green : Color.red)
-                                .frame(width: 7, height: 7)
-                        }
-                        Text(router.ok ? "负载 \(router.load) · 温度 \(router.temp)" : (router.error.isEmpty ? "连接中..." : "离线：\(router.error)"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
+            // 标题行：路由器名 + 刷新按钮（在标题旁）
+            HStack(spacing: 6) {
+                Text("📡 路由器")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(router.hostname)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Circle()
+                    .fill(router.ok ? Color.green : Color.red)
+                    .frame(width: 7, height: 7)
+                Spacer()
+                Button {
+                    onRefresh?()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
                 }
-                // 指标行（对齐 NAS MeterCard 风格）
-                HStack(spacing: 8) {
-                    miniMetric("内存", router.memUsedText, router.memPct, .green)
-                    miniMetric("Clash", router.clashRunning ? "运行中" : "已停止",
-                               router.clashRunning ? 1.0 : 0.0,
-                               router.clashRunning ? .green : .gray)
-                    miniMetric("运行", router.uptime, 0, .blue)
-                }
-                // 快捷指令（启动/关闭 Clash + 刷新）
-                HStack(spacing: 8) {
-                    Button {
-                        onStart?()
-                    } label: {
-                        HStack(spacing: 5) {
-                            if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                            else { Image(systemName: "play.fill").font(.system(size: 11)) }
-                            Text("启动 Clash")
-                        }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(router.busy)
-
-                    Button {
-                        onStop?()
-                    } label: {
-                        HStack(spacing: 5) {
-                            if router.busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                            else { Image(systemName: "stop.fill").font(.system(size: 11)) }
-                            Text("关闭 Clash")
-                        }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(router.busy)
-
-                    Button {
-                        onRefresh?()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .frame(width: 42, height: 36)
-                            .background(Color.accentColor.opacity(0.12),
-                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(router.busy)
-                }
+                .buttonStyle(.plain)
+                .disabled(router.busy)
             }
-            .padding(12)
-            .background(Color(uiColor: .secondarySystemGroupedBackground),
-                        in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+            // 2x2 卡片
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                // 卡1：路由器状态（在线/负载/温度）
+                routerCard(title: "路由器", value: router.ok ? "在线" : (router.error.isEmpty ? "检测中" : "离线"),
+                           sub: router.ok ? "负载 \(router.load) · \(router.temp)" : router.error,
+                           color: router.ok ? .green : .red,
+                           icon: "wifi", busy: router.busy) { onRefresh?() }
+                // 卡2：Clash 状态（运行中/已停止）
+                routerCard(title: "Clash", value: router.clashRunning ? "运行中" : "已停止",
+                           sub: router.clashRunning ? "代理已生效" : "点击启动",
+                           color: router.clashRunning ? .green : .gray,
+                           icon: "bolt.fill", busy: router.busy) { onStart?() }
+                // 卡3：启动 Clash（快捷指令）
+                actionCard(title: "启动 Clash", icon: "play.fill", color: .green,
+                           busy: router.busy, subtitle: "开启代理加速") { onStart?() }
+                // 卡4：关闭 Clash（快捷指令）
+                actionCard(title: "关闭 Clash", icon: "stop.fill", color: .red,
+                           busy: router.busy, subtitle: "恢复直连") { onStop?() }
+            }
         }
     }
 
-    private func miniMetric(_ name: String, _ value: String, _ ratio: Double, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(name)
+    private func routerCard(title: String, value: String, sub: String, color: Color, icon: String, busy: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(color)
+                    Text(title)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Circle()
+                        .fill(color)
+                        .frame(width: 7, height: 7)
+                }
+                Text(value)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(sub)
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Circle()
-                    .fill(ratio >= 0.9 ? Color.red : (ratio >= 0.7 ? Color.orange : Color.green))
-                    .frame(width: 6, height: 6)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
-            Text(value)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            .padding(11)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .padding(9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .systemGray6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+
+    private func actionCard(title: String, icon: String, color: Color, busy: Bool, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    if busy { ProgressView().tint(color).scaleEffect(0.7) }
+                    else {
+                        Image(systemName: icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(color)
+                    }
+                    Text(title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                }
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .padding(11)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .background(Color(color.opacity(0.12)),
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
     }
 }

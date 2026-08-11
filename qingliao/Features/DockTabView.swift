@@ -62,13 +62,24 @@ struct DockTabView: View {
             VStack {
                 Spacer()
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
-                // 下滑隐藏 / 上滑显示（DockVisibility 由各页面 ScrollView 驱动）
+                // 下滑隐藏 / 上滑显示（scrollPosition 驱动 + Dock 栏拖拽手势兜底）
                 DockBar(selected: $selected)
                     .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
                     .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible && !dockVisibility.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.25), value: dockVisibility.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
+                    .gesture(
+                        // 手势兜底：Dock 栏向下拖 → 隐藏；向上拖 → 显示
+                        DragGesture(minimumDistance: 25)
+                            .onEnded { v in
+                                if v.translation.height > 50 {
+                                    withAnimation(.spring(duration: 0.5, bounce: 0.25)) { dockVisibility.hidden = true }
+                                } else if v.translation.height < -50 {
+                                    withAnimation(.spring(duration: 0.5, bounce: 0.25)) { dockVisibility.hidden = false }
+                                }
+                            }
+                    )
                     .padding(.bottom, 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
