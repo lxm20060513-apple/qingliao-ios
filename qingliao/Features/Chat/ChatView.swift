@@ -124,18 +124,19 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            ChatInputBar(text: $inputText, focused: $inputFocus, streaming: stream.isStreaming,
+            ChatInputBar(text: $inputText,
+                         focused: $inputFocus,
+                         streaming: stream.isStreaming,
+                         onSend: { send() },
+                         onStop: { stream.stop(auth: auth) },
+                         onPickAttachment: {
+                             withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
+                                 showAttachmentMenu.toggle()
+                             }
+                         },
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
-                         onVoiceEnd: { endVoice() }) {
-                send()
-            } onStop: {
-                stream.stop(auth: auth)
-            } onPickAttachment: {
-                withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
-                    showAttachmentMenu.toggle()
-                }
-            }
+                         onVoiceEnd: { endVoice() })
             // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
             .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
         }
