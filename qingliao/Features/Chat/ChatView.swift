@@ -21,6 +21,35 @@ struct MessageContentBlock: Identifiable {
     let kind: Kind
 }
 
+/// AI 消息分段渲染：markdown（容错解析，保留部分排版） / 代码块（等宽深色）
+struct MessageBlockView: View {
+    let block: MessageContentBlock
+
+    var body: some View {
+        switch block.kind {
+        case .markdown(let text):
+            // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
+            // markdown 字体属性（加粗/标题/代码等），导致排版失效
+            // failurePolicy: 畸形 markdown（未闭合语法）保留已解析部分，不整体回退纯文本
+            var opts = AttributedString.MarkdownParsingOptions()
+            opts.failurePolicy = .returnPartiallyParsedIfPossible
+            Text((try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+        case .code(let text):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(text)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color.black.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
 // MARK: - 聊天页（微信风格：AI 灰气泡左侧 / 用户深蓝气泡右侧，头像在气泡外）
 
 struct ChatView: View {
@@ -626,29 +655,9 @@ struct MessageBubble: View {
                     } else {
                         // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
                         VStack(alignment: .leading, spacing: 6) {
-                            // 显式 id 参数：避开 Xcode16 ForEach(Binding) 重载的泛型推断歧义
-                            ForEach(contentBlocks, id: \.id) { block in
-                                switch block.kind {
-                                case .markdown(let text):
-                                    // 注意：不能加 .font() 修饰符——会覆盖 AttributedString 的
-                                    // markdown 字体属性（加粗/标题/代码等），导致排版失效
-                                    // failurePolicy: 畸形 markdown（未闭合语法）保留已解析部分，不整体回退纯文本
-                                    var opts = AttributedString.MarkdownParsingOptions()
-                                    opts.failurePolicy = .returnPartiallyParsedIfPossible
-                                    Text((try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text))
-                                        .lineSpacing(3)
-                                        .textSelection(.enabled)
-                                case .code(let text):
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        Text(text)
-                                            .font(.system(size: 12, design: .monospaced))
-                                            .textSelection(.enabled)
-                                            .padding(10)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    .background(Color.black.opacity(0.06))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                }
+                            // Range 重载（ForEach(0..<n)）无泛型歧义；渲染逻辑在 MessageBlockView
+                            ForEach(0..<contentBlocks.count, id: \.self) { i in
+                                MessageBlockView(block: contentBlocks[i])
                             }
                         }
                         .padding(.horizontal, 13)
