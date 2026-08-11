@@ -92,7 +92,7 @@ struct SessionsView: View {
                                     .padding(.top, 30)
                             } else {
                                 VStack(spacing: 8) {
-                                    ForEach(searchResults, id: \.self) { r in
+                                    ForEach(Array(searchResults.enumerated()), id: \.offset) { _, r in
                                         SearchResultRow(result: r) {
                                             openSearchResult(r)
                                         }

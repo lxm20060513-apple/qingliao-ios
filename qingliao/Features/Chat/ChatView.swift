@@ -119,8 +119,6 @@ struct ChatView: View {
         VStack(spacing: 0) {
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
-                       showStatus: true,
-                       statusColor: headerColor,
                        trailing: AnyView(
                            Button {
                                showMoreMenu = true
@@ -130,7 +128,9 @@ struct ChatView: View {
                                    .foregroundStyle(Color.accentColor)
                            }
                            .buttonStyle(.plain)
-                       ))
+                       ),
+                       showStatus: true,
+                       statusColor: headerColor)
             .confirmationDialog("聊天操作", isPresented: $showMoreMenu, titleVisibility: .visible) {
                 Button("导出会话记录") {
                     exportText = chat.exportText()
@@ -501,6 +501,14 @@ struct ChatView: View {
            let root = scene.windows.first?.rootViewController {
             root.present(av, animated: true)
         }
+    }
+
+    /// v2.0.36：图片 dataURL → UIImage（大图查看用；与 MessageBubble 同逻辑）
+    private func dataURLImage(_ urlStr: String) -> UIImage? {
+        guard let comma = urlStr.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(urlStr[urlStr.index(after: comma)...])),
+              let img = UIImage(data: data) else { return nil }
+        return img
     }
 
     /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
