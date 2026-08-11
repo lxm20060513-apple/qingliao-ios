@@ -50,6 +50,16 @@ struct PageHeader: View {
     var showStatus: Bool = false
     var statusColor: Color = .green
 
+    /// 显式 init：避免复杂调用处 memberwise init 推断导致类型检查超时
+    init(title: String, subtitle: String? = nil, trailing: AnyView? = nil,
+         showStatus: Bool = false, statusColor: Color = .green) {
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing
+        self.showStatus = showStatus
+        self.statusColor = statusColor
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {

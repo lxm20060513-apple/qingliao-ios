@@ -56,11 +56,16 @@ struct ChatView: View {
         )
     }
 
+    /// 头部状态文案/颜色（独立计算属性，避免 body 内嵌套三元）
+    private var headerSubtitle: String {
+        serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线")
+    }
+    private var headerColor: Color {
+        serverOnline == true ? .green : (serverOnline == false ? .red : .gray)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // 拆局部变量避免类型检查超时（三元嵌套 + AnyView 组合）
-            let headerSubtitle = serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线")
-            let headerColor: Color = serverOnline == true ? .green : (serverOnline == false ? .red : .gray)
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
                        trailing: modelHeaderButton,
