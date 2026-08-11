@@ -29,11 +29,13 @@ struct ChatView: View {
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
 
-    // 模型可从设置页选择（UserDefaults 持久化，默认 deepseek-v4-flash）
+    // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     private var modelName: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
     }
-    private let provider = "opencode"
+    private var provider: String {
+        UserDefaults.standard.string(forKey: "qingliao_provider") ?? "opencode"
+    }
 
     /// 头部模型快速切换按钮（独立表达式，避免类型检查超时）
     private var modelHeaderButton: AnyView {
@@ -238,6 +240,7 @@ struct ChatView: View {
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
+            .dockScrollAware()
             .onTapGesture {
                 inputFocus = false
             }
@@ -708,9 +711,9 @@ struct ChatInputBar: View {
                 .background(Color.red.opacity(0.08), in: Capsule())
             } else {
                 TextField("输入消息...", text: $text, axis: .vertical)
-                    .font(.system(size: 14))
-                    .lineLimit(1...4)
-                    .padding(.vertical, 7)
+                    .font(.system(size: 15))
+                    .lineLimit(1...5)
+                    .padding(.vertical, 9)
                     .padding(.horizontal, 2)
                     .focused($focused)
             }

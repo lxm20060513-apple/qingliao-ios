@@ -50,6 +50,7 @@ struct DashboardView: View {
             .refreshable {
                 await refresh()
             }
+            .dockScrollAware()
             .sheet(item: $activeSheet) { s in
                 switch s {
                 case .lights:
@@ -82,25 +83,6 @@ struct DashboardView: View {
 
     // MARK: - 数据
 
-    /// NAS 插座开关（#8）
-    private func toggleNAS() {
-        toggleSwitch(entityID: "switch.chuangmi_cn_237985068_m3_on_p_2_1")
-    }
-
-    /// 消毒柜开关（#9）
-    private func toggleDisinfector() {
-        toggleSwitch(entityID: "switch.lumi_cn_lumi_158d00039bca0b_v1_on_p_2_1")
-    }
-
-    private func toggleSwitch(entityID: String) {
-        let id = entityID
-        Task {
-            _ = try? await auth.request("/api/ha/services/switch/toggle", method: "POST",
-                                        body: ["entity_id": id])
-            await refresh()
-        }
-    }
-
     private func refresh() async {
         // 顺序请求（async let 返回值非 Sendable，Swift 6 严格并发下编译失败）
         if let n = try? await auth.json("/api/nas/status") {
@@ -121,26 +103,6 @@ struct DashboardView: View {
         }
     }
     private var lightsOn: Int { lights.filter { $0.state != "off" }.count }
-
-    /// NAS 插座开关实体（#8：查询指示灯 → 插座开关）
-    private var nasSocket: HAEntity? {
-        haEntities.first { $0.entityID == "switch.chuangmi_cn_237985068_m3_on_p_2_1" }
-    }
-    private var nasSocketOn: Bool { nasSocket?.state == "on" }
-
-    /// 消毒柜插座开关实体（#9）
-    private var disinfector: HAEntity? {
-        haEntities.first { $0.entityID == "switch.lumi_cn_lumi_158d00039bca0b_v1_on_p_2_1" }
-    }
-    private var disinfectorOn: Bool { disinfector?.state == "on" }
-
-    /// 开关卡（switch 域实体列表：NAS 插座等）
-    private var switches: [HAEntity] {
-        haEntities.filter {
-            $0.entityID.hasPrefix("switch.") && !$0.state.contains("unavailable")
-                && ($0.friendlyName.contains("NAS插座") || $0.friendlyName.contains("消毒柜插座"))
-        }
-    }
     private var haLights: String { "\(lightsOn)/\(lights.count) 盏" }
 
     private var climates: [HAEntity] {

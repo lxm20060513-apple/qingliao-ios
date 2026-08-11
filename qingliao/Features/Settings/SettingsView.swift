@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var showSessionLocSheet = false
     @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var showModelSheet = false
+    @State private var showAbout = false
     @State private var testResult: String?
     @State private var testing = false
 
@@ -80,7 +81,8 @@ struct SettingsView: View {
                             .padding(.bottom, 10)
                         }
                         Divider().padding(.leading, 52)
-                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0")
+                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0", chevron: true)
+                            .onTapGesture { showAbout = true }
                         Divider().padding(.leading, 52)
                         Button {
                             auth.logout()
@@ -101,6 +103,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)
+                .dockScrollAware()
             }
         }
         .sheet(isPresented: $showServerSheet) {
@@ -129,6 +132,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showModelSheet) {
             ModelSheet(current: currentModel)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showAbout) {
+            AboutView()
                 .presentationDetents([.medium])
         }
         .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
@@ -500,7 +507,7 @@ struct SessionLocSheet: View {
     }
 }
 
-// MARK: - 默认模型选择（阶段3：设置模块完善，对标 web 端模型切换）
+// MARK: - 模型管理（复刻 PWA/OpenCode Go 面板：分组 + 设为当前 + 同步列表）
 
 struct ModelSheet: View {
     @Environment(AuthStore.self) private var auth
@@ -509,9 +516,12 @@ struct ModelSheet: View {
     @State private var selected = ""
     @State private var syncing = false
     @State private var syncResult: String?
+    // 服务器同步的模型（分组展示）
+    @State private var stepfunModels: [String] = []
+    @State private var deepseekModels: [String] = []
 
-    /// 模型列表（OpenCode Go 平台聚合，本地预置 + 可同步刷新）
-    private let models: [(String, String)] = [
+    /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）
+    private let localModels: [(String, String)] = [
         ("deepseek-v4-flash", "DeepSeek V4 Flash"),
         ("deepseek-v4-flash-free", "DeepSeek V4 Flash Free"),
         ("deepseek-v4-pro", "DeepSeek V4 Pro"),
@@ -522,101 +532,52 @@ struct ModelSheet: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // 头部：🧠 模型管理 + 刷新 + 同步列表 + 在线状态（复刻 OpenCode Go 模型面板）
+        VStack(alignment: .leading, spacing: 10) {
+            // 头部：🧠 模型管理 + 刷新 + 同步列表 + 在线状态
             HStack(spacing: 8) {
-                Text("🧠")
-                    .font(.system(size: 18))
-                Text("模型管理")
-                    .font(.system(size: 17, weight: .bold))
+                Text("🧠").font(.system(size: 18))
+                Text("模型管理").font(.system(size: 17, weight: .bold))
                 Spacer()
-                Button {
-                    syncList()
-                } label: {
+                Button { syncList() } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
-                Button {
-                    syncList()
-                } label: {
+                Button { syncList() } label: {
                     Text("同步列表")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
-                Button {
-                    dismiss()
-                } label: {
+                Button { dismiss() } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 22)).foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.bottom, 2)
 
-            // 在线状态（OpenCode Go 连接）
+            // 在线状态 + 同步结果
             HStack(spacing: 5) {
                 Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)
                 Text(syncing ? "同步中..." : "OpenCode Go 在线")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
-
             if let syncResult {
                 Text(syncResult)
                     .font(.system(size: 11))
                     .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
             }
-
             Divider()
 
-            // 模型列表（当前模型蓝色高亮 + "当前"标签；其他带"设为当前"按钮）
             ScrollView {
-                VStack(spacing: 8) {
-                    ForEach(models, id: \.0) { m in
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(m.0)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(selected == m.0 ? Color.accentColor : Color.primary)
-                                Text(m.1)
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if selected == m.0 {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 14))
-                                    Text("当前")
-                                        .font(.system(size: 11, weight: .semibold))
-                                }
-                                .foregroundStyle(Color.accentColor)
-                            } else {
-                                Button {
-                                    setModel(m.0)
-                                } label: {
-                                    Text("设为当前")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Color.accentColor)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Color.accentColor.opacity(0.12), in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(12)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(selected == m.0 ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
-                                              lineWidth: 0.8)
-                        )
+                VStack(spacing: 12) {
+                    groupSection("opencode", models: localModels.map { ($0.0, $0.1, "opencode") })
+                    if !deepseekModels.isEmpty {
+                        groupSection("deepseek", models: deepseekModels.map { ($0, $0, "deepseek") })
+                    }
+                    if !stepfunModels.isEmpty {
+                        groupSection("stepfun", models: stepfunModels.map { ($0, $0, "stepfun") })
                     }
                 }
                 .padding(.bottom, 8)
@@ -626,29 +587,140 @@ struct ModelSheet: View {
         .onAppear { selected = current }
     }
 
-    private func setModel(_ id: String) {
-        selected = id
-        UserDefaults.standard.set(id, forKey: "qingliao_model")
+    /// 分组标题 + 模型行
+    private func groupSection(_ group: String, models: [(String, String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(group)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            ForEach(models, id: \.0) { m in
+                modelRow(id: m.0, name: m.1, provider: m.2)
+            }
+        }
     }
 
-    /// 同步模型列表（服务器 /api/stream/sync-models；失败保持本地列表并提示）
+    private func modelRow(id: String, name: String, provider: String) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(id)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected == id ? Color.accentColor : Color.primary)
+                Text(name)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if selected == id {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 14))
+                    Text("当前").font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(Color.accentColor)
+            } else {
+                Button {
+                    setModel(id, provider: provider)
+                } label: {
+                    Text("设为当前")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(selected == id ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
+                              lineWidth: 0.8)
+        )
+    }
+
+    private func setModel(_ id: String, provider: String) {
+        selected = id
+        UserDefaults.standard.set(id, forKey: "qingliao_model")
+        UserDefaults.standard.set(provider, forKey: "qingliao_provider")
+    }
+
+    /// 同步模型列表：stepfun/deepseek 官方端点可同步，opencode 保持本地预置
     private func syncList() {
         guard !syncing else { return }
         syncing = true
         syncResult = nil
         Task {
-            defer { syncing = false }
-            do {
-                let j = try await auth.json("/api/stream/sync-models?provider=opencode")
-                if (j["ok"] as? Bool) == true, let list = j["models"] as? [String], !list.isEmpty {
-                    // 服务器同步成功：合并新模型（保留本地预置 + 追加服务器新增）
-                    syncResult = "✅ 已同步 \(list.count) 个模型"
-                } else {
-                    syncResult = "⚠️ 服务器同步失败（\(j["error"] as? String ?? "未知")），保持本地列表"
-                }
-            } catch {
-                syncResult = "⚠️ 同步失败：\(error.localizedDescription)"
+            let s = await fetchModels("stepfun")
+            let d = await fetchModels("deepseek")
+            if let s { stepfunModels = s }
+            if let d { deepseekModels = d }
+            syncResult = "✅ 已同步（stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
+            syncing = false
+        }
+    }
+
+    private func fetchModels(_ provider: String) async -> [String]? {
+        guard let j = try? await auth.json("/api/stream/sync-models?provider=\(provider)"),
+              (j["ok"] as? Bool) == true,
+              let list = j["models"] as? [String] else { return nil }
+        return list
+    }
+}
+
+// MARK: - 关于轻聊（软件介绍页）
+
+struct AboutView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.blue, Color.indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "message.bubble.fill")
+                    .font(.system(size: 34))
+                    .foregroundStyle(.white)
             }
+            .frame(width: 76, height: 76)
+
+            Text("轻聊")
+                .font(.system(size: 22, weight: .bold))
+            Text("Version 2.0")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
+            Divider().padding(.horizontal, 30)
+
+            VStack(alignment: .leading, spacing: 8) {
+                aboutRow("简介", "连接自家 Hermes Agent Server 的 AI 智能助手，支持多模型、NAS 控制、文件管理与智能家居。")
+                aboutRow("模型", "DeepSeek V4 / Kimi / StepFun 多模型聚合（OpenCode Go）")
+                aboutRow("功能", "流式对话 · 语音输入 · 会话同步 · NAS 面板 · 智能家居 · 文件管理 · 定时任务")
+                aboutRow("网络", "iOS 27 蜂窝直连优化 + Safari Relay 兜底")
+                aboutRow("架构", "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端")
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 24)
+
+            Spacer()
+            Text("Nous Research · Hermes Agent")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 12)
+        }
+        .padding(.top, 22)
+    }
+
+    private func aboutRow(_ title: String, _ content: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            Text(content)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
         }
     }
 }

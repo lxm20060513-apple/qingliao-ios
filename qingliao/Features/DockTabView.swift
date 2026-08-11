@@ -41,6 +41,7 @@ struct DockTabView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .background(Color(uiColor: .systemBackground))
             .ignoresSafeArea(edges: .bottom)
+            .coordinateSpace(name: "scrollspace")
             // 页面切换滑动动画（点击 Dock 时整体横向滑动过渡）
             .animation(.easeInOut(duration: 0.38), value: selected)
 
@@ -59,10 +60,12 @@ struct DockTabView: View {
             VStack {
                 Spacer()
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
+                // 下滑隐藏 / 上滑显示（DockVisibility 由各页面 ScrollView 驱动）
                 DockBar(selected: $selected)
-                    .offset(y: kb.isVisible ? 40 : 0)
-                    .opacity(kb.isVisible ? 0 : 1)
-                    .allowsHitTesting(!kb.isVisible)
+                    .offset(y: (kb.isVisible || DockVisibility.shared.hidden) ? 120 : 0)
+                    .opacity((kb.isVisible || DockVisibility.shared.hidden) ? 0 : 1)
+                    .allowsHitTesting(!kb.isVisible && !DockVisibility.shared.hidden)
+                    .animation(.spring(duration: 0.5, bounce: 0.25), value: DockVisibility.shared.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
                     .padding(.bottom, 2)
             }

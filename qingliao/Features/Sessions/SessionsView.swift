@@ -65,6 +65,7 @@ struct SessionsView: View {
                 .refreshable {
                     await load()
                 }
+                .dockScrollAware()
             }
         }
         .task { await load() }

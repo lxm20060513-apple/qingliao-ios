@@ -145,6 +145,15 @@ final class AuthStore {
         throw lastErr ?? APIError.badResponse
     }
 
+    /// 文件下载：Wi-Fi → URLSession 直连（二进制）；蜂窝 → Safari relay（带 query 直连挂，relay 可传小文件）
+    func downloadFile(_ path: String) async throws -> (Data, Int) {
+        if NetworkMonitor.shared.isCellular {
+            return try await relay.relay(method: "GET", path: path, headers: [:], body: nil, timeout: 30)
+        } else {
+            return try await directHTTP(method: "GET", path: path, headers: [:], body: nil)
+        }
+    }
+
     /// 便捷：JSON 请求 → 字典
     func json(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> [String: Any] {
         let (data, _) = try await request(path, method: method, body: body)

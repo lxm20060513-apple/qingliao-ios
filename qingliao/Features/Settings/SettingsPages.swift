@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - 文件管理页（浏览 NAS 文件 / 下载分享 / 上传）
 
@@ -200,7 +201,12 @@ struct FilesView: View {
         defer { downloading = false }
         let path = ((cwd.isEmpty ? "" : cwd + "/") + e.name).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         do {
-            let (data, _) = try await auth.request("/api/files/download?path=\(path)")
+            let (data, code) = try await auth.downloadFile("/api/files/download?path=\(path)")
+            guard code == 200 else {
+                toast = "下载失败（服务器返回 \(code)）"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+                return
+            }
             let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("qingliao_files", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -284,6 +290,14 @@ struct TasksView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Button {
+                    showNewTask = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -361,7 +375,13 @@ struct TasksView: View {
         }
         .background(Color(uiColor: .systemBackground))
         .task { await load() }
+        .sheet(isPresented: $showNewTask) {
+            NewTaskSheet()
+                .presentationDetents([.medium])
+        }
     }
+
+    @State private var showNewTask = false
 
     private func load() async {
         loading = true
@@ -404,6 +424,8 @@ struct LogsView: View {
 
     @State private var logs: [String] = []
     @State private var loading = true
+    @State private var exportText = ""
+    @State private var showExporter = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -411,6 +433,23 @@ struct LogsView: View {
                 Text("日志")
                     .font(.system(size: 17, weight: .bold))
                 Spacer()
+                Button {
+                    UIPasteboard.general.string = logs.joined(separator: "\n")
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    exportText = logs.joined(separator: "\n")
+                    showExporter = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
                 Button {
                     Task { await load() }
                 } label: {
@@ -463,6 +502,23 @@ struct LogsView: View {
         }
         .background(Color(uiColor: .systemBackground))
         .task { await load() }
+        .fileExporter(isPresented: $showExporter,
+                      document: LogDocument(text: exportText),
+                      contentType: .plainText,
+                      defaultFilename: "qingliao-logs") { _ in }
+    }
+
+    /// 日志导出文档
+    struct LogDocument: FileDocument {
+        var text: String
+        static var readableContentTypes: [UTType] { [.plainText] }
+        init(text: String) { self.text = text }
+        init(configuration: ReadConfiguration) throws {
+            text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+        }
+        func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+            FileWrapper(regularFileWithContents: Data(text.utf8))
+        }
     }
 
     private func load() async {
@@ -477,6 +533,95 @@ struct LogsView: View {
             }
         } catch {
             logs = []
+        }
+    }
+}
+
+// MARK: - 新建定时任务
+
+struct NewTaskSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var cron = "0 9 * * *"
+    @State private var prompt = ""
+    @State private var saving = false
+    @State private var errorText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("新建定时任务")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            TextField("任务名称（如：每日早报）", text: $name)
+                .font(.system(size: 14))
+                .textFieldStyle(.roundedBorder)
+            TextField("Cron 表达式（如 0 9 * * *）", text: $cron)
+                .font(.system(size: 13, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+            TextEditor(text: $prompt)
+                .font(.system(size: 13))
+                .frame(height: 110)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1)
+                )
+                .overlay(alignment: .topLeading) {
+                    if prompt.isEmpty {
+                        Text("任务提示词（发给 AI 的执行指令）")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.tertiary)
+                            .padding(8)
+                    }
+                }
+            if let errorText {
+                Text(errorText).font(.system(size: 12)).foregroundStyle(.red)
+            }
+            Button {
+                save()
+            } label: {
+                HStack {
+                    Spacer()
+                    if saving { ProgressView().tint(.white) } else { Text("保存任务") }
+                    Spacer()
+                }
+                .padding(.vertical, 11)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .foregroundStyle(.white)
+                .font(.system(size: 15, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(saving || name.isEmpty || cron.isEmpty || prompt.isEmpty)
+            Spacer()
+        }
+        .padding(18)
+    }
+
+    private func save() {
+        saving = true
+        errorText = nil
+        Task {
+            defer { saving = false }
+            do {
+                let j = try await auth.json("/api/cron/tasks", method: "POST", body: [
+                    "name": name, "cron": cron, "prompt": prompt
+                ])
+                if (j["ok"] as? Bool) == true {
+                    dismiss()
+                } else {
+                    errorText = (j["error"] as? String) ?? "保存失败"
+                }
+            } catch {
+                errorText = "请求失败：\(error.localizedDescription)"
+            }
         }
     }
 }
