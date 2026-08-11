@@ -503,6 +503,7 @@ struct SessionLocSheet: View {
 // MARK: - 默认模型选择（阶段3：设置模块完善，对标 web 端模型切换）
 
 struct ModelSheet: View {
+    @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
     let current: String
     @State private var selected = ""

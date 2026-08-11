@@ -35,27 +35,32 @@ struct ChatView: View {
     }
     private let provider = "opencode"
 
+    /// 头部模型快速切换按钮（独立表达式，避免类型检查超时）
+    private var modelHeaderButton: AnyView {
+        AnyView(
+            Button {
+                showModelSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 11))
+                    Text(modelName)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(Color.accentColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "聊天",
                        subtitle: serverOnline == nil ? "检测中" : (serverOnline == true ? "在线" : "离线"),
-                       trailing: AnyView(
-                           Button {
-                               showModelSheet = true
-                           } label: {
-                               HStack(spacing: 4) {
-                                   Image(systemName: "cpu")
-                                       .font(.system(size: 11))
-                                   Text(modelName)
-                                       .font(.system(size: 11, weight: .medium))
-                               }
-                               .foregroundStyle(Color.accentColor)
-                               .padding(.horizontal, 10)
-                               .padding(.vertical, 5)
-                               .background(Color.accentColor.opacity(0.12), in: Capsule())
-                           }
-                           .buttonStyle(.plain)
-                       ),
+                       trailing: modelHeaderButton,
                        showStatus: true,
                        statusColor: serverOnline == true ? .green : (serverOnline == false ? .red : .gray))
             if sentOK {
