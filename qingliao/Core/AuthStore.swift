@@ -85,6 +85,12 @@ final class AuthStore {
         } else {
             bodyData = nil
         }
+        // v2.0.34 fix：登录后所有请求携带 X-Auth-Token。
+        // 此前 token 只存不发 → auth 端点（change-password/logout/status）硬校验 token，
+        // 无论 AUTO_LOGIN 与否都返回 401「未登录」→ 修改密码功能失效。
+        if !token.isEmpty {
+            headers["X-Auth-Token"] = token
+        }
 
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {

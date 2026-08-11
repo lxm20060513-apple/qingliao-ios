@@ -721,18 +721,16 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(LinearGradient(colors: [Color.blue, Color.indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                Image(systemName: "message.bubble.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 76, height: 76)
+            // v2.0.34：关于页换新图标（淡青底微笑气泡，与 AppIcon 同款）
+            Image("AboutLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 76, height: 76)
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
 
             Text("轻聊")
                 .font(.system(size: 22, weight: .bold))
-            Text("Version 2.0")
+            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0")")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
 
