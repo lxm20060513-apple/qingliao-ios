@@ -41,6 +41,8 @@ struct DockTabView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .background(Color(uiColor: .systemBackground))
             .ignoresSafeArea(edges: .bottom)
+            // 页面切换滑动动画（点击 Dock 时整体横向滑动过渡）
+            .animation(.easeInOut(duration: 0.38), value: selected)
 
             // 环境光晕：收敛到底部 Dock 区域、低透明度（页面主体保持纯黑，玻璃有内容可透即可）
             ZStack {
@@ -62,7 +64,7 @@ struct DockTabView: View {
                     .opacity(kb.isVisible ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -84,7 +86,8 @@ struct DockBar: View {
             HStack(spacing: 2) {
                 ForEach(DockTab.allCases) { tab in
                     Button {
-                        withAnimation(.spring(duration: 0.5, bounce: 0.35)) { selected = tab }
+                        // 交给 TabView 的 .animation(value: selected) 驱动整体滑动
+                        selected = tab
                     } label: {
                         VStack(spacing: 4) {
                             Image(systemName: tab.icon)

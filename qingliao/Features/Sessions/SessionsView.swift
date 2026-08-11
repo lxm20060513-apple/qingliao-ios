@@ -118,12 +118,18 @@ struct SessionsView: View {
                     "sessions": [] as [Any],
                     "deleted": [s.id]
                 ])
-                // 校验服务器确实删除（401 透传/异常响应不含 ok:true → 视为未同步）
-                if (j["ok"] as? Bool) != true {
+                let ok = (j["ok"] as? Bool) == true
+                let deletedCount = (j["deleted"] as? Int) ?? -1
+                if ok && deletedCount >= 0 {
+                    // 服务器确认（deleted:1 删除成功 / deleted:0 服务器本无此会话）→ 刷新列表保持一致
+                    await load()
+                } else {
                     rollbackDelete(s)
+                    deleteError = "删除未同步到服务器（服务器返回异常），请检查网络后重试"
                 }
             } catch {
                 rollbackDelete(s)
+                deleteError = "删除未同步到服务器：\(error.localizedDescription)"
             }
         }
     }

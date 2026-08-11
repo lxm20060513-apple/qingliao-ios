@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
-    @AppStorage("qingliao_appearance") private var appearance = "dark"   // dark/light/system
+    @AppStorage("qingliao_appearance") private var appearance = "system"   // dark/light/system（默认跟随系统）
 
     @State private var showServerSheet = false
     @State private var showPasswordSheet = false

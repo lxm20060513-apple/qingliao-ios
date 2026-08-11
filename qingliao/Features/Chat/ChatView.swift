@@ -110,6 +110,20 @@ struct ChatView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 6)
             }
+            // 内联附件面板（类微信 + 面板：点击回形针展开）
+            if showAttachmentMenu {
+                HStack(spacing: 26) {
+                    attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
+                    attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8))
+                .padding(.horizontal, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             ChatInputBar(text: $inputText, focused: $inputFocus, streaming: stream.isStreaming,
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
@@ -118,17 +132,14 @@ struct ChatView: View {
             } onStop: {
                 stream.stop(auth: auth)
             } onPickAttachment: {
-                showAttachmentMenu = true
+                withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
+                    showAttachmentMenu.toggle()
+                }
             }
             // 键盘弹出：输入框紧贴键盘上方（Dock 已隐藏）；收起：留 100pt 避让悬浮 Dock
             .padding(.bottom, kb.isVisible ? kb.height + 10 : 100)
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
-        .confirmationDialog("添加附件", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
-            Button("图片") { showPhotoPicker = true }
-            Button("文件 (PDF / Word / Excel / 文本)") { showFileImporter = true }
-            Button("取消", role: .cancel) {}
-        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.pdf, .plainText,
@@ -451,6 +462,27 @@ struct ChatView: View {
             try? await Task.sleep(for: .seconds(2.5))
             withAnimation { sentOK = false }
         }
+    }
+
+    /// 内联附件面板按钮（类微信 + 面板样式）
+    private func attachButton(_ icon: String, _ name: String, _ color: Color,
+                              action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.spring(duration: 0.3, bounce: 0.2)) { showAttachmentMenu = false }
+            action()
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 19))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                Text(name)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 语音输入（按住说话 → 录音 → SFSpeechRecognizer 转写填入输入框）
