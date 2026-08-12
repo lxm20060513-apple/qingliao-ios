@@ -5,19 +5,27 @@ import AVFoundation
 // MARK: - 聊天 UI 组件（从 ChatView.swift 拆出，减小主文件体积）
 
 // MARK: - v2.0.65 气泡小尾巴（iMessage 式：AI 左下 / 用户右下）
+// v2.0.66：单 Shape 一体化（圆角矩形 + 尾巴同路径，之前的 ZStack overlay 方案尾巴被挤进气泡内不显示）
 
-struct BubbleTail: Shape {
-    let left: Bool   // 尖朝左（AI 消息）
+struct BubbleShape: Shape {
+    let tailLeft: Bool   // 尾巴朝左（AI 消息）
+    let radius: CGFloat
     func path(in rect: CGRect) -> Path {
+        let r = radius
+        let tailW: CGFloat = 8   // 尾巴凸出宽度
+        let tailH: CGFloat = 16  // 尾巴高度
         var p = Path()
-        if left {
-            p.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-            p.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
-            p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        // 圆角矩形主体
+        p.addRoundedRect(in: rect, cornerSize: CGSize(width: r, height: r))
+        // 尾巴：底部角落朝外凸出（与主体同填充色，天然一体）
+        if tailLeft {
+            p.move(to: CGPoint(x: rect.minX + r, y: rect.maxY - tailH))
+            p.addLine(to: CGPoint(x: rect.minX - tailW, y: rect.maxY - tailH / 2))
+            p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
         } else {
-            p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-            p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            p.move(to: CGPoint(x: rect.maxX - r, y: rect.maxY - tailH))
+            p.addLine(to: CGPoint(x: rect.maxX + tailW, y: rect.maxY - tailH / 2))
+            p.addLine(to: CGPoint(x: rect.maxX - r, y: rect.maxY))
         }
         p.closeSubpath()
         return p
@@ -142,9 +150,8 @@ struct MessageBubble: View {
                 .frame(width: 30, height: 30)
             }
 
-            // v2.0.65：气泡主体 + 尾巴（ZStack 对齐底部角落，尾巴向气泡外凸出）
-            ZStack(alignment: message.isUser ? .bottomTrailing : .bottomLeading) {
-                VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+            // v2.0.66：气泡主体（单 Shape 背景带尾巴，不再用 ZStack overlay）
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
                     // v2.0.61：语音条消息
                     if let path = message.audioPath {
                         AudioBubbleRow(path: path, durationText: message.content)
@@ -215,18 +222,16 @@ struct MessageBubble: View {
                 }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
-                .background(message.isUser ? userBubbleColor : aiBubbleColor,
-                            in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                // v2.0.66：单 Shape 背景（圆角矩形 + 尾巴一体，尾巴必然显示）
+                .background(
+                    BubbleShape(tailLeft: !message.isUser, radius: 15)
+                        .fill(message.isUser ? userBubbleColor : aiBubbleColor)
+                )
                 // v2.0.43 搜索定位高亮边框
                 .overlay(
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
                 )
-                // v2.0.65：气泡小尾巴（向气泡外侧凸出，AI 左下 / 用户右下）
-                BubbleTail(left: !message.isUser)
-                    .fill(message.isUser ? userBubbleColor : aiBubbleColor)
-                    .frame(width: 10, height: 14)
-                    .offset(x: message.isUser ? 9 : -9, y: 0)
             }
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
 
