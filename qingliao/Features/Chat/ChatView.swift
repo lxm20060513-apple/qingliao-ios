@@ -90,6 +90,8 @@ struct ChatView: View {
     // v2.0.43：快捷指令 / 搜索定位高亮
     @State private var showQuickPrompts = false
     @State private var highlightMessageID: String?
+    // v2.0.46：隐藏 Dock 栏开关（开启时输入框贴底）
+    @AppStorage("qingliao_hide_dock") private var hideDock = false
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -259,10 +261,10 @@ struct ChatView: View {
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
             // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
-            // 收起时留 86pt 避让贴底 Dock
+            // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
                      ? max(0, UIScreen.main.bounds.height - kb.topY)
-                     : 86)
+                     : (hideDock ? 0 : 86))
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
