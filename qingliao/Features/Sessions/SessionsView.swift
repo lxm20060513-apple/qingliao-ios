@@ -154,7 +154,8 @@ struct SessionsView: View {
 
     private var addButton: some View {
         Button {
-            chat.newSession()
+            // v2.0.38：新建会话同样禁用动画（与清空同因的批量移除闪退）
+            withAnimation(nil) { chat.newSession() }
             DockVisibility.shared.reset()   // 新建会话后 Dock 恢复显示
             onOpenSession?()
         } label: {

@@ -23,6 +23,9 @@ struct SettingsView: View {
     @State private var haAddress = ""
     @State private var testResult: String?
     @State private var testing = false
+    // v2.0.38：聊天字体大小（12-20，默认 14）
+    @AppStorage("qingliao_font_size") private var fontSize = 14
+    @State private var showFontOptions = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,6 +90,20 @@ struct SettingsView: View {
                                 appearanceOption("深色", value: "dark")
                                 appearanceOption("浅色", value: "light")
                                 appearanceOption("跟随系统", value: "system")
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 10)
+                        }
+                        Divider().padding(.leading, 52)
+                        // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
+                        SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showFontOptions.toggle() } }
+                        if showFontOptions {
+                            HStack(spacing: 10) {
+                                Text("小").font(.system(size: 12)).foregroundStyle(.secondary)
+                                Slider(value: $fontSize, in: 12...20, step: 1)
+                                    .tint(Color.accentColor)
+                                Text("大").font(.system(size: 16)).foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)

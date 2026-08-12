@@ -24,13 +24,15 @@ struct MessageContentBlock: Identifiable {
 /// AI 消息分段渲染：markdown（容错解析，保留部分排版） / 代码块（等宽深色）
 struct MessageBlockView: View {
     let block: MessageContentBlock
+    // v2.0.38：聊天字体大小（与 MessageBubble 同源）
+    @AppStorage("qingliao_font_size") private var fontSize = 14
 
     var body: some View {
         switch block.kind {
         case .markdown(let text):
             // v2.0.34：改用自研轻量渲染器（标题/加粗/斜体/代码/列表/引用），
             // 不再依赖 AttributedString(markdown:) 系统解析（iOS 上输出纯文本不可控）
-            Text(MarkdownRenderer.render(text))
+            Text(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize)))
                 .lineSpacing(3)
                 .textSelection(.enabled)
         case .code(let text):
@@ -52,7 +54,7 @@ struct MessageBlockView: View {
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(text)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: max(10, CGFloat(fontSize) - 2), design: .monospaced))
                         .textSelection(.enabled)
                         .padding(.bottom, 4)
                 }
@@ -95,6 +97,7 @@ struct ChatView: View {
     @State private var scrollPos = ScrollPosition()
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
+    @State private var showCameraPicker = false   // v2.0.38 拍照输入
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
@@ -137,7 +140,8 @@ struct ChatView: View {
                     showExporter = true
                 }
                 Button("清空本会话消息", role: .destructive) {
-                    chat.clearMessages()
+                    // v2.0.38：清空时禁用动画（批量移除 cell 的 spring 动画曾导致闪退）
+                    withAnimation(nil) { chat.clearMessages() }
                     Task { await chat.saveToServer(auth: auth) }
                 }
                 Button("取消", role: .cancel) {}
@@ -231,6 +235,7 @@ struct ChatView: View {
                                  showAttachmentMenu.toggle()
                              }
                          },
+                         onCamera: { showCameraPicker = true },
                          isRecording: isRecording,
                          onVoiceStart: { startVoice() },
                          onVoiceEnd: { endVoice() })
@@ -242,6 +247,13 @@ struct ChatView: View {
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        // v2.0.38：拍照输入（拍完进图片预览条，确认后发送）
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPicker { img in
+                pendingImage = img
+                pendingImageData = compressImage(img)
+            }
+        }
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.pdf, .plainText,
                                             UTType(filenameExtension: "docx") ?? .data,
@@ -316,9 +328,10 @@ struct ChatView: View {
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
+                            // v2.0.38：去掉 .animation(value: messages.count)——
+                            // 批量清空（清空会话/新建会话）时全 cell 同时移除的 spring 动画曾导致闪退
                             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
                                                     removal: .opacity))
-                            .animation(.spring(duration: 0.3, bounce: 0.2), value: chat.messages.count)
                         }
                         if stream.isStreaming {
                             if stream.content.isEmpty {
@@ -769,6 +782,8 @@ struct MessageBubble: View {
     var onDelete: () -> Void = {}     // v2.0.36 单条删除
     var onShare: () -> Void = {}      // v2.0.36 分享文本
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
+    // v2.0.38：聊天字体大小（设置页可调，实时生效）
+    @AppStorage("qingliao_font_size") private var fontSize = 14
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -799,7 +814,7 @@ struct MessageBubble: View {
                 if !message.content.isEmpty {
                     if message.isUser {
                         Text(AttributedString(message.content))
-                            .font(.system(size: 14))
+                            .font(.system(size: CGFloat(fontSize)))   // v2.0.38 字号可调
                             .lineSpacing(3)
                             .foregroundStyle(.white)
                             .textSelection(.enabled)
@@ -822,7 +837,7 @@ struct MessageBubble: View {
                     }
                 }
             }
-            .frame(maxWidth: 290, alignment: message.isUser ? .trailing : .leading)
+            .frame(maxWidth: 320, alignment: message.isUser ? .trailing : .leading)   // v2.0.38 气泡加宽 290→320
 
             if !message.isUser {
                 Spacer(minLength: 48)
@@ -900,6 +915,7 @@ struct ChatInputBar: View {
     var onSend: () -> Void
     var onStop: () -> Void = {}
     var onPickAttachment: () -> Void = {}
+    var onCamera: () -> Void = {}   // v2.0.38 拍照输入
     // 语音输入（按住说话）
     var isRecording: Bool = false
     var onVoiceStart: () -> Void = {}
@@ -910,6 +926,15 @@ struct ChatInputBar: View {
             Button(action: onPickAttachment) {
                 Image(systemName: "paperclip")
                     .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+            .buttonStyle(.plain)
+
+            // v2.0.38：拍照输入（相机按钮在语音按钮左边）
+            Button(action: onCamera) {
+                Image(systemName: "camera")
+                    .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .padding(4)
             }
