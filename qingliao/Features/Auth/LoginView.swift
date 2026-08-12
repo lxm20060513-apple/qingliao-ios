@@ -34,6 +34,38 @@ struct LoginView: View {
                 // 表单
                 VStack(spacing: 12) {
                     GlassField(icon: "globe", placeholder: "服务器地址", text: $server)
+                    // v2.0.71：历史地址胶囊（多地址快速切换，长按删除）
+                    if !auth.serverHistory.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(auth.serverHistory, id: \.self) { addr in
+                                    Button {
+                                        server = addr
+                                    } label: {
+                                        Text(addr)
+                                            .font(.system(size: 12))
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 11)
+                                            .padding(.vertical, 6)
+                                            .background(Color.accentColor.opacity(0.12))
+                                            .clipShape(Capsule())
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            auth.removeServer(addr)
+                                        } label: {
+                                            Label("删除此地址", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 30)
+                        .padding(.top, -2)
+                    }
                     GlassField(icon: "person", placeholder: "用户名", text: $username)
                     GlassField(icon: "lock", placeholder: "密码", text: $password, isSecure: true)
                 }

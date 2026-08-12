@@ -39,6 +39,24 @@ final class AuthStore {
         let clean = s.trimmingCharacters(in: .whitespacesAndNewlines)
         serverURL = clean.isEmpty ? serverURL : clean
         defaults.set(serverURL, forKey: serverKey)
+        // v2.0.71：多地址记忆（去重置顶，上限 8 条）
+        if !clean.isEmpty {
+            var list = serverHistory.filter { $0 != clean }
+            list.insert(clean, at: 0)
+            defaults.set(Array(list.prefix(8)), forKey: serversKey)
+        }
+    }
+
+    // MARK: - v2.0.71 多地址记忆（登录页快速切换）
+
+    private let serversKey = "qingliao_servers"
+
+    var serverHistory: [String] {
+        defaults.array(forKey: serversKey) as? [String] ?? []
+    }
+
+    func removeServer(_ s: String) {
+        defaults.set(serverHistory.filter { $0 != s }, forKey: serversKey)
     }
 
     // MARK: - 登录（POST /api/auth/login 验证账号密码；服务器 AUTO_LOGIN 免鉴权，登录页作为门禁）
