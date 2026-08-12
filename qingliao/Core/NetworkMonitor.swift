@@ -15,8 +15,11 @@ final class NetworkMonitor: @unchecked Sendable {
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            let cellular = path.isExpensive
-                || path.availableInterfaces.contains { $0.type == .cellular }
+            // v2.0.67：有 WiFi/有线接口时绝不判蜂窝（此前 isExpensive 在 WiFi 低数据模式/
+            // iOS 27 偶发 true → 误判蜂窝 → 登录走 Safari relay 弹窗，用户实测）
+            let hasLAN = path.availableInterfaces.contains { $0.type == .wifi || $0.type == .wiredEthernet }
+            let cellular = !hasLAN && (path.isExpensive
+                || path.availableInterfaces.contains { $0.type == .cellular })
             DispatchQueue.main.async {
                 self?.isCellular = cellular
             }
