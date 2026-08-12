@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - v2.0.72 Docker 管理（docker compose 一键部署：名称 + YAML + 部署/停止/删除）
+// MARK: - v2.0.74 Docker 管理（液态玻璃卡片化：部署卡 + 容器列表卡，易操作）
 
 struct DockerSheet: View {
     @Environment(AuthStore.self) private var auth
@@ -10,138 +10,242 @@ struct DockerSheet: View {
     @State private var containers: [DockerContainer] = []
     @State private var message: (ok: Bool, text: String)?
     @State private var busy = false
-    // v2.0.73：键盘收回 + 删除确认
     @FocusState private var focused: Bool
     @State private var confirmTarget: DockerContainer?
+
+    /// YAML 常用模板（一键插入）
+    private static let nginxTemplate = """
+    services:
+      app:
+        image: nginx:latest
+        container_name: app
+        ports:
+          - "8080:80"
+        restart: unless-stopped
+    """
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    // 部署区
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("新建部署").font(.system(size: 13, weight: .semibold))
-                        // v2.0.73：圆角 + 半透明模糊输入框（液态玻璃质感）
-                        TextField("Docker 项目名（如 myapp）", text: $name)
+                VStack(spacing: 14) {
+                    // ===== 新建部署卡 =====
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("新建部署", systemImage: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+
+                        // 项目名（实时预览目录）
+                        TextField("项目名（如 myapp）", text: $name)
                             .font(.system(size: 14))
                             .focused($focused)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.8)
+                                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
                             )
-                        TextEditor(text: $yaml)
-                            .font(.system(size: 12, design: .monospaced))
-                            .focused($focused)
-                            .frame(minHeight: 170)
-                            .padding(8)
-                            .scrollContentBackground(.hidden)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.8)
-                            )
-                        Text("输入 docker-compose YAML，确认后点击「部署」生效（目录自动创建于 /volume1/docker/项目名/）")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
+                        if !name.isEmpty {
+                            Text("目录：/volume1/docker/\(name)/")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+
+                        // YAML 编辑器
+                        ZStack(alignment: .topTrailing) {
+                            TextEditor(text: $yaml)
+                                .font(.system(size: 12, design: .monospaced))
+                                .focused($focused)
+                                .frame(minHeight: 180)
+                                .padding(8)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+                                )
+                                // YAML 空态提示
+                                .overlay(alignment: .topLeading) {
+                                    if yaml.isEmpty {
+                                        Text("services:\n  app:\n    image: nginx:latest\n    ports:\n      - \"8080:80\"")
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .foregroundStyle(.tertiary.opacity(0.6))
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 16)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
+                            // 模板按钮
+                            if yaml.isEmpty {
+                                Button {
+                                    yaml = Self.nginxTemplate
+                                } label: {
+                                    Label("模板", systemImage: "text.badge.plus")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .padding(8)
+                            }
+                        }
+
+                        // 部署按钮（渐变蓝，确认后生效）
                         Button {
+                            focused = false
                             Task { await deploy() }
                         } label: {
-                            HStack {
-                                if busy { ProgressView().tint(.white) }
+                            HStack(spacing: 8) {
+                                if busy {
+                                    ProgressView().tint(.white)
+                                }
                                 Text(busy ? "部署中…" : "部署")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 15, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.accentColor)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(colors: [.blue, .indigo],
+                                               startPoint: .leading, endPoint: .trailing),
+                                in: RoundedRectangle(cornerRadius: 12)
+                            )
                             .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .shadow(color: .blue.opacity(0.35), radius: 8, y: 3)
                         }
                         .buttonStyle(.plain)
                         .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
                                      || yaml.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .opacity(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
+                                   || yaml.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
                     }
+                    .padding(14)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                    )
 
                     // 结果
                     if let m = message {
-                        Text(m.text)
-                            .font(.system(size: 12))
-                            .foregroundStyle(m.ok ? .green : .red)
-                            .textSelection(.enabled)
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: m.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(m.ok ? .green : .red)
+                            Text(m.text)
+                                .font(.system(size: 12))
+                                .foregroundStyle(m.ok ? .green : .red)
+                                .textSelection(.enabled)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background((m.ok ? Color.green : Color.red).opacity(0.1),
+                                    in: RoundedRectangle(cornerRadius: 10))
                     }
 
-                    // 容器列表
-                    VStack(alignment: .leading, spacing: 8) {
+                    // ===== 已部署容器卡 =====
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("已部署容器").font(.system(size: 13, weight: .semibold))
+                            Label("已部署容器", systemImage: "shippingbox.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
                             Spacer()
+                            Text("\(containers.count) 个")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                             Button {
                                 Task { await load() }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color.accentColor)
                             }
                             .buttonStyle(.plain)
                         }
+
                         if containers.isEmpty {
-                            Text("暂无容器").font(.system(size: 12)).foregroundStyle(.tertiary).padding(.vertical, 8)
+                            VStack(spacing: 6) {
+                                Image(systemName: "shippingbox")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.tertiary)
+                                Text("暂无容器，输入 YAML 点击部署")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
                         } else {
                             ForEach(containers) { c in
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
+                                    // 状态点（运行中呼吸）
                                     Circle()
                                         .fill(c.status.contains("Up") ? Color.green : Color.red)
-                                        .frame(width: 7, height: 7)
+                                        .frame(width: 8, height: 8)
+                                        .shadow(color: (c.status.contains("Up") ? Color.green : Color.red).opacity(0.5),
+                                                radius: 3)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(c.name).font(.system(size: 13, weight: .medium))
-                                        Text(c.status).font(.system(size: 11)).foregroundStyle(.secondary)
+                                        Text(c.name)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .lineLimit(1)
+                                        Text(c.ports.isEmpty ? c.status : "\(c.status) · \(c.ports)")
+                                            .font(.system(size: 10.5))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
                                     }
-                                    Spacer()
-                                    // v2.0.73：每个容器都有停止/删除（非 compose 项目删除前确认）
+                                    Spacer(minLength: 6)
+                                    // 停止
                                     Button {
                                         Task { await action(c.name, "stop") }
                                     } label: {
-                                        Text("停止").font(.system(size: 11))
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
-                                            .background(Color.orange.opacity(0.15))
-                                            .clipShape(Capsule())
+                                        Image(systemName: "stop.circle.fill")
+                                            .font(.system(size: 16))
                                             .foregroundStyle(.orange)
                                     }
                                     .buttonStyle(.plain)
+                                    // 删除
                                     Button {
                                         confirmTarget = c
                                     } label: {
-                                        Text("删除").font(.system(size: 11))
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
-                                            .background(Color.red.opacity(0.15))
-                                            .clipShape(Capsule())
+                                        Image(systemName: "trash.circle.fill")
+                                            .font(.system(size: 16))
                                             .foregroundStyle(.red)
                                     }
                                     .buttonStyle(.plain)
                                 }
-                                .padding(.vertical, 6)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.05),
+                                            in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.8)
+                                )
                             }
                         }
                     }
+                    .padding(14)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                    )
                 }
-                .padding(16)
+                .padding(14)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Docker 管理")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("完成") { dismiss() }
                 }
-                // v2.0.73：键盘上方「完成」按钮（TextEditor 无法下拉收回键盘）
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("完成") { focused = false }
                 }
             }
-            // v2.0.73：删除确认（非 compose 项目警告）
             .confirmationDialog("删除容器？", isPresented: .init(
                 get: { confirmTarget != nil },
                 set: { if !$0 { confirmTarget = nil } }
@@ -169,7 +273,7 @@ struct DockerSheet: View {
                 return DockerContainer(name: n,
                                        status: d["status"] as? String ?? "",
                                        ports: d["ports"] as? String ?? "",
-                                       isComposeProject: n.hasPrefix("qlcompose_"))
+                                       isComposeProject: (d["is_compose"] as? Bool) ?? false)
             }
         }
     }
