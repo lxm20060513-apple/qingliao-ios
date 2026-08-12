@@ -54,8 +54,11 @@ func qlCrashSignalHandler(_ sig: Int32) {
     _ = strcat(&path, "/Documents/crash_pending.json")
     let fd = open(&path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
     if fd >= 0 {
-        // C 字符串字面量（静态存储，无运行时分配）；write 全 POSIX
-        Darwin.write(fd, "{\"type\":\"Signal\"}\n", 18)
+        // v2.0.49：snprintf 是 async-signal-safe（POSIX 保证），
+        // 可安全写入具体信号号（SIGABRT=6/SIGSEGV=11/SIGBUS=10/SIGILL=4/SIGFPE=8/SIGTRAP=5）
+        var buf = [CChar](repeating: 0, count: 128)   // 栈上，无堆分配
+        snprintf(&buf, 128, "{\"type\":\"Signal(%d)\"}\n", sig)
+        Darwin.write(fd, buf, strlen(buf))
         close(fd)
     }
     exit(sig)
