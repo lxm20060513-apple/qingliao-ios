@@ -3,3 +3,6 @@ build/
 .DS_Store
 xcuserdata/
 *.xcworkspace/xcuserdata/
+server_443.conf
+_remote_*
+NETWORK_POSTMORTEM.md

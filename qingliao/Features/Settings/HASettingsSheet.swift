@@ -32,7 +32,7 @@ struct HASettingsSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("HA 地址")
                     .font(.system(size: 12, weight: .semibold))
-                TextField("如 http://192.168.0.40:8123", text: $address)
+                TextField("如 http://ha.example.com:8123", text: $address)
                     .textFieldStyle(.roundedBorder)
                     .autocapitalization(.none)
                     .keyboardType(.URL)

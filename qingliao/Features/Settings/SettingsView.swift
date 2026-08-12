@@ -323,7 +323,7 @@ struct ServerSheet: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 4)
 
-            TextField("192.168.0.40:8080", text: $server)
+            TextField("server.example.com:8080", text: $server)
                 .font(.system(size: 14))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

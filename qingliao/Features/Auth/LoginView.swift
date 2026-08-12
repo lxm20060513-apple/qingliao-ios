@@ -5,7 +5,7 @@ import SwiftUI
 struct LoginView: View {
     @Environment(AuthStore.self) private var auth
     @State private var username = "qingliao"
-    @State private var password = "123"
+    @State private var password = ""   // 不预填默认密码（防泄漏默认值）
     @State private var server = ""
     @State private var remember = true
     @State private var testing = false
