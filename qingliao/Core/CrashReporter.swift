@@ -54,11 +54,27 @@ func qlCrashSignalHandler(_ sig: Int32) {
     _ = strcat(&path, "/Documents/crash_pending.json")
     let fd = open(&path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
     if fd >= 0 {
-        // v2.0.49：snprintf 是 async-signal-safe（POSIX 保证），
-        // 可安全写入具体信号号（SIGABRT=6/SIGSEGV=11/SIGBUS=10/SIGILL=4/SIGFPE=8/SIGTRAP=5）
+        // v2.0.49：写具体信号号（SIGABRT=6/SIGSEGV=11/SIGBUS=10/SIGILL=4/SIGFPE=8/SIGTRAP=5）。
+        // snprintf 是 variadic C 函数 Swift 不导入 → 手动十进制拼接（strcpy/strcat/strlen 全 POSIX signal-safe）
         var buf = [CChar](repeating: 0, count: 128)   // 栈上，无堆分配
-        snprintf(&buf, 128, "{\"type\":\"Signal(%d)\"}\n", sig)
-        Darwin.write(fd, buf, strlen(buf))
+        strcpy(&buf, "{\"type\":\"Signal(")
+        var idx = strlen(&buf)
+        var n = sig
+        var digits = [CChar](repeating: 0, count: 12)
+        var d = 0
+        if n == 0 { digits[d] = 48; d += 1 }
+        while n > 0 {
+            digits[d] = CChar(48 + n % 10); d += 1; n /= 10
+        }
+        while d > 0 {
+            d -= 1; buf[idx] = digits[d]; idx += 1
+        }
+        buf[idx] = 41   // )
+        buf[idx + 1] = 34   // "
+        buf[idx + 2] = 125  // }
+        buf[idx + 3] = 10   // \n
+        buf[idx + 4] = 0    // 终止
+        Darwin.write(fd, buf, idx + 4)
         close(fd)
     }
     exit(sig)
