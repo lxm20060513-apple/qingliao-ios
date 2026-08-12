@@ -8,6 +8,8 @@ struct LoginView: View {
     @State private var password = ""   // 不预填默认密码（防泄漏默认值）
     // v2.0.55：预填已保存的服务器地址（之前每次登录都要重输）
     @State private var server = UserDefaults.standard.string(forKey: "qingliao_server") ?? ""
+    // v2.0.72：历史地址抽屉展开
+    @State private var showHistory = false
     @State private var remember = true
     @State private var testing = false
     @State private var testResult: String?
@@ -33,38 +35,60 @@ struct LoginView: View {
 
                 // 表单
                 VStack(spacing: 12) {
+                    // v2.0.72：服务器地址输入框 + 抽屉式历史记录（点击展开）
                     GlassField(icon: "globe", placeholder: "服务器地址", text: $server)
-                    // v2.0.71：历史地址胶囊（多地址快速切换，长按删除）
-                    if !auth.serverHistory.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(auth.serverHistory, id: \.self) { addr in
-                                    Button {
-                                        server = addr
-                                    } label: {
-                                        Text(addr)
-                                            .font(.system(size: 12))
-                                            .lineLimit(1)
-                                            .padding(.horizontal, 11)
-                                            .padding(.vertical, 6)
-                                            .background(Color.accentColor.opacity(0.12))
-                                            .clipShape(Capsule())
-                                            .foregroundStyle(Color.accentColor)
+                        .overlay(alignment: .trailing) {
+                            if !auth.serverHistory.isEmpty {
+                                Button {
+                                    withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
+                                        showHistory.toggle()
                                     }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            auth.removeServer(addr)
-                                        } label: {
-                                            Label("删除此地址", systemImage: "trash")
-                                        }
-                                    }
+                                } label: {
+                                    Image(systemName: showHistory ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color.secondary)
+                                        .padding(.trailing, 14)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(height: 30)
-                        .padding(.top, -2)
+                    if showHistory {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(auth.serverHistory, id: \.self) { addr in
+                                HStack {
+                                    Button {
+                                        server = addr
+                                        withAnimation(.spring(duration: 0.3, bounce: 0.2)) { showHistory = false }
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "clock.arrow.circlepath")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.tertiary)
+                                            Text(addr)
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                            Spacer()
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    Button {
+                                        auth.removeServer(addr)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                Divider().padding(.leading, 14)
+                            }
+                        }
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                     GlassField(icon: "person", placeholder: "用户名", text: $username)
                     GlassField(icon: "lock", placeholder: "密码", text: $password, isSecure: true)

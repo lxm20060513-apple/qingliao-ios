@@ -90,7 +90,7 @@ struct DockTabView: View {
                 Spacer()
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 // 下滑隐藏 / 上滑显示（scrollPosition 驱动 + Dock 栏拖拽手势兜底）
-                DockBar(selected: $selected, unreadCount: chat.totalUnread)   // v2.0.65 未读红点
+                DockBar(selected: $selected)
                     .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
                     .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible && !dockVisibility.hidden)
@@ -118,7 +118,6 @@ struct DockTabView: View {
 
 struct DockBar: View {
     @Binding var selected: DockTab
-    var unreadCount: Int = 0   // v2.0.65 聊天 tab 未读红点
     @Environment(\.colorScheme) private var scheme
     @State private var lensX: CGFloat = 0
     @State private var isInteracting = false
@@ -144,15 +143,6 @@ struct DockBar: View {
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
-                        }
-                        // v2.0.65：聊天 tab 未读红点（右上角）
-                        .overlay(alignment: .topTrailing) {
-                            if tab == .chat && unreadCount > 0 {
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 9, height: 9)
-                                    .offset(x: 4, y: -3)
-                            }
                         }
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)

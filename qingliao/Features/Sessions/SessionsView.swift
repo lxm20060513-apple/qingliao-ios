@@ -147,10 +147,8 @@ struct SessionsView: View {
                                 // 每条会话独立卡片 + 间隔（会话条目间距）
                                 VStack(spacing: 8) {
                                     ForEach(sortedSessions) { s in
-                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
-                                                   unread: chat.unread[s.id] == true) {
+                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id)) {
                                             chat.load(s)
-                                            chat.markRead(s.id)   // v2.0.65 打开即读
                                             onOpenSession?()
                                         }
                                         // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
@@ -498,7 +496,6 @@ struct SessionRow: View {
     let session: ChatSession
     var pinned: Bool = false
     var faved: Bool = false   // v2.0.60 收藏
-    var unread: Bool = false  // v2.0.65 未读红点
     var action: () -> Void = {}
 
     var body: some View {
@@ -542,16 +539,9 @@ struct SessionRow: View {
                 Text(session.relativeTime)
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                // v2.0.65：未读红点（有未读时替代 chevron）
-                if unread {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 14)

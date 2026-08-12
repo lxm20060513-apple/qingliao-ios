@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - 看板页（智能家居 2x3 可控制 + NAS 2x3 + 磁盘弹出式）
 
 enum DashboardSheet: String, Identifiable {
-    case lights, climate, service, disks
+    case lights, climate, service, disks, docker
     var id: String { rawValue }
 }
 
@@ -16,6 +16,8 @@ struct DashboardView: View {
     @State private var scrollPos = ScrollPosition()
     @State private var loaded = false
     @State private var activeSheet: DashboardSheet?
+    // v2.0.72：Docker 容器数量（看板卡片状态）
+    @State private var dockerContainerCount = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +45,10 @@ struct DashboardView: View {
                         ServiceCard(name: "轻聊后端", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
                             .onTapGesture { activeSheet = .service }
                         ServiceCard(name: "Hermes 网关", running: nas.hermesAlive, detail: nas.hermesMemText)
+                        // v2.0.72：Docker 管理卡片（点击弹部署弹窗）
+                        ServiceCard(name: "Docker", running: dockerContainerCount > 0,
+                                    detail: dockerContainerCount > 0 ? "\(dockerContainerCount) 个容器 · 点击管理" : "暂无容器 · 点击部署")
+                            .onTapGesture { activeSheet = .docker }
                         ServiceCard(name: "运行时间", running: true, detail: nas.uptime)
                     }
 
@@ -77,6 +83,9 @@ struct DashboardView: View {
                 case .disks:
                     DisksSheet(disks: nas.disks)
                         .presentationDetents([.medium, .large])
+                case .docker:
+                    DockerSheet()
+                        .presentationDetents([.medium, .large])
                 }
             }
         }
@@ -85,6 +94,8 @@ struct DashboardView: View {
                 await refresh()
                 loaded = true
             }
+            // v2.0.72：Docker 容器数量（卡片状态）
+            await loadDockerCount()
             // 10s 自动刷新
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
@@ -124,6 +135,14 @@ struct DashboardView: View {
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    // MARK: - v2.0.72 Docker 容器数量
+
+    private func loadDockerCount() async {
+        if let j = try? await auth.json("/api/docker/ps") {
+            dockerContainerCount = (j["containers"] as? [[String: Any]] ?? []).count
+        }
     }
 
     // MARK: - HA 派生（与 PWA 相同挑选规则）
