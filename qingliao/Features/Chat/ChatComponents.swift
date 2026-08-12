@@ -232,7 +232,6 @@ struct MessageBubble: View {
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
                 )
-            }
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
 
             if message.isUser {
