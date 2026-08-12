@@ -280,19 +280,9 @@ struct SessionsView: View {
     }
 
     private func delete(_ s: ChatSession) {
-        // 本地先移除，再同步到后端（merge deleted）
+        // v2.0.56：不再就地移除 sessions（ForEach 就地 diff 两次实测 SIGTRAP），
+        // 改为后端删除成功后 load() 整体刷新（该路径与正常进页加载相同，稳定）
         let deletingId = s.id
-        // v2.0.54：列表移除禁用动画（批量移除+动画曾致 SIGTRAP，同清空会话坑）
-        withAnimation(nil) {
-            sessions.removeAll { $0.id == deletingId }
-        }
-        if chat.sessionId == deletingId {
-            // v2.0.54：对齐新建会话修复——ChatView 在 TabView 隐藏页时直接清空是崩溃路径，
-            // 延迟一帧清空（列表卸载与数据清空错开）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                withAnimation(nil) { chat.newSession() }
-            }
-        }
         Task {
             do {
                 let j = try await auth.json("/api/sessions/merge", method: "POST", body: [
@@ -302,29 +292,24 @@ struct SessionsView: View {
                 let ok = (j["ok"] as? Bool) == true
                 let deletedCount = (j["deleted"] as? Int) ?? -1
                 if ok && deletedCount >= 0 {
-                    // 服务器确认（deleted:1 删除成功 / deleted:0 服务器本无此会话）→ 刷新列表保持一致
                     await load()
+                    if chat.sessionId == deletingId {
+                        // 删的是当前会话：延迟清空（ChatView 隐藏页时销毁与清空错开）
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(nil) { chat.newSession() }
+                        }
+                    }
                 } else {
-                    rollbackDelete(s)
                     deleteError = "删除未同步到服务器（服务器返回异常），请检查网络后重试"
+                    await load()
                 }
             } catch {
-                rollbackDelete(s)
                 deleteError = "删除未同步到服务器：\(error.localizedDescription)"
+                await load()
             }
         }
     }
 
-    /// 删除未同步到服务器：本地回滚 + 提示
-    private func rollbackDelete(_ s: ChatSession) {
-        if !sessions.contains(where: { $0.id == s.id }) {
-            withAnimation {
-                sessions.append(s)
-                sessions.sort { ($0.lastTime ?? 0) > ($1.lastTime ?? 0) }
-            }
-        }
-        deleteError = "删除未同步到服务器，请检查网络后重试"
-    }
 }
 
 // MARK: - 机器人卡
