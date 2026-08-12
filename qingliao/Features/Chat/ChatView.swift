@@ -436,6 +436,17 @@ struct ChatView: View {
                     withAnimation(.easeOut(duration: 0.3)) { highlightMessageID = nil }
                 }
             }
+            // v2.0.58：两步走新建会话——先切欢迎页（列表卸载），下一帧再清数据
+            // （v2.0.44 的切tab+延迟清空在 tab 过渡期仍崩，清空按钮的两步走才是稳定模式）
+            .onChange(of: chat.pendingNewSession) { _, pending in
+                guard pending else { return }
+                clearing = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    withAnimation(nil) { chat.newSession() }
+                    chat.pendingNewSession = false
+                    clearing = false
+                }
+            }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
             .onTapGesture {

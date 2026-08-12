@@ -39,6 +39,16 @@ final class ChatStore {
         defaults.set(sessionId, forKey: sessionKey)
     }
 
+    // MARK: - v2.0.58 两步走新建会话
+    /// 请求新建会话（只设标志不清数据）：ChatView 观察到后先切欢迎页卸载列表，
+    /// 下一帧再 newSession——v2.0.44 的"先切tab再清空"在 tab 切换动画期间（半隐藏状态）
+    /// 清空仍崩（用户实测 v2.0.57 新建/删除都闪退）；两步走是清空按钮验证过的稳定模式
+    var pendingNewSession = false
+
+    func requestNewSession() {
+        pendingNewSession = true
+    }
+
     /// 追加本地消息（发送/流式开始）
     func append(_ m: ChatMessage) {
         messages.append(m)
