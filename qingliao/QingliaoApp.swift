@@ -26,6 +26,11 @@ struct QingliaoApp: App {
     init() {
         // v2.0.43：崩溃捕获（写本地文件），登录后由 RootView 上报
         CrashReporter.install()
+        // v2.0.45：应用"隐藏 Dock 栏"设置（启动即生效）
+        if UserDefaults.standard.bool(forKey: "qingliao_hide_dock") {
+            DockVisibility.shared.forceHidden = true
+            DockVisibility.shared.hidden = true
+        }
     }
 
     /// 外观：跟随用户选择（深色 #000 / 白天 #FFF / 跟随系统）
