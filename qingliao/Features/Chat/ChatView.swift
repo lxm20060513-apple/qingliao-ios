@@ -801,7 +801,8 @@ struct MessageBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.isUser {
-                Spacer(minLength: 48)
+                // v2.0.41：左侧留白 48→24，用户气泡更宽（右缘贴边）
+                Spacer(minLength: 24)
             } else {
                 // AI 头像（气泡外左侧）
                 ZStack {
@@ -850,10 +851,11 @@ struct MessageBubble: View {
                     }
                 }
             }
-            .frame(maxWidth: 350, alignment: message.isUser ? .trailing : .leading)   // v2.0.39 气泡加宽 320→350
+            .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
 
             if !message.isUser {
-                Spacer(minLength: 48)
+                // v2.0.41：AI 气泡右侧留白 48→10，气泡右缘贴红线（约距屏幕右 22pt）
+                Spacer(minLength: 10)
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
