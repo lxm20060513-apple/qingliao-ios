@@ -65,6 +65,13 @@ final class ChatStore {
         messages.append(ChatMessage(role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
     }
 
+    /// v2.0.59：按 id 标记消息发送失败（显示重试按钮）
+    func markFailed(id: String) {
+        if let idx = messages.firstIndex(where: { $0.id == id }) {
+            messages[idx].failed = true
+        }
+    }
+
     /// 发送请求用的历史消息（payload 形态）
     /// 只保留最后一条带图消息的 imageDataURL（前面已发过的图片不进 payload，防 base64 全量重复膨胀）
     func historyPayload() -> [[String: Any]] {

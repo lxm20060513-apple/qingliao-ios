@@ -103,6 +103,9 @@ struct ChatView: View {
     @State private var highlightMessageID: String?
     // v2.0.46：隐藏 Dock 栏开关（开启时输入框贴底）
     @AppStorage("qingliao_hide_dock") private var hideDock = false
+    // v2.0.59：上下文过长提示 / 失败重试
+    @State private var showLongContextAlert = false
+    @State private var pendingSend: (text: String, imageData: String?)?
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -367,6 +370,9 @@ struct ChatView: View {
                                 if let img = dataURLImage(msg.imageDataURL ?? "") {
                                     viewerPayload = ImageViewPayload(image: img)
                                 }
+                            } onRetry: {
+                                // v2.0.59：失败消息重试
+                                retryMessage(msg)
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
@@ -471,6 +477,25 @@ struct ChatView: View {
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
         }
+        // v2.0.59：上下文过长提示（60+ 条建议压缩）
+        .alert("上下文较长", isPresented: $showLongContextAlert) {
+            Button("压缩后发送") {
+                if let p = pendingSend {
+                    chat.compressContext()
+                    sendCore(text: p.text, imageData: p.imageData)
+                }
+                pendingSend = nil
+            }
+            Button("直接发送") {
+                if let p = pendingSend {
+                    sendCore(text: p.text, imageData: p.imageData)
+                }
+                pendingSend = nil
+            }
+            Button("取消", role: .cancel) { pendingSend = nil }
+        } message: {
+            Text("当前会话已 \(chat.messages.count) 条消息，继续发送可能接近模型上下文上限。压缩后仅保留最近 20 条（早期内容替换为摘要标记）。")
+        }
         // v2.0.36：图片大图查看器
         .fullScreenCover(item: $viewerPayload) { p in
             ImageViewer(image: p.image)
@@ -553,10 +578,24 @@ struct ChatView: View {
         quotedMessage = nil
         pendingImage = nil
         pendingImageData = nil
-        // v2.0.36：发送触感反馈
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // v2.0.59：上下文过长时先提示压缩（60 条以上）
+        if chat.messages.count > 60 {
+            pendingSend = (text, img)
+            showLongContextAlert = true
+            return
+        }
+        sendCore(text: text, imageData: img)
+    }
 
-        chat.append(.local(role: "user", content: text, imageDataURL: img))
+    /// v2.0.59：发送核心（send / 失败重试共用）
+    private func sendCore(text: String, imageData: String?) {
+        guard (!text.isEmpty || imageData != nil), !stream.isStreaming else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
+        // v2.0.59：单条插入动效（批量移除才崩，插入安全）
+        withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
+            chat.append(msg)
+        }
         let history = chat.historyPayload()
 
         Task {
@@ -568,6 +607,7 @@ struct ChatView: View {
                 messages: history
             ) { success, error in
                 if !success {
+                    chat.markFailed(id: msg.id)   // v2.0.59 失败标记 → 重试按钮
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
                 } else {
                     chat.upsertAssistant(stream.content)
@@ -581,6 +621,15 @@ struct ChatView: View {
                 Task { await chat.saveToServer(auth: auth) }
             }
         }
+    }
+
+    /// v2.0.59：失败消息重试（移除失败标记后按原内容重发）
+    private func retryMessage(_ msg: ChatMessage) {
+        guard !stream.isStreaming else { return }
+        if let idx = chat.messages.firstIndex(where: { $0.id == msg.id }) {
+            chat.messages.remove(at: idx)
+        }
+        sendCore(text: msg.content, imageData: msg.imageDataURL)
     }
 
     /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
@@ -857,6 +906,7 @@ struct MessageBubble: View {
     var onDelete: () -> Void = {}     // v2.0.36 单条删除
     var onShare: () -> Void = {}      // v2.0.36 分享文本
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
+    var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 14.0
 
@@ -921,6 +971,18 @@ struct MessageBubble: View {
                                 .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
                         )
                     }
+                }
+                // v2.0.59：发送失败 → 重试按钮（红色，点击按原内容重发）
+                if message.isUser && message.failed {
+                    Button {
+                        onRetry()
+                    } label: {
+                        Label("发送失败，点击重试", systemImage: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
                 }
             }
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
