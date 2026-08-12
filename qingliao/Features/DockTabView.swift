@@ -27,6 +27,8 @@ enum DockTab: String, CaseIterable, Identifiable {
 struct DockTabView: View {
     @State private var selected: DockTab = .chat
     @Environment(KeyboardObserver.self) private var kb
+    @Environment(AuthStore.self) private var auth   // v2.0.63 通知直达需要
+    @Environment(ChatStore.self) private var chat
     @Environment(\.horizontalSizeClass) private var hSize   // v2.0.62 iPad 多栏
     // @Observable 单例必须 @State 持有，body 才能观察其属性变化（否则 hidden 更新不触发重绘）
     @State private var dockVisibility = DockVisibility.shared

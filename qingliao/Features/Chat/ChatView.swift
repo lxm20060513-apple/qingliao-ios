@@ -16,12 +16,14 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         return true
     }
 
+    // v2.0.63：用 completionHandler 版（async 版在 Swift 6 下 non-Sendable 参数报错）
     func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                didReceive response: UNNotificationResponse) async {
-        // 点击通知 → 记录要直达的会话
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
         if let sid = response.notification.request.content.userInfo["qingliao_session"] as? String {
             UserDefaults.standard.set(sid, forKey: "qingliao_open_session")
         }
+        completionHandler()
     }
 }
 
@@ -64,7 +66,6 @@ struct ChatView: View {
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
-    @State private var audioRecorder: AVAudioRecorder?
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
