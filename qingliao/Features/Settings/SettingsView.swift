@@ -23,8 +23,8 @@ struct SettingsView: View {
     @State private var haAddress = ""
     @State private var testResult: String?
     @State private var testing = false
-    // v2.0.38：聊天字体大小（12-20，默认 14）
-    @AppStorage("qingliao_font_size") private var fontSize = 14
+    // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
+    @AppStorage("qingliao_font_size") private var fontSize = 14.0
     @State private var showFontOptions = false
 
     var body: some View {

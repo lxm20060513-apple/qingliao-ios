@@ -25,7 +25,7 @@ struct MessageContentBlock: Identifiable {
 struct MessageBlockView: View {
     let block: MessageContentBlock
     // v2.0.38：聊天字体大小（与 MessageBubble 同源）
-    @AppStorage("qingliao_font_size") private var fontSize = 14
+    @AppStorage("qingliao_font_size") private var fontSize = 14.0
 
     var body: some View {
         switch block.kind {
@@ -783,7 +783,7 @@ struct MessageBubble: View {
     var onShare: () -> Void = {}      // v2.0.36 分享文本
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
-    @AppStorage("qingliao_font_size") private var fontSize = 14
+    @AppStorage("qingliao_font_size") private var fontSize = 14.0
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
