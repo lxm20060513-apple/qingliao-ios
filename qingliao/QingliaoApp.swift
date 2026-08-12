@@ -6,7 +6,7 @@ struct QingliaoApp: App {
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()
     @State private var keyboard = KeyboardObserver()
-    @AppStorage("qingliao_appearance") private var appearance = "dark"   // dark / light / system
+    @AppStorage("qingliao_appearance") private var appearance = "system"   // dark / light / system（v2.0.42 默认跟随系统，与 SettingsView 默认值一致）
 
     var body: some Scene {
         WindowGroup {
