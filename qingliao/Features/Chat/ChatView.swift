@@ -10,8 +10,8 @@ import Speech
 // 换 GeometryReader + PreferenceKey：滚动时上报内容区 minY，取负后语义同 scrollPos.y
 
 struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    nonisolated static var defaultValue: CGFloat = 0   // v2.0.51：Swift 6 并发要求 nonisolated
+    nonisolated static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
 }
