@@ -20,6 +20,8 @@ struct SessionsView: View {
     // v2.0.43：会话重命名
     @State private var renameTarget: ChatSession?
     @State private var renameText = ""
+    // v2.0.57：删除确认（contextMenu 关闭瞬间不改数据）
+    @State private var confirmDelete: ChatSession?
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -131,8 +133,9 @@ struct SessionsView: View {
                                             } label: {
                                                 Label("重命名", systemImage: "pencil")
                                             }
+                                            // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
                                             Button(role: .destructive) {
-                                                delete(s)
+                                                confirmDelete = s
                                             } label: {
                                                 Label("删除会话", systemImage: "trash")
                                             }
@@ -165,6 +168,20 @@ struct SessionsView: View {
             TextField("新名称", text: $renameText)
             Button("确定") { rename() }
             Button("取消", role: .cancel) {}
+        }
+        // v2.0.57：删除确认（弹窗完全关闭后再执行删除，绕开 contextMenu 动画期数据变更）
+        .alert("删除会话", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
+            Button("删除", role: .destructive) {
+                if let s = confirmDelete {
+                    confirmDelete = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        delete(s)
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将删除「\(confirmDelete?.title ?? "")」及其全部消息，此操作不可恢复")
         }
     }
 
@@ -280,8 +297,10 @@ struct SessionsView: View {
     }
 
     private func delete(_ s: ChatSession) {
-        // v2.0.56：不再就地移除 sessions（ForEach 就地 diff 两次实测 SIGTRAP），
-        // 改为后端删除成功后 load() 整体刷新（该路径与正常进页加载相同，稳定）
+        // v2.0.57：三保险——①contextMenu 关闭瞬间不改数据（先弹确认再删）
+        // ②后端删除成功才 load() 整体刷新（不就地改 sessions）
+        // ③删当前会话：切聊天 tab 后在屏 newSession（v2.0.44 已验证路径），
+        //    不再隐藏页清空（v2.0.54/56 的延迟只是推迟崩溃，隐藏页清空才是 SIGTRAP 根因）
         let deletingId = s.id
         Task {
             do {
@@ -294,8 +313,8 @@ struct SessionsView: View {
                 if ok && deletedCount >= 0 {
                     await load()
                     if chat.sessionId == deletingId {
-                        // 删的是当前会话：延迟清空（ChatView 隐藏页时销毁与清空错开）
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        onOpenSession?()   // 切聊天 tab（ChatView 在屏）
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             withAnimation(nil) { chat.newSession() }
                         }
                     }
