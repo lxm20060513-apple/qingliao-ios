@@ -222,9 +222,9 @@ struct MessageBubble: View {
                 }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
-                // v2.0.66：单 Shape 背景（圆角矩形 + 尾巴一体，尾巴必然显示）
+                // v2.0.68：用户反馈拿掉气泡尾巴（试了两版效果都不理想），回归纯圆角
                 .background(
-                    BubbleShape(tailLeft: !message.isUser, radius: 15)
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(message.isUser ? userBubbleColor : aiBubbleColor)
                 )
                 // v2.0.43 搜索定位高亮边框

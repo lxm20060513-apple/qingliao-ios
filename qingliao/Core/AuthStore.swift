@@ -99,20 +99,15 @@ final class AuthStore {
             headers["X-Auth-Token"] = token
         }
 
-        // v2.0.67：登录请求绝不走 Safari relay（蜂窝下 iOS 27 管控才允许 relay 兜底；
-        // WiFi 下误判蜂窝曾导致登录弹 Safari 窗口，用户实测）
-        let useRelay = NetworkMonitor.shared.isCellular && path != "/api/auth/login"
+        // v2.0.68：蜂窝下不再自动降级 Safari relay（ASWAS 每次弹系统授权窗口，用户实测蜂窝弹窗）。
+        // directRequest（CFStream 纯 socket 直连，不弹窗）优先；失败直接报错提示，不弹窗。
         let (data, code): (Data, Int)
-        if useRelay {
-            // 蜂窝：CFStream 直连优先（纯 socket 层绕开 iOS 27 管控，免 relay 弹窗）；
-            // 直连失败（真被管控挂起/超时）才降级 Safari relay 兜底
+        if NetworkMonitor.shared.isCellular {
             do {
                 (data, code) = try await relay.directRequest(method: method, path: path,
                                                              headers: headers, body: bodyData, timeout: 10)
             } catch {
-                (data, code) = try await relay.relay(method: method, path: path,
-                                                     headers: headers, body: bodyData,
-                                                     timeout: 30)
+                throw APIError.badResponseDetail("蜂窝网络受限（iOS 管控），请连接 Wi-Fi 后重试")
             }
         } else {
             // Wi-Fi/其他：URLSession 直连（免 relay 弹窗）
