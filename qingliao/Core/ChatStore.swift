@@ -126,4 +126,36 @@ final class ChatStore {
     func clearMessages() {
         messages = []
     }
+
+    // MARK: - v2.0.43 上下文管理 / 搜索定位
+
+    /// 搜索定位目标（从会话列表点搜索结果时设置，ChatView 滚动+高亮）
+    var highlightTarget: (role: String, content: String)?
+
+    /// 上下文估算（近似 token = 字符数/4 + 消息数基础开销）
+    var contextInfo: (tokens: Int, count: Int) {
+        let chars = messages.reduce(0) { $0 + $1.content.count }
+        return (chars / 4 + messages.count * 3, messages.count)
+    }
+
+    /// 压缩上下文：保留最近 20 条，更早的消息替换为一条占位标记
+    /// （本地压缩不调 AI 摘要，立省 token；需要摘要可让 AI 从占位标记处续聊）
+    func compressContext(keepLast: Int = 20) -> Bool {
+        guard messages.count > keepLast + 1 else { return false }
+        let dropped = messages.count - keepLast
+        let firstUser = messages.first { $0.isUser }?.content.prefix(30).description ?? ""
+        let marker = ChatMessage(role: "system", content: "（已压缩上下文：早期对话共 \(dropped) 条已省略，首条主题：\(firstUser)）",
+                                 timestamp: messages.first?.timestamp)
+        messages.removeFirst(dropped)
+        messages.insert(marker, at: 0)
+        return true
+    }
+
+    /// 按角色+内容前缀查找消息索引（搜索定位用，内容太长时前缀匹配）
+    func indexOfMessage(role: String, contentPrefix: String) -> Int? {
+        let prefix = String(contentPrefix.prefix(60))
+        return messages.firstIndex {
+            $0.role == role && $0.content.hasPrefix(prefix)
+        }
+    }
 }

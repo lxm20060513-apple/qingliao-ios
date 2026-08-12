@@ -17,6 +17,9 @@ struct SessionsView: View {
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
     @State private var pinnedIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_pinned_sessions") ?? [])
+    // v2.0.43：会话重命名
+    @State private var renameTarget: ChatSession?
+    @State private var renameText = ""
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -121,6 +124,13 @@ struct SessionsView: View {
                                             } label: {
                                                 Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
                                             }
+                                            // v2.0.43：会话重命名
+                                            Button {
+                                                renameTarget = s
+                                                renameText = s.title
+                                            } label: {
+                                                Label("重命名", systemImage: "pencil")
+                                            }
                                             Button(role: .destructive) {
                                                 delete(s)
                                             } label: {
@@ -149,6 +159,12 @@ struct SessionsView: View {
             Button("好", role: .cancel) { deleteError = nil }
         } message: {
             Text(deleteError ?? "")
+        }
+        // v2.0.43：会话重命名
+        .alert("重命名会话", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+            TextField("新名称", text: $renameText)
+            Button("确定") { rename() }
+            Button("取消", role: .cancel) {}
         }
     }
 
@@ -187,6 +203,32 @@ struct SessionsView: View {
         UserDefaults.standard.set(Array(pinnedIDs), forKey: "qingliao_pinned_sessions")
     }
 
+    /// v2.0.43：重命名会话（本地列表 + 当前打开会话 + 后端 merge 同步）
+    private func rename() {
+        guard let t = renameTarget else { return }
+        let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return }
+        if let idx = sessions.firstIndex(where: { $0.id == t.id }) {
+            var updated = sessions[idx]
+            updated.title = newName
+            sessions[idx] = updated
+        }
+        if chat.sessionId == t.id {
+            chat.title = newName
+        }
+        renameTarget = nil
+        Task {
+            _ = try? await auth.request("/api/sessions/merge", method: "POST", body: [
+                "sessions": [["id": t.id, "title": newName, "messages": t.messages.map { m -> [String: Any] in
+                    var p: [String: Any] = ["role": m.role, "content": m.content]
+                    if let ts = m.timestamp { p["timestamp"] = ts }
+                    return p
+                }]],
+                "deleted": [] as [Any]
+            ])
+        }
+    }
+
     private func search(_ q: String) async {
         searching = true
         defer { searching = false }
@@ -198,11 +240,18 @@ struct SessionsView: View {
         searchResults = arr
     }
 
-    /// 搜索结果 → 打开对应会话（按 id 从完整列表找到并加载）
+    /// 搜索结果 → 打开对应会话（按 id 从完整列表找到并加载），并定位命中消息
     private func openSearchResult(_ r: [String: Any]) {
         let sid = r["id"] as? String ?? ""
         if let s = sessions.first(where: { $0.id == sid }) {
             chat.load(s)
+            // v2.0.43：设置定位目标（ChatView 滚动+高亮命中消息）
+            if let hits = r["hits"] as? [[String: Any]], let first = hits.first {
+                chat.highlightTarget = (role: first["role"] as? String ?? "assistant",
+                                        content: first["content"] as? String ?? "")
+            } else {
+                chat.highlightTarget = nil
+            }
             searchText = ""
             searchResults = []
             onOpenSession?()

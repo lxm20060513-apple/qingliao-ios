@@ -87,6 +87,9 @@ struct ChatView: View {
     @State private var exportText = ""
     @State private var showVoiceDenied = false   // v2.0.36 录音权限被拒提示
     @State private var clearing = false          // v2.0.40 清空会话两步走标志
+    // v2.0.43：快捷指令 / 搜索定位高亮
+    @State private var showQuickPrompts = false
+    @State private var highlightMessageID: String?
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -139,6 +142,13 @@ struct ChatView: View {
                 Button("导出会话记录") {
                     exportText = chat.exportText()
                     showExporter = true
+                }
+                // v2.0.43：上下文信息 + 一键压缩
+                Button("上下文：约 \(chat.contextInfo.tokens) tokens · \(chat.contextInfo.count) 条") {}
+                Button("压缩上下文（保留最近 20 条）") {
+                    if chat.compressContext() {
+                        Task { await chat.saveToServer(auth: auth) }
+                    }
                 }
                 Button("清空本会话消息", role: .destructive) {
                     // v2.0.40：两步走清空——先切欢迎页分支（列表立即卸载，数据未动），
@@ -197,6 +207,8 @@ struct ChatView: View {
                 HStack(spacing: 26) {
                     attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
+                    // v2.0.43：快捷指令（常用 prompt 模板）
+                    attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -261,6 +273,14 @@ struct ChatView: View {
                 pendingImageData = compressImage(img)
             }
         }
+        // v2.0.43：快捷指令面板（点击填充输入框）
+        .sheet(isPresented: $showQuickPrompts) {
+            QuickPromptSheet { prompt in
+                inputText = prompt
+                showAttachmentMenu = false
+            }
+            .presentationDetents([.medium, .large])
+        }
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.pdf, .plainText,
                                             UTType(filenameExtension: "docx") ?? .data,
@@ -317,7 +337,8 @@ struct ChatView: View {
                                curTs - prevTs > 300_000 {
                                 timeDivider(curTs)
                             }
-                            MessageBubble(message: msg) {
+                            MessageBubble(message: msg,
+                                          isHighlighted: msg.id == highlightMessageID) {
                                 regenerate(at: msg.id)
                             } onBigBang: {
                                 bigBangPayload = BigBangPayload(text: msg.content)
@@ -385,6 +406,19 @@ struct ChatView: View {
             .scrollPosition($scrollPos)
             .onChange(of: scrollPos.y) { _, y in
                 DockVisibility.shared.update(y ?? 0)
+            }
+            // v2.0.43：搜索定位——滚动到命中消息并高亮 2 秒
+            .onChange(of: chat.highlightTarget?.content) { _, _ in
+                guard let t = chat.highlightTarget,
+                      let idx = chat.indexOfMessage(role: t.role, contentPrefix: t.content) else { return }
+                let mid = chat.messages[idx].id
+                highlightMessageID = mid
+                withAnimation(.easeOut(duration: 0.3)) {
+                    proxy.scrollTo(mid, anchor: .center)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    withAnimation(.easeOut(duration: 0.3)) { highlightMessageID = nil }
+                }
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
@@ -789,6 +823,7 @@ struct ChatView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    var isHighlighted: Bool = false   // v2.0.43 搜索定位高亮
     var onRegenerate: () -> Void = {}
     var onBigBang: () -> Void = {}
     var onQuote: () -> Void = {}      // v2.0.36 引用回复
@@ -834,8 +869,13 @@ struct MessageBubble: View {
                             .textSelection(.enabled)
                             .padding(.horizontal, 13)
                             .padding(.vertical, 9)
-                            .background(Color(red: 0.13, green: 0.22, blue: 0.45))
+                            .background(isHighlighted ? Color(red: 0.20, green: 0.32, blue: 0.62) : Color(red: 0.13, green: 0.22, blue: 0.45))
                             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                            // v2.0.43 搜索定位高亮边框
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                    .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
+                            )
                     } else {
                         // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
                         VStack(alignment: .leading, spacing: 6) {
@@ -846,8 +886,13 @@ struct MessageBubble: View {
                         }
                         .padding(.horizontal, 13)
                         .padding(.vertical, 9)
-                        .background(Color(uiColor: .systemGray5))
+                        .background(isHighlighted ? Color.accentColor.opacity(0.14) : Color(uiColor: .systemGray5))
                         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        // v2.0.43 搜索定位高亮边框
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
+                        )
                     }
                 }
             }
@@ -1026,6 +1071,77 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - v2.0.43 快捷指令面板（常用 prompt 模板，点击填充输入框）
+
+struct QuickPromptSheet: View {
+    var onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private let prompts: [(icon: String, name: String, prompt: String)] = [
+        ("character.bubble", "翻译", "请将以下内容翻译成英文（保留原意）：\n"),
+        ("list.bullet.rectangle", "总结", "请用 3-5 条要点总结以下内容：\n"),
+        ("pencil.and.outline", "润色", "请润色以下文字，使其更通顺、专业、简洁：\n"),
+        ("doc.text", "写周报", "请根据以下工作内容生成一份结构化周报：\n"),
+        ("chevron.left.forwardslash.chevron.right", "写代码", "请实现以下功能，给出完整代码并简要解释：\n"),
+        ("curlybraces", "解释代码", "请逐段解释以下代码的作用和逻辑：\n"),
+        ("lightbulb", "头脑风暴", "请围绕以下主题给出 5 个有创意的点子：\n"),
+        ("checklist", "待办清单", "请把以下内容整理成清晰的待办清单：\n"),
+        ("textformat", "取标题", "请为以下内容取 3 个简洁贴切的标题：\n"),
+        ("person.2", "角色扮演", "请扮演一个资深嵌入式硬件工程师，回答以下问题：\n"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("快捷指令")
+                    .font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
+
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(prompts, id: \.name) { p in
+                        Button {
+                            onPick(p.prompt)
+                            dismiss()
+                        } label: {
+                            VStack(spacing: 6) {
+                                Image(systemName: p.icon)
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Color.accentColor)
+                                Text(p.name)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.primary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 20)
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
     }
 }
 

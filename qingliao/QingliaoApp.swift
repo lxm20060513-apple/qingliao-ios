@@ -23,6 +23,11 @@ struct QingliaoApp: App {
         }
     }
 
+    init() {
+        // v2.0.43：崩溃捕获（写本地文件），登录后由 RootView 上报
+        CrashReporter.install()
+    }
+
     /// 外观：跟随用户选择（深色 #000 / 白天 #FFF / 跟随系统）
     private var colorScheme: ColorScheme? {
         switch appearance {
@@ -54,6 +59,10 @@ struct RootView: View {
             }
         }
         .task {
+            // v2.0.43：登录态下上报上次崩溃（不阻塞启动）
+            if auth.isLoggedIn {
+                await CrashReporter.flushPending(auth: auth)
+            }
             try? await Task.sleep(for: .seconds(1.6))
             withAnimation(.easeOut(duration: 0.45)) { showSplash = false }
         }
