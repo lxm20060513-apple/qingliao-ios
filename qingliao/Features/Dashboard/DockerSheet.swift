@@ -177,51 +177,19 @@ struct DockerSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                         } else {
-                            ForEach(containers) { c in
-                                HStack(spacing: 10) {
-                                    // 状态点（运行中呼吸）
-                                    Circle()
-                                        .fill(c.status.contains("Up") ? Color.green : Color.red)
-                                        .frame(width: 8, height: 8)
-                                        .shadow(color: (c.status.contains("Up") ? Color.green : Color.red).opacity(0.5),
-                                                radius: 3)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(c.name)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .lineLimit(1)
-                                        Text(c.ports.isEmpty ? c.status : "\(c.status) · \(c.ports)")
-                                            .font(.system(size: 10.5))
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: 6)
-                                    // 停止
-                                    Button {
-                                        Task { await action(c.name, "stop") }
-                                    } label: {
-                                        Image(systemName: "stop.circle.fill")
-                                            .font(.system(size: 16))
-                                            .foregroundStyle(.orange)
-                                    }
-                                    .buttonStyle(.plain)
-                                    // 删除
-                                    Button {
-                                        confirmTarget = c
-                                    } label: {
-                                        Image(systemName: "trash.circle.fill")
-                                            .font(.system(size: 16))
-                                            .foregroundStyle(.red)
-                                    }
-                                    .buttonStyle(.plain)
+                            // v2.0.75：卡片网格（对标智能家居开关面板）：
+                            // 单击卡片 = 停止容器；长按 = 删除确认
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                                GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                                ForEach(containers) { c in
+                                    DockerContainerCard(container: c)
+                                        .onTapGesture {
+                                            Task { await action(c.name, "stop") }
+                                        }
+                                        .onLongPressGesture {
+                                            confirmTarget = c
+                                        }
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.05),
-                                            in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.8)
-                                )
                             }
                         }
                     }
@@ -311,4 +279,47 @@ struct DockerContainer: Identifiable {
     let ports: String
     let isComposeProject: Bool
     var id: String { name }
+}
+
+// MARK: - v2.0.75 容器卡片（对标智能家居 DeviceCard：名称+状态点+运行状态+端口）
+
+struct DockerContainerCard: View {
+    let container: DockerContainer
+
+    private var running: Bool { container.status.contains("Up") }
+    private var color: Color { running ? .green : .red }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(container.name)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: color.opacity(0.6), radius: 4)
+            }
+            Text(running ? "运行中" : "已停止")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.primary)
+                .padding(.top, 6)
+            Text(container.ports.isEmpty ? "单击停止 · 长按删除" : container.ports)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .padding(.top, 2)
+        }
+        .padding(12)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // 单击停止 / 长按删除 提示
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
 }
