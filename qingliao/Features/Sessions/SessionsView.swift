@@ -282,11 +282,16 @@ struct SessionsView: View {
     private func delete(_ s: ChatSession) {
         // 本地先移除，再同步到后端（merge deleted）
         let deletingId = s.id
-        withAnimation {
+        // v2.0.54：列表移除禁用动画（批量移除+动画曾致 SIGTRAP，同清空会话坑）
+        withAnimation(nil) {
             sessions.removeAll { $0.id == deletingId }
         }
         if chat.sessionId == deletingId {
-            chat.newSession()
+            // v2.0.54：对齐新建会话修复——ChatView 在 TabView 隐藏页时直接清空是崩溃路径，
+            // 延迟一帧清空（列表卸载与数据清空错开）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                withAnimation(nil) { chat.newSession() }
+            }
         }
         Task {
             do {
