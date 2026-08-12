@@ -34,6 +34,13 @@ final class AuthStore {
         isLoggedIn = defaults.bool(forKey: loggedKey)
     }
 
+    /// v2.0.55：保存服务器地址（内存 + UserDefaults 持久化）
+    func saveServer(_ s: String) {
+        let clean = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        serverURL = clean.isEmpty ? serverURL : clean
+        defaults.set(serverURL, forKey: serverKey)
+    }
+
     // MARK: - 登录（POST /api/auth/login 验证账号密码；服务器 AUTO_LOGIN 免鉴权，登录页作为门禁）
 
     func login(username: String, password: String, remember: Bool = true) async {

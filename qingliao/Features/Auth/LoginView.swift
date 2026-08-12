@@ -6,7 +6,8 @@ struct LoginView: View {
     @Environment(AuthStore.self) private var auth
     @State private var username = "qingliao"
     @State private var password = ""   // 不预填默认密码（防泄漏默认值）
-    @State private var server = ""
+    // v2.0.55：预填已保存的服务器地址（之前每次登录都要重输）
+    @State private var server = UserDefaults.standard.string(forKey: "qingliao_server") ?? ""
     @State private var remember = true
     @State private var testing = false
     @State private var testResult: String?
@@ -58,7 +59,10 @@ struct LoginView: View {
                 // 登录按钮
                 Button {
                     // 先提交服务器地址（登录页可修改），再登录
-                    auth.serverURL = server.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // v2.0.55：必须持久化到 UserDefaults——只改内存的话 App 重启/ASWAS
+                    // 流程读默认值 example.com 导致登录弹窗异常（用户实测）
+                    let s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+                    auth.saveServer(s)
                     Task {
                         await auth.login(username: username, password: password, remember: remember)
                     }
