@@ -114,7 +114,49 @@ final class StreamClient {
         status = success ? "done" : "error"
         errorMessage = error
         stopPolling()
+        clearPersisted()
         onFinished?(success, error)
         onFinished = nil
+    }
+
+    // MARK: - v2.0.61 杀后台流式恢复
+
+    /// App 进后台时持久化流式状态（taskId/offset/content），重开后恢复轮询
+    func persistState(sessionId: String) {
+        guard isStreaming, !taskId.isEmpty else { return }
+        let d: [String: Any] = [
+            "taskId": taskId, "sessionId": sessionId,
+            "offset": offset, "content": content,
+            "ts": Date().timeIntervalSince1970
+        ]
+        UserDefaults.standard.set(d, forKey: "qingliao_stream_pending")
+    }
+
+    /// App 重开后恢复：有未完成任务 → 回填内容并继续轮询（无任务时静默返回）
+    func restoreIfNeeded(auth: AuthStore, onFinished: ((Bool, String) -> Void)? = nil) async {
+        guard let d = UserDefaults.standard.dictionary(forKey: "qingliao_stream_pending") else { return }
+        // 超过 30 分钟的任务视为失效（服务器端流可能已回收）
+        if let ts = d["ts"] as? TimeInterval, Date().timeIntervalSince1970 - ts > 1800 {
+            UserDefaults.standard.removeObject(forKey: "qingliao_stream_pending")
+            return
+        }
+        guard let tid = d["taskId"] as? String, !tid.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: "qingliao_stream_pending")
+            return
+        }
+        taskId = tid
+        offset = (d["offset"] as? Int) ?? 0
+        content = (d["content"] as? String) ?? ""
+        if let sid = d["sessionId"] as? String {
+            auth.currentStreamSessionId = sid
+        }
+        isStreaming = true
+        isDone = false
+        self.onFinished = onFinished
+        startPolling(auth: auth)
+    }
+
+    private func clearPersisted() {
+        UserDefaults.standard.removeObject(forKey: "qingliao_stream_pending")
     }
 }

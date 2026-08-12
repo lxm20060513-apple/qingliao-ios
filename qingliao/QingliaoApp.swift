@@ -4,6 +4,7 @@ import SwiftUI
 struct QingliaoApp: App {
     // v2.0.60：通知点击直达会话（AppDelegate 捕获）
     @UIApplicationDelegateAdaptor(QingliaoAppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) private var scenePhase   // v2.0.61 流式持久化
     @State private var auth = AuthStore()
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()
@@ -21,6 +22,12 @@ struct QingliaoApp: App {
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）
                     NotificationHelper.requestAuth()
+                }
+                // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background {
+                        stream.persistState(sessionId: chat.sessionId)
+                    }
                 }
         }
     }

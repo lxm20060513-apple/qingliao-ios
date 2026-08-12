@@ -126,6 +126,12 @@ struct ChatView: View {
     // v2.0.59：上下文过长提示 / 失败重试
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
+    // v2.0.61：语音消息（录音 → 语音条）
+    @State private var showAudioRecorder = false
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var audioTimer: Timer?
+    @State private var audioSeconds = 0
+    @State private var isAudioRecording = false
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -239,6 +245,8 @@ struct ChatView: View {
                 HStack(spacing: 26) {
                     attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
+                    // v2.0.61：语音消息（录音 → 语音条）
+                    attachButton("waveform", "语音", Color.pink) { showAudioRecorder = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
                 }
@@ -297,6 +305,17 @@ struct ChatView: View {
                      : (hideDock ? 0 : 86))
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
+        // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
+        .task {
+            await stream.restoreIfNeeded(auth: auth) { success, err in
+                if success {
+                    chat.upsertAssistant(stream.content)
+                } else {
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(err)" : stream.content + "\n\n⚠️ \(err)")
+                }
+                Task { await chat.saveToServer(auth: auth) }
+            }
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         // v2.0.38：拍照输入（拍完进图片预览条，确认后发送）
         .sheet(isPresented: $showCameraPicker) {
@@ -505,6 +524,39 @@ struct ChatView: View {
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
         }
+        // v2.0.61：语音消息录音面板
+        .sheet(isPresented: $showAudioRecorder) {
+            VStack(spacing: 28) {
+                Text("语音消息")
+                    .font(.system(size: 17, weight: .bold))
+                Text(isAudioRecording ? "录音中… \(audioSeconds)″" : "点击开始录音（最长 60 秒）")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Button {
+                    isAudioRecording ? stopRecordingAndSend() : startAudioRecording()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(isAudioRecording ? Color.red : Color.pink)
+                            .frame(width: 84, height: 84)
+                            .shadow(color: (isAudioRecording ? Color.red : Color.pink).opacity(0.4),
+                                    radius: 12, y: 4)
+                        Image(systemName: isAudioRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                Button("取消") {
+                    discardRecording()
+                    showAudioRecorder = false
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 40)
+            .presentationDetents([.height(280)])
+        }
         // v2.0.59：上下文过长提示（60+ 条建议压缩）
         .alert("上下文较长", isPresented: $showLongContextAlert) {
             Button("压缩后发送") {
@@ -680,6 +732,66 @@ struct ChatView: View {
             chat.messages.remove(at: idx)
         }
         sendCore(text: msg.content, imageData: msg.imageDataURL)
+    }
+
+    // MARK: - v2.0.61 语音消息（录音 → 本地语音条）
+
+    private func startAudioRecording() {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Audio", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("voice_\(Int(Date().timeIntervalSince1970)).m4a")
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        try? AVAudioSession.sharedInstance().setCategory(.record, mode: .default)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        audioRecorder = try? AVAudioRecorder(url: url, settings: settings)
+        guard audioRecorder != nil else {
+            // 权限被拒等
+            showVoiceDenied = true
+            return
+        }
+        audioRecorder?.record()
+        isAudioRecording = true
+        audioSeconds = 0
+        audioTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            audioSeconds += 1
+            if audioSeconds >= 60 { stopRecordingAndSend() }
+        }
+    }
+
+    private func stopRecordingAndSend() {
+        audioTimer?.invalidate()
+        audioTimer = nil
+        guard let r = audioRecorder else { return }
+        let dur = max(1, Int(r.currentTime.rounded()))
+        let path = r.url.path
+        r.stop()
+        audioRecorder = nil
+        isAudioRecording = false
+        // 本地语音条消息（AI 暂不解析音频；内容带时长便于显示）
+        withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
+            chat.append(ChatMessage(role: "user", content: "[语音 \(dur)″]",
+                                    timestamp: Date().timeIntervalSince1970 * 1000,
+                                    audioPath: path))
+        }
+        Task { await chat.saveToServer(auth: auth) }
+        showAudioRecorder = false
+    }
+
+    private func discardRecording() {
+        audioTimer?.invalidate()
+        audioTimer = nil
+        if let r = audioRecorder {
+            r.stop()
+            try? FileManager.default.removeItem(at: r.url)
+        }
+        audioRecorder = nil
+        isAudioRecording = false
     }
 
     /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
@@ -979,6 +1091,11 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+                // v2.0.61：语音条消息
+                if let path = message.audioPath {
+                    AudioBubbleRow(path: path, durationText: message.content)
+                        .padding(.vertical, 4)
+                }
                 if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
                     Image(uiImage: uiImg)
                         .resizable()
@@ -1211,6 +1328,71 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - v2.0.61 语音条（本地播放）
+
+struct AudioBubbleRow: View {
+    let path: String
+    let durationText: String   // 形如 "[语音 5″]"
+    @State private var player: AVAudioPlayer?
+    @State private var isPlaying = false
+
+    private var dur: String {
+        let digits = durationText.filter(\.isNumber)
+        return digits.isEmpty ? "1″" : "\(digits)″"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                toggle()
+            } label: {
+                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Color.pink, in: Circle())
+            }
+            .buttonStyle(.plain)
+
+            Text(dur)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 26, alignment: .leading)
+
+            // 波形装饰（播放时高亮）
+            HStack(spacing: 2.5) {
+                ForEach(0..<14, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.pink.opacity(isPlaying ? 0.95 : 0.35))
+                        .frame(width: 3, height: CGFloat(6 + (i % 5) * 4))
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: isPlaying)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onDisappear { player?.stop() }
+    }
+
+    private func toggle() {
+        if isPlaying {
+            player?.stop()
+            isPlaying = false
+        } else {
+            if player == nil {
+                player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+            }
+            // 播放需 playback 类别（录音是 record）
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            player?.currentTime = 0
+            player?.play()
+            isPlaying = true
+        }
     }
 }
 

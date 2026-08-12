@@ -98,6 +98,9 @@ final class ChatStore {
                 let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 content = t.isEmpty ? "[图片]" : t + "\n[图片]"
             }
+            if m.audioPath != nil {   // v2.0.61：语音消息降级为文本（文件在本地，不同步服务器）
+                content = "[语音]"
+            }
             var p: [String: Any] = ["role": m.role, "content": content]
             if let ts = m.timestamp { p["timestamp"] = ts }
             return p
