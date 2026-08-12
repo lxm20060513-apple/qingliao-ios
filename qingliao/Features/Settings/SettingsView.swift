@@ -8,7 +8,7 @@ struct SettingsView: View {
 
     @State private var showServerSheet = false
     @State private var showPasswordSheet = false
-    @State private var showFiles = false
+    @State private var showSecrets = false
     @State private var showTasks = false
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
@@ -17,7 +17,6 @@ struct SettingsView: View {
     @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var showModelSheet = false
     @State private var showAbout = false
-    @State private var showSecrets = false
     @State private var secretCount = 0
     @State private var showHASettings = false
     @State private var haAddress = ""
@@ -69,9 +68,6 @@ struct SettingsView: View {
                     VStack(spacing: 0) {
                         SettingRow(icon: "key.fill", iconColor: .teal, title: "密码管理", value: "\(secretCount) 条凭据", chevron: true)
                             .onTapGesture { showSecrets = true }
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "folder.fill", iconColor: .indigo, title: "文件管理", chevron: true)
-                            .onTapGesture { showFiles = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "clock.badge.fill", iconColor: .red, title: "定时任务", chevron: true)
                             .onTapGesture { showTasks = true }
@@ -175,10 +171,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showPasswordSheet) {
             PasswordSheet()
                 .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $showFiles) {
-            FilesView()
-                .presentationDetents([.large])
         }
         .sheet(isPresented: $showTasks) {
             TasksView()
