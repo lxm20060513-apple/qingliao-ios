@@ -95,13 +95,14 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
-                            // v2.0.46：Dock 栏设置（外观二级菜单内）
+                            // v2.0.46：Dock 栏设置（外观二级菜单内，图标对齐 SettingRow 风格）
                             Divider().padding(.leading, 52)
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 Image(systemName: "rectangle.bottomthird.inset.filled")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.teal)
-                                    .frame(width: 22)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 Text("Dock 栏设置")
                                     .font(.system(size: 15))
                                     .foregroundStyle(.primary)
