@@ -184,7 +184,9 @@ struct DockerSheet: View {
                                 ForEach(containers) { c in
                                     DockerContainerCard(container: c)
                                         .onTapGesture {
-                                            Task { await action(c.name, "stop") }
+                                            // v2.0.76：卡片即开关——运行中单击停止，已停止单击启动
+                                            let act = c.status.contains("Up") ? "stop" : "start"
+                                            Task { await action(c.name, act) }
                                         }
                                         .onLongPressGesture {
                                             confirmTarget = c
@@ -306,7 +308,9 @@ struct DockerContainerCard: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            Text(container.ports.isEmpty ? "单击停止 · 长按删除" : container.ports)
+            Text(container.ports.isEmpty
+                 ? (running ? "单击停止 · 长按删除" : "单击启动 · 长按删除")
+                 : container.ports)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
