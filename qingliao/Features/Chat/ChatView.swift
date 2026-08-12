@@ -109,12 +109,10 @@ struct ChatView: View {
     @State private var pendingImageData: String?
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
-    private var modelName: String {
-        UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
-    }
-    private var provider: String {
-        UserDefaults.standard.string(forKey: "qingliao_provider") ?? "opencode"
-    }
+    // v2.0.48：改 @AppStorage——computed property 无观察机制，
+    // 设置页切换模型后聊天页头部不刷新（模型实际生效但显示旧名）
+    @AppStorage("qingliao_model") private var modelName = "deepseek-v4-flash"
+    @AppStorage("qingliao_provider") private var provider = "opencode"
 
     /// 头部状态文案/颜色（独立计算属性，避免 body 内嵌套三元）
     private var headerSubtitle: String {

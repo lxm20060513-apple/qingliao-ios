@@ -41,9 +41,23 @@ func qlWriteCrashFile(type: String, detail: String) {
     close(fd)
 }
 
-/// signal handler（顶层函数，无捕获）
+/// signal handler（顶层函数，无捕获；v2.0.48：纯 C 极简写——signal 上下文禁用一切
+/// Swift 字符串构造/分配，只写固定格式；完整栈由 NSException handler 负责）
 func qlCrashSignalHandler(_ sig: Int32) {
-    qlWriteCrashFile(type: "Signal(\(sig))", detail: "")
+    let home = getenv("HOME")
+    var path = [CChar](repeating: 0, count: 1024)   // 栈上数组，无堆分配
+    if let h = home {
+        _ = strcpy(&path, h)
+    } else {
+        _ = strcpy(&path, "/tmp")
+    }
+    _ = strcat(&path, "/Documents/crash_pending.json")
+    let fd = open(&path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    if fd >= 0 {
+        // C 字符串字面量（静态存储，无运行时分配）；write 全 POSIX
+        Darwin.write(fd, "{\"type\":\"Signal\"}\n", 18)
+        close(fd)
+    }
     exit(sig)
 }
 
