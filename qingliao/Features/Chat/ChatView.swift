@@ -9,7 +9,9 @@ import UserNotifications
 
 // MARK: - v2.0.60 通知点击直达会话（AppDelegate 捕获通知点击 → 存 sessionId）
 
-final class QingliaoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+// v2.0.64：@preconcurrency 抑制 Swift 6 的 delegate 跨 MainActor Sendable 检查
+final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
+                                 @preconcurrency UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
