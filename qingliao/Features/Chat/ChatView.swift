@@ -141,6 +141,8 @@ struct ChatView: View {
                 }
                 Button("清空本会话消息", role: .destructive) {
                     // v2.0.38：清空时禁用动画（批量移除 cell 的 spring 动画曾导致闪退）
+                    // v2.0.39：再加 scrollPosition 锚点重置 + 列表/欢迎页分支强制重建身份
+                    scrollPos = ScrollPosition()
                     withAnimation(nil) { chat.clearMessages() }
                     Task { await chat.saveToServer(auth: auth) }
                 }
@@ -281,7 +283,8 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 if chat.messages.isEmpty && !stream.isStreaming {
-                    // 首次进入欢迎占位
+                    // 首次进入欢迎占位（v2.0.39：.id 强制与消息列表分支区分身份，
+                    // 清空会话时列表↔欢迎页切换不再复用视图身份导致崩溃）
                     VStack(spacing: 10) {
                         Image(systemName: "bubble.left.and.bubble.right.fill")
                             .font(.system(size: 44))
@@ -295,6 +298,7 @@ struct ChatView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 90)
+                    .id("welcome")
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
@@ -367,6 +371,7 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
+                    .id("messages")   // v2.0.39：与欢迎页分支区分身份
                 }
             }
             .scrollPosition($scrollPos)
@@ -837,7 +842,7 @@ struct MessageBubble: View {
                     }
                 }
             }
-            .frame(maxWidth: 320, alignment: message.isUser ? .trailing : .leading)   // v2.0.38 气泡加宽 290→320
+            .frame(maxWidth: 350, alignment: message.isUser ? .trailing : .leading)   // v2.0.39 气泡加宽 320→350
 
             if !message.isUser {
                 Spacer(minLength: 48)
