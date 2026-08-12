@@ -15,7 +15,8 @@ func qlCrashFilePath() -> String {
     return NSTemporaryDirectory() + "crash_pending.json"
 }
 
-/// POSIX 直写崩溃信息（async-signal-safe 下限；NSException handler 也可用）
+/// POSIX 直写崩溃信息（v2.0.47：路径用 C 数组 strcpy/strcat 拼接，全程无 Swift 分配，
+/// 纯 async-signal-safe——String(cString:) 等 Swift 字符串构造会分配内存，handler 里可能死锁）
 func qlWriteCrashFile(type: String, detail: String) {
     let escaped = detail
         .replacingOccurrences(of: "\\", with: "\\\\")
@@ -23,7 +24,16 @@ func qlWriteCrashFile(type: String, detail: String) {
         .replacingOccurrences(of: "\n", with: "\\n")
         .prefix(3000)
     let entry = "{\"type\":\"\(type)\",\"detail\":\"\(escaped)\",\"ts\":\(Int(Date().timeIntervalSince1970))}\n"
-    let fd = open(qlCrashFilePath(), O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    let home = getenv("HOME")
+    let suffix = "/Documents/crash_pending.json"
+    var path = [CChar](repeating: 0, count: 1024)
+    if let h = home {
+        _ = strcpy(&path, h)
+    } else {
+        _ = strcpy(&path, "/tmp")
+    }
+    _ = strcat(&path, suffix)
+    let fd = open(&path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
     guard fd >= 0 else { return }
     entry.withCString { ptr in
         Darwin.write(fd, ptr, strlen(ptr))
