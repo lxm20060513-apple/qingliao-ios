@@ -4,6 +4,26 @@ import PDFKit
 import UniformTypeIdentifiers
 import AVFoundation
 import Speech
+import UIKit
+import UserNotifications
+
+// MARK: - v2.0.60 通知点击直达会话（AppDelegate 捕获通知点击 → 存 sessionId）
+
+final class QingliaoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        // 点击通知 → 记录要直达的会话
+        if let sid = response.notification.request.content.userInfo["qingliao_session"] as? String {
+            UserDefaults.standard.set(sid, forKey: "qingliao_open_session")
+        }
+    }
+}
 
 // MARK: - v2.0.50 滚动位置检测（替代 .scrollPosition，DockVisibility 用）
 // .scrollPosition 在 TabView 隐藏页内容清空时是已知崩溃点（SIGTRAP），
@@ -342,6 +362,14 @@ struct ChatView: View {
                     // 普通 VStack 全量渲染，移除只是简单数组变化，彻底绕开崩溃）
                     VStack(spacing: 10) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
+                            // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
+                            if idx > 0,
+                               let prevTs = chat.messages[idx - 1].timestamp,
+                               let curTs = msg.timestamp,
+                               !Calendar.current.isDate(Date(timeIntervalSince1970: curTs / 1000),
+                                                       inSameDayAs: Date(timeIntervalSince1970: prevTs / 1000)) {
+                                dateDivider(curTs)
+                            }
                             // 相邻消息间隔 >5 分钟：插入居中时间分隔（微信式）
                             if idx > 0,
                                let prevTs = chat.messages[idx - 1].timestamp,
@@ -553,6 +581,27 @@ struct ChatView: View {
             .padding(.vertical, 6)
     }
 
+    /// v2.0.60：跨天日期分隔线（灰色胶囊，微信式）
+    private func dateDivider(_ ts: Double) -> some View {
+        let d = Date(timeIntervalSince1970: ts / 1000)
+        let text: String
+        if Calendar.current.isDateInToday(d) {
+            text = "今天"
+        } else if Calendar.current.isDateInYesterday(d) {
+            text = "昨天"
+        } else {
+            text = d.formatted(date: .abbreviated, time: .omitted)
+        }
+        return Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+    }
+
     private func scrollBottom(_ proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) {
             if stream.isStreaming {
@@ -612,9 +661,10 @@ struct ChatView: View {
                 } else {
                     chat.upsertAssistant(stream.content)
                     showSentOK()
-                    // v2.0.36：App 退后台时 AI 回复完成发本地通知
+                    // v2.0.36：App 退后台时 AI 回复完成发本地通知（v2.0.60 携带会话 id）
                     if UIApplication.shared.applicationState != .active {
-                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看")
+                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
+                                                  sessionId: chat.sessionId)
                     }
                 }
                 // 保存会话到后端（会话记录同步）
@@ -673,7 +723,8 @@ struct ChatView: View {
                     showSentOK()
                     // v2.0.36：App 退后台时 AI 回复完成发本地通知
                     if UIApplication.shared.applicationState != .active {
-                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看")
+                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
+                                                  sessionId: chat.sessionId)
                     }
                 }
                 Task { await chat.saveToServer(auth: auth) }

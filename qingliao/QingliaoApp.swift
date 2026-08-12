@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct QingliaoApp: App {
+    // v2.0.60：通知点击直达会话（AppDelegate 捕获）
+    @UIApplicationDelegateAdaptor(QingliaoAppDelegate.self) var appDelegate
     @State private var auth = AuthStore()
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()

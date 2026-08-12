@@ -17,6 +17,8 @@ struct SessionsView: View {
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
     @State private var pinnedIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_pinned_sessions") ?? [])
+    // v2.0.60：会话收藏（⭐）
+    @State private var favIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_fav_sessions") ?? [])
     // v2.0.43：会话重命名
     @State private var renameTarget: ChatSession?
     @State private var renameText = ""
@@ -115,7 +117,7 @@ struct SessionsView: View {
                                 // 每条会话独立卡片 + 间隔（会话条目间距）
                                 VStack(spacing: 8) {
                                     ForEach(sortedSessions) { s in
-                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id)) {
+                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id)) {
                                             chat.load(s)
                                             onOpenSession?()
                                         }
@@ -125,6 +127,12 @@ struct SessionsView: View {
                                                 togglePin(s)
                                             } label: {
                                                 Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
+                                            }
+                                            // v2.0.60：收藏
+                                            Button {
+                                                toggleFav(s)
+                                            } label: {
+                                                Label(favIDs.contains(s.id) ? "取消收藏" : "收藏", systemImage: favIDs.contains(s.id) ? "star.slash" : "star")
                                             }
                                             // v2.0.43：会话重命名
                                             Button {
@@ -204,14 +212,28 @@ struct SessionsView: View {
 
     // MARK: - v2.0.36 搜索 / 置顶
 
-    /// 置顶优先，其余按最新→最旧
+    /// 置顶优先，收藏次之，其余按最新→最旧（v2.0.60 加收藏）
     private var sortedSessions: [ChatSession] {
         sessions.sorted {
-            let a = pinnedIDs.contains($0.id) ? 1 : 0
-            let b = pinnedIDs.contains($1.id) ? 1 : 0
+            let a = rank($0.id), b = rank($1.id)
             if a != b { return a > b }
             return ($0.lastTime ?? 0) > ($1.lastTime ?? 0)
         }
+    }
+
+    private func rank(_ id: String) -> Int {
+        if pinnedIDs.contains(id) { return 2 }
+        if favIDs.contains(id) { return 1 }
+        return 0
+    }
+
+    private func toggleFav(_ s: ChatSession) {
+        if favIDs.contains(s.id) {
+            favIDs.remove(s.id)
+        } else {
+            favIDs.insert(s.id)
+        }
+        UserDefaults.standard.set(Array(favIDs), forKey: "qingliao_fav_sessions")
     }
 
     private func togglePin(_ s: ChatSession) {
@@ -440,6 +462,7 @@ struct SearchResultRow: View {
 struct SessionRow: View {
     let session: ChatSession
     var pinned: Bool = false
+    var faved: Bool = false   // v2.0.60 收藏
     var action: () -> Void = {}
 
     var body: some View {
@@ -460,6 +483,12 @@ struct SessionRow: View {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(Color.orange)
+                    }
+                    // v2.0.60：收藏星标
+                    if faved {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.yellow)
                     }
                     Text(session.title.isEmpty ? "新对话" : session.title)
                         .font(.system(size: 14, weight: .semibold))

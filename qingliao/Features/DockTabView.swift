@@ -46,6 +46,18 @@ struct DockTabView: View {
             .coordinateSpace(name: "scrollspace")
             // 页面切换滑动动画（点击 Dock 时整体横向滑动过渡）
             .animation(.easeInOut(duration: 0.38), value: selected)
+            // v2.0.60：通知点击 → 直达对应会话
+            .task {
+                guard let sid = UserDefaults.standard.string(forKey: "qingliao_open_session") else { return }
+                UserDefaults.standard.removeObject(forKey: "qingliao_open_session")
+                if let arr = try? await auth.jsonArray("/api/sessions/list") {
+                    let sessions = arr.compactMap { ChatSession.parse($0 as? [String: Any] ?? [:]) }
+                    if let s = sessions.first(where: { $0.id == sid }) {
+                        chat.load(s)
+                        selected = .chat
+                    }
+                }
+            }
 
             // 环境光晕：收敛到底部 Dock 区域、低透明度（页面主体保持纯黑，玻璃有内容可透即可）
             ZStack {
