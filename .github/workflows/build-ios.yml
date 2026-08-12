@@ -11,9 +11,10 @@ permissions:
 
 jobs:
   build-ipa:
-    # v2.0.51：macos-latest runner 池故障（0 steps 秒失败）→ 换 macos-14 池绕过；
-    # 恢复后可改回 macos-latest
-    runs-on: macos-14
+    # v2.0.53：改回 macos-latest（Xcode 26，xcodegen 生成格式兼容）。
+    # 之前 0 steps 失败其实是 private 仓库额度耗尽，不是 runner 故障；
+    # macos-14 是 Xcode 15.4 读不了 xcodegen 2.45 生成的项目（Unable to read project）
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
