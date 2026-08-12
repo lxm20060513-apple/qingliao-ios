@@ -24,6 +24,7 @@ enum CrashReporter {
     }
 
     /// 启动时若有未上报崩溃 → 异步 POST，成功删除本地文件
+    @MainActor
     static func flushPending(auth: AuthStore) async {
         guard FileManager.default.fileExists(atPath: pendingURL.path) else { return }
         guard let data = try? Data(contentsOf: pendingURL),
@@ -60,7 +61,7 @@ enum CrashReporter {
         let fd = open(pendingURL.path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
         guard fd >= 0 else { return }
         _ = json.withCString { ptr in
-            write(fd, ptr, strlen(ptr))
+            Darwin.write(fd, ptr, strlen(ptr))
         }
         close(fd)
     }

@@ -59,7 +59,7 @@ struct ChatMessage: Identifiable {
 
 struct ChatSession: Identifiable {
     let id: String
-    let title: String
+    var title: String   // v2.0.43 重命名（SessionsView 本地改）
     let messages: [ChatMessage]
 
     var lastMessageText: String { messages.last?.content ?? "" }
