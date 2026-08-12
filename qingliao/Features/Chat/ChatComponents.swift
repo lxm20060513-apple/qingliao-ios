@@ -2,7 +2,28 @@ import SwiftUI
 import UIKit
 import AVFoundation
 
-// MARK: - v2.0.62 聊天 UI 组件（从 ChatView.swift 拆出，减小主文件体积）
+// MARK: - 聊天 UI 组件（从 ChatView.swift 拆出，减小主文件体积）
+
+// MARK: - v2.0.65 气泡小尾巴（iMessage 式：AI 左下 / 用户右下）
+
+struct BubbleTail: Shape {
+    let left: Bool   // 尖朝左（AI 消息）
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        if left {
+            p.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        } else {
+            p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        }
+        p.closeSubpath()
+        return p
+    }
+}
+
 
 struct ScrollOffsetKey: PreferenceKey {
     static let defaultValue: CGFloat = 0   // v2.0.51：static let 不可变即并发安全（协议 get-only）
@@ -88,6 +109,21 @@ struct MessageBubble: View {
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 14.0
+    // v2.0.65：深浅色气泡双色值 / 超长消息折叠
+    @Environment(\.colorScheme) private var scheme
+    @State private var expanded = false
+
+    /// 用户气泡蓝：深色用深蓝，浅色用亮蓝（对比度适配）
+    private var userBubbleColor: Color {
+        isHighlighted
+            ? (scheme == .dark ? Color(red: 0.20, green: 0.32, blue: 0.62) : Color(red: 0.38, green: 0.55, blue: 0.92))
+            : (scheme == .dark ? Color(red: 0.13, green: 0.22, blue: 0.45) : Color(red: 0.27, green: 0.47, blue: 0.88))
+    }
+    /// AI 气泡灰：浅色模式更浅
+    private var aiBubbleColor: Color {
+        isHighlighted ? Color.accentColor.opacity(0.14)
+            : (scheme == .dark ? Color(uiColor: .systemGray5) : Color(uiColor: .systemGray6))
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -106,72 +142,105 @@ struct MessageBubble: View {
                 .frame(width: 30, height: 30)
             }
 
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
-                // v2.0.61：语音条消息
-                if let path = message.audioPath {
-                    AudioBubbleRow(path: path, durationText: message.content)
-                        .padding(.vertical, 4)
-                }
-                if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
-                    Image(uiImage: uiImg)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: 200, maxHeight: 200)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        // v2.0.36：点击查看大图
-                        .onTapGesture { onImageTap() }
-                }
-                if !message.content.isEmpty {
-                    if message.isUser {
-                        Text(AttributedString(message.content))
-                            .font(.system(size: CGFloat(fontSize)))   // v2.0.38 字号可调
-                            .lineSpacing(3)
-                            .foregroundStyle(.white)
-                            .textSelection(.enabled)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 9)
-                            .background(isHighlighted ? Color(red: 0.20, green: 0.32, blue: 0.62) : Color(red: 0.13, green: 0.22, blue: 0.45))
-                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                            // v2.0.43 搜索定位高亮边框
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                    .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
-                            )
-                    } else {
-                        // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
-                        VStack(alignment: .leading, spacing: 6) {
-                            // Range 重载（ForEach(0..<n)）无泛型歧义；渲染逻辑在 MessageBlockView
-                            ForEach(0..<contentBlocks.count, id: \.self) { i in
-                                MessageBlockView(block: contentBlocks[i])
+            // v2.0.65：气泡主体 + 尾巴（ZStack 对齐底部角落，尾巴向气泡外凸出）
+            ZStack(alignment: message.isUser ? .bottomTrailing : .bottomLeading) {
+                VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+                    // v2.0.61：语音条消息
+                    if let path = message.audioPath {
+                        AudioBubbleRow(path: path, durationText: message.content)
+                            .padding(.vertical, 4)
+                    }
+                    if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
+                        Image(uiImage: uiImg)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: 200, maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            // v2.0.36：点击查看大图
+                            .onTapGesture { onImageTap() }
+                    }
+                    if !message.content.isEmpty {
+                        if message.isUser {
+                            Text(AttributedString(message.content))
+                                .font(.system(size: CGFloat(fontSize)))   // v2.0.38 字号可调
+                                .lineSpacing(3)
+                                .foregroundStyle(.white)
+                                .textSelection(.enabled)
+                        } else {
+                            // v2.0.65：AI 超长消息折叠（>800 字收成展开全文）
+                            if message.content.count > 800 && !expanded {
+                                Text(String(message.content.prefix(800)) + "…")
+                                    .font(.system(size: CGFloat(fontSize)))
+                                    .lineSpacing(3)
+                                    .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.2)) { expanded = true }
+                                } label: {
+                                    Text("展开全文（剩余 \(message.content.count - 800) 字）")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.top, 2)
+                            } else {
+                                // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(0..<contentBlocks.count, id: \.self) { i in
+                                        MessageBlockView(block: contentBlocks[i])
+                                    }
+                                }
                             }
                         }
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 9)
-                        .background(isHighlighted ? Color.accentColor.opacity(0.14) : Color(uiColor: .systemGray5))
-                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                        // v2.0.43 搜索定位高亮边框
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
-                        )
+                    }
+                    // v2.0.59：发送失败 → 重试按钮（红色，点击按原内容重发）
+                    if message.isUser && message.failed {
+                        Button {
+                            onRetry()
+                        } label: {
+                            Label("发送失败，点击重试", systemImage: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                    }
+                    // v2.0.65：已送达小字（用户消息、非失败、非语音）
+                    if message.isUser && !message.failed && message.audioPath == nil {
+                        Text("已送达")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 1)
                     }
                 }
-                // v2.0.59：发送失败 → 重试按钮（红色，点击按原内容重发）
-                if message.isUser && message.failed {
-                    Button {
-                        onRetry()
-                    } label: {
-                        Label("发送失败，点击重试", systemImage: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 2)
-                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 9)
+                .background(message.isUser ? userBubbleColor : aiBubbleColor,
+                            in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                // v2.0.43 搜索定位高亮边框
+                .overlay(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
+                )
+                // v2.0.65：气泡小尾巴（向气泡外侧凸出，AI 左下 / 用户右下）
+                BubbleTail(left: !message.isUser)
+                    .fill(message.isUser ? userBubbleColor : aiBubbleColor)
+                    .frame(width: 10, height: 14)
+                    .offset(x: message.isUser ? 9 : -9, y: 0)
             }
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
 
-            if !message.isUser {
+            if message.isUser {
+                // v2.0.65：用户头像（渐变圆 + 首字母，与 AI 头像对称）
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(colors: [.teal, .blue], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Text("Q")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 30, height: 30)
+            } else {
                 // v2.0.41：AI 气泡右侧留白 48→10，气泡右缘贴红线（约距屏幕右 22pt）
                 Spacer(minLength: 10)
             }

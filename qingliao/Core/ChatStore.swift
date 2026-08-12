@@ -40,6 +40,28 @@ final class ChatStore {
     }
 
     // MARK: - v2.0.58 两步走新建会话
+    // MARK: - v2.0.65 未读红点（本地概念：会话有新消息且未打开）
+
+    var unread: [String: Bool] = [:]              // sessionId -> 有未读
+    private var seenTimes: [String: TimeInterval] = [:]   // 各会话上次查看时间
+
+    /// 列表加载后同步未读（有 lastTime 且晚于上次查看 → 标未读）
+    func syncUnread(from sessions: [ChatSession], currentId: String) {
+        for s in sessions {
+            guard s.id != currentId, let lt = s.lastTime else { continue }
+            if lt > (seenTimes[s.id] ?? 0) + 1000 {
+                unread[s.id] = true
+            }
+        }
+    }
+
+    func markRead(_ id: String) {
+        unread[id] = nil
+        seenTimes[id] = Date().timeIntervalSince1970 * 1000
+    }
+
+    var totalUnread: Int { unread.count }
+
     /// 请求新建会话（只设标志不清数据）：ChatView 观察到后先切欢迎页卸载列表，
     /// 下一帧再 newSession——v2.0.44 的"先切tab再清空"在 tab 切换动画期间（半隐藏状态）
     /// 清空仍崩（用户实测 v2.0.57 新建/删除都闪退）；两步走是清空按钮验证过的稳定模式

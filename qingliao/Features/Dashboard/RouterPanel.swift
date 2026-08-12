@@ -56,6 +56,8 @@ struct RouterPanel: View {
     var onRefresh: (() -> Void)? = nil
 
     @State private var showClashSheet = false
+    // v2.0.65：状态点呼吸动画（在线时呼吸）
+    @State private var breathe = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -69,6 +71,11 @@ struct RouterPanel: View {
                 Circle()
                     .fill(router.ok ? Color.green : Color.red)
                     .frame(width: 7, height: 7)
+                    // v2.0.65：在线时呼吸（2s 循环透明度）
+                    .opacity(router.ok ? (breathe ? 1.0 : 0.35) : 1.0)
+                    .animation(router.ok ? .easeInOut(duration: 1.0).repeatForever(autoreverses: true) : .default,
+                               value: breathe)
+                    .onAppear { breathe = true }
                 Spacer()
                 Button {
                     onRefresh?()

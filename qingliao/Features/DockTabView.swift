@@ -90,7 +90,7 @@ struct DockTabView: View {
                 Spacer()
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 // 下滑隐藏 / 上滑显示（scrollPosition 驱动 + Dock 栏拖拽手势兜底）
-                DockBar(selected: $selected)
+                DockBar(selected: $selected, unreadCount: chat.totalUnread)   // v2.0.65 未读红点
                     .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
                     .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
                     .allowsHitTesting(!kb.isVisible && !dockVisibility.hidden)
@@ -118,11 +118,14 @@ struct DockTabView: View {
 
 struct DockBar: View {
     @Binding var selected: DockTab
+    var unreadCount: Int = 0   // v2.0.65 聊天 tab 未读红点
     @Environment(\.colorScheme) private var scheme
     @State private var lensX: CGFloat = 0
     @State private var isInteracting = false
     @State private var hoverIdx: Int? = nil   // 手指所在 tab（放大镜用）
     @State private var dockWidth: CGFloat = 280
+    // v2.0.65：发送完成 Dock 轻跳
+    @State private var bounce = false
 
     var body: some View {
         GeometryReader { geo in
@@ -136,10 +139,20 @@ struct DockBar: View {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 21, weight: .medium))
                                 // 放大镜效果：透镜所在的 tab 图标放大（松手后短暂保持）
-                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : 1.0)
+                                // v2.0.65：发送完成时聊天图标轻跳
+                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : (tab == .chat && bounce ? 1.18 : 1.0))
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
+                        }
+                        // v2.0.65：聊天 tab 未读红点（右上角）
+                        .overlay(alignment: .topTrailing) {
+                            if tab == .chat && unreadCount > 0 {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 9, height: 9)
+                                    .offset(x: 4, y: -3)
+                            }
                         }
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
@@ -233,6 +246,17 @@ struct DockBar: View {
             .onChange(of: selected) {
                 withAnimation(.spring(duration: 0.35, bounce: 0.25)) {
                     lensX = lensOffset(for: DockTab.allCases.firstIndex(of: selected) ?? 0)
+                }
+            }
+            // v2.0.65：发送完成 → 聊天图标轻跳
+            .onReceive(NotificationCenter.default.publisher(for: .qingliaoSent)) { _ in
+                withAnimation(.spring(duration: 0.25, bounce: 0.5)) {
+                    bounce = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    withAnimation(.spring(duration: 0.3, bounce: 0.4)) {
+                        bounce = false
+                    }
                 }
             }
         }

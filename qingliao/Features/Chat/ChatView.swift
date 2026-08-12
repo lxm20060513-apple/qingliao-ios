@@ -7,6 +7,12 @@ import Speech
 import UIKit
 import UserNotifications
 
+// MARK: - v2.0.65 发送完成通知（Dock 轻跳）
+
+extension Notification.Name {
+    static let qingliaoSent = Notification.Name("qingliao_sent")
+}
+
 // MARK: - v2.0.60 通知点击直达会话（AppDelegate 捕获通知点击 → 存 sessionId）
 
 // v2.0.64：@preconcurrency 抑制 Swift 6 的 delegate 跨 MainActor Sendable 检查
@@ -623,6 +629,8 @@ struct ChatView: View {
     private func sendCore(text: String, imageData: String?) {
         guard (!text.isEmpty || imageData != nil), !stream.isStreaming else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // v2.0.65：发送通知 → Dock 聊天图标轻跳
+        NotificationCenter.default.post(name: .qingliaoSent, object: nil)
         let msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
         // v2.0.59：单条插入动效（批量移除才崩，插入安全）
         withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
