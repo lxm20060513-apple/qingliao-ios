@@ -96,6 +96,7 @@ struct DockerSheet: View {
                         // 部署按钮（渐变蓝，确认后生效）
                         Button {
                             focused = false
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()   // v2.0.77 触感
                             Task { await deploy() }
                         } label: {
                             HStack(spacing: 8) {
@@ -185,10 +186,14 @@ struct DockerSheet: View {
                                     DockerContainerCard(container: c)
                                         .onTapGesture {
                                             // v2.0.76：卡片即开关——运行中单击停止，已停止单击启动
+                                            // v2.0.77：触感反馈
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                             let act = c.status.contains("Up") ? "stop" : "start"
                                             Task { await action(c.name, act) }
                                         }
                                         .onLongPressGesture {
+                                            // v2.0.77：长按删除确认触感
+                                            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                                             confirmTarget = c
                                         }
                                 }
