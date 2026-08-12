@@ -27,6 +27,7 @@ enum DockTab: String, CaseIterable, Identifiable {
 struct DockTabView: View {
     @State private var selected: DockTab = .chat
     @Environment(KeyboardObserver.self) private var kb
+    @Environment(\.horizontalSizeClass) private var hSize   // v2.0.62 iPad 多栏
     // @Observable 单例必须 @State 持有，body 才能观察其属性变化（否则 hidden 更新不触发重绘）
     @State private var dockVisibility = DockVisibility.shared
 
@@ -35,7 +36,19 @@ struct DockTabView: View {
             Color(uiColor: .systemBackground).ignoresSafeArea()
 
             TabView(selection: $selected) {
-                ChatView().tag(DockTab.chat)
+                // v2.0.62：iPad 横屏多栏——会话列表 + 聊天同屏
+                if hSize == .regular {
+                    HStack(spacing: 0) {
+                        SessionsView(onOpenSession: nil)
+                            .frame(width: 320)
+                            .background(Color(uiColor: .systemBackground))
+                        Divider().opacity(0.3)
+                        ChatView()
+                    }
+                    .tag(DockTab.chat)
+                } else {
+                    ChatView().tag(DockTab.chat)
+                }
                 SessionsView(onOpenSession: { selected = .chat }).tag(DockTab.sessions)
                 DashboardView().tag(DockTab.dashboard)
                 SettingsView().tag(DockTab.settings)
