@@ -86,6 +86,7 @@ struct ChatView: View {
     @State private var showExporter = false
     @State private var exportText = ""
     @State private var showVoiceDenied = false   // v2.0.36 录音权限被拒提示
+    @State private var clearing = false          // v2.0.40 清空会话两步走标志
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
     @State private var isRecording = false
     @State private var voiceBusy = false
@@ -140,10 +141,14 @@ struct ChatView: View {
                     showExporter = true
                 }
                 Button("清空本会话消息", role: .destructive) {
-                    // v2.0.38：清空时禁用动画（批量移除 cell 的 spring 动画曾导致闪退）
-                    // v2.0.39：再加 scrollPosition 锚点重置 + 列表/欢迎页分支强制重建身份
+                    // v2.0.40：两步走清空——先切欢迎页分支（列表立即卸载，数据未动），
+                    // 下一帧再清数据。列表销毁与数据清空完全错开，杜绝同帧崩溃。
                     scrollPos = ScrollPosition()
-                    withAnimation(nil) { chat.clearMessages() }
+                    clearing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                        withAnimation(nil) { chat.clearMessages() }
+                        clearing = false
+                    }
                     Task { await chat.saveToServer(auth: auth) }
                 }
                 Button("取消", role: .cancel) {}
@@ -282,7 +287,8 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                if chat.messages.isEmpty && !stream.isStreaming {
+                // v2.0.40：clearing 期间直接显示欢迎页（列表已卸载，数据稍后清空）
+                if (chat.messages.isEmpty || clearing) && !stream.isStreaming {
                     // 首次进入欢迎占位（v2.0.39：.id 强制与消息列表分支区分身份，
                     // 清空会话时列表↔欢迎页切换不再复用视图身份导致崩溃）
                     VStack(spacing: 10) {
@@ -300,7 +306,9 @@ struct ChatView: View {
                     .padding(.top, 90)
                     .id("welcome")
                 } else {
-                    LazyVStack(spacing: 10) {
+                    // v2.0.40：LazyVStack → VStack（懒加载在批量移除时有复用状态残留，
+                    // 普通 VStack 全量渲染，移除只是简单数组变化，彻底绕开崩溃）
+                    VStack(spacing: 10) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
                             // 相邻消息间隔 >5 分钟：插入居中时间分隔（微信式）
                             if idx > 0,
