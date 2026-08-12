@@ -95,33 +95,34 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
-                        }
-                        Divider().padding(.leading, 52)
-                        // v2.0.45：隐藏 Dock 栏（强制隐藏，滚动/手势不再显示）
-                        HStack(spacing: 10) {
-                            Image(systemName: "dock.rectangle")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.teal)
-                                .frame(width: 22)
-                            Text("隐藏 Dock 栏")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Toggle("", isOn: $hideDock)
-                                .labelsHidden()
-                                .tint(Color.accentColor)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .contentShape(Rectangle())
-                        .onChange(of: hideDock) { _, on in
-                            if on {
-                                DockVisibility.shared.forceHidden = true
-                                DockVisibility.shared.hidden = true
-                            } else {
-                                DockVisibility.shared.forceHidden = false
-                                DockVisibility.shared.reset()
+                            // v2.0.46：Dock 栏设置（外观二级菜单内）
+                            Divider().padding(.leading, 52)
+                            HStack(spacing: 10) {
+                                Image(systemName: "rectangle.bottomthird.inset.filled")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.teal)
+                                    .frame(width: 22)
+                                Text("Dock 栏设置")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Toggle("", isOn: $hideDock)
+                                    .labelsHidden()
+                                    .tint(Color.accentColor)
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                            .onChange(of: hideDock) { _, on in
+                                if on {
+                                    DockVisibility.shared.forceHidden = true
+                                    DockVisibility.shared.hidden = true
+                                } else {
+                                    DockVisibility.shared.forceHidden = false
+                                    DockVisibility.shared.reset()
+                                }
+                            }
+                            .padding(.bottom, 4)
                         }
                         Divider().padding(.leading, 52)
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
