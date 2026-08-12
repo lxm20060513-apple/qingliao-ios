@@ -5,6 +5,17 @@ import UniformTypeIdentifiers
 import AVFoundation
 import Speech
 
+// MARK: - v2.0.50 滚动位置检测（替代 .scrollPosition，DockVisibility 用）
+// .scrollPosition 在 TabView 隐藏页内容清空时是已知崩溃点（SIGTRAP），
+// 换 GeometryReader + PreferenceKey：滚动时上报内容区 minY，取负后语义同 scrollPos.y
+
+struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 /// BigBang 全屏炸开载荷（fullScreenCover(item:) 需要 Identifiable）
 struct BigBangPayload: Identifiable {
     let id = UUID()
@@ -100,7 +111,6 @@ struct ChatView: View {
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
     @State private var bigBangPayload: BigBangPayload?
-    @State private var scrollPos = ScrollPosition()
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var showCameraPicker = false   // v2.0.38 拍照输入
@@ -153,7 +163,6 @@ struct ChatView: View {
                 Button("清空本会话消息", role: .destructive) {
                     // v2.0.40：两步走清空——先切欢迎页分支（列表立即卸载，数据未动），
                     // 下一帧再清数据。列表销毁与数据清空完全错开，杜绝同帧崩溃。
-                    scrollPos = ScrollPosition()
                     clearing = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                         withAnimation(nil) { chat.clearMessages() }
@@ -403,9 +412,16 @@ struct ChatView: View {
                     .id("messages")   // v2.0.39：与欢迎页分支区分身份
                 }
             }
-            .scrollPosition($scrollPos)
-            .onChange(of: scrollPos.y) { _, y in
-                DockVisibility.shared.update(y ?? 0)
+            // v2.0.50：.scrollPosition 在隐藏页内容清空时是已知崩溃点（新建会话=TabView
+            // 隐藏页清空→scrollPos 更新异常→SIGTRAP）→ 换 GeometryReader + PreferenceKey 检测滚动
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: ScrollOffsetKey.self,
+                                            value: geo.frame(in: .named("scrollspace")).minY)
+                }
+            )
+            .onPreferenceChange(ScrollOffsetKey.self) { minY in
+                DockVisibility.shared.update(-minY)
             }
             // v2.0.43：搜索定位——滚动到命中消息并高亮 2 秒
             .onChange(of: chat.highlightTarget?.content) { _, _ in

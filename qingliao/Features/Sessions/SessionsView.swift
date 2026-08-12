@@ -327,6 +327,9 @@ struct SessionsView: View {
 struct BotCard: View {
     @Environment(AuthStore.self) private var auth
     @State private var online: Bool?
+    // v2.0.50：模型/提供商动态读取（设置切换后实时刷新）
+    @AppStorage("qingliao_model") private var modelName = "deepseek-v4-flash"
+    @AppStorage("qingliao_provider") private var provider = "opencode"
 
     var body: some View {
         HStack(spacing: 12) {
@@ -342,7 +345,8 @@ struct BotCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("轻聊 agent")
                     .font(.system(size: 15, weight: .semibold))
-                Text("deepseek/deepseek-v4-flash")
+                // v2.0.50：模型名动态显示（之前硬编码，设置切模型不刷新）
+                Text("\(provider)/\(modelName)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
