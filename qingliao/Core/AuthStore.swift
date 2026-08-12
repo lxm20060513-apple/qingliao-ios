@@ -99,15 +99,18 @@ final class AuthStore {
             headers["X-Auth-Token"] = token
         }
 
-        // v2.0.68：蜂窝下不再自动降级 Safari relay（ASWAS 每次弹系统授权窗口，用户实测蜂窝弹窗）。
-        // directRequest（CFStream 纯 socket 直连，不弹窗）优先；失败直接报错提示，不弹窗。
+        // v2.0.70：蜂窝下恢复 relay 兜底（v2.0.68 一刀切去掉后蜂窝无法登录——iOS 管控下
+        // 直连 POST 必挂，relay 是唯一通道；代价是 ASWAS 弹 Safari 授权窗，但可用优先）。
+        // WiFi 下不弹：NetworkMonitor 已收紧（有 WiFi 接口绝不判蜂窝）+ 登录强制直连仅限 WiFi。
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
             do {
                 (data, code) = try await relay.directRequest(method: method, path: path,
                                                              headers: headers, body: bodyData, timeout: 10)
             } catch {
-                throw APIError.badResponseDetail("蜂窝网络受限（iOS 管控），请连接 Wi-Fi 后重试")
+                (data, code) = try await relay.relay(method: method, path: path,
+                                                     headers: headers, body: bodyData,
+                                                     timeout: 30)
             }
         } else {
             // Wi-Fi/其他：URLSession 直连（免 relay 弹窗）
