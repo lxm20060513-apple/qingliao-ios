@@ -6,10 +6,13 @@ import UIKit
 // 因此 handler 全部用顶层函数 + 固定路径 POSIX 直写。
 
 /// 崩溃文件路径（全局函数，handler 与 flushPending 共用，避免捕获）
+/// v2.0.44：用 getenv("HOME")（async-signal-safe）替代 NSSearchPathForDirectoriesInDomains
+/// （后者非 signal-safe，崩溃 handler 里调用可能死锁卡死导致文件写不成）
 func qlCrashFilePath() -> String {
-    let dir = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first
-        ?? NSTemporaryDirectory()
-    return dir + "/crash_pending.json"
+    if let home = getenv("HOME") {
+        return String(cString: home) + "/Documents/crash_pending.json"
+    }
+    return NSTemporaryDirectory() + "crash_pending.json"
 }
 
 /// POSIX 直写崩溃信息（async-signal-safe 下限；NSException handler 也可用）

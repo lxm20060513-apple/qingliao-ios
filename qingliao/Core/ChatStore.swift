@@ -35,6 +35,7 @@ final class ChatStore {
         sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
         title = ""
         messages = []
+        highlightTarget = nil   // v2.0.44：新建会话清除残留定位目标
         defaults.set(sessionId, forKey: sessionKey)
     }
 

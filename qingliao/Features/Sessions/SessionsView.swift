@@ -170,10 +170,14 @@ struct SessionsView: View {
 
     private var addButton: some View {
         Button {
-            // v2.0.38：新建会话同样禁用动画（与清空同因的批量移除闪退）
-            withAnimation(nil) { chat.newSession() }
-            DockVisibility.shared.reset()   // 新建会话后 Dock 恢复显示
+            // v2.0.44：先切 tab 再清空——新建会话时 ChatView 在 TabView 隐藏页，
+            // 隐藏页批量清空是独立崩溃路径（v2.0.40 只根治了在屏清空）；
+            // 先切回聊天 tab，下一帧再 newSession（变成已验证的在屏场景）
             onOpenSession?()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                withAnimation(nil) { chat.newSession() }
+                DockVisibility.shared.reset()
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .semibold))
