@@ -37,7 +37,7 @@ struct SessionsView: View {
             HStack(spacing: 8) {
                 Image(systemName: isSearching ? "magnifyingglass.circle.fill" : "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundStyle(isSearching ? Color.accentColor : .tertiary)
+                    .foregroundStyle(isSearching ? Color.accentColor : Color(uiColor: .tertiaryLabel))
                     .onTapGesture {
                         if isSearching {
                             // 搜索中点击放大镜 = 清空并收起（含键盘）
