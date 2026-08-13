@@ -154,11 +154,6 @@ struct MessageBubble: View {
 
             // v2.0.66：气泡主体（单 Shape 背景带尾巴，不再用 ZStack overlay）
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
-                    // v2.0.61：语音条消息
-                    if let path = message.audioPath {
-                        AudioBubbleRow(path: path, durationText: message.content)
-                            .padding(.vertical, 4)
-                    }
                     if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
                         Image(uiImage: uiImg)
                             .resizable()
@@ -215,7 +210,7 @@ struct MessageBubble: View {
                         .padding(.top, 2)
                     }
                     // v2.0.65：已送达小字（用户消息、非失败、非语音）
-                    if message.isUser && !message.failed && message.audioPath == nil {
+                    if message.isUser && !message.failed {
                         Text("已送达")
                             .font(.system(size: 9.5))
                             .foregroundStyle(.tertiary)
@@ -323,12 +318,6 @@ struct MessageBubble: View {
         return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
     }
 
-    private func dataURLImage(_ urlStr: String) -> UIImage? {
-        guard let comma = urlStr.firstIndex(of: ","),
-              let data = Data(base64Encoded: String(urlStr[urlStr.index(after: comma)...])),
-              let img = UIImage(data: data) else { return nil }
-        return img
-    }
 }
 
 // MARK: - 液态玻璃输入栏
@@ -421,71 +410,6 @@ struct ChatInputBar: View {
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
-    }
-}
-
-// MARK: - v2.0.61 语音条（本地播放）
-
-struct AudioBubbleRow: View {
-    let path: String
-    let durationText: String   // 形如 "[语音 5″]"
-    @State private var player: AVAudioPlayer?
-    @State private var isPlaying = false
-
-    private var dur: String {
-        let digits = durationText.filter(\.isNumber)
-        return digits.isEmpty ? "1″" : "\(digits)″"
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                toggle()
-            } label: {
-                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(Color.pink, in: Circle())
-            }
-            .buttonStyle(.plain)
-
-            Text(dur)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 26, alignment: .leading)
-
-            // 波形装饰（播放时高亮）
-            HStack(spacing: 2.5) {
-                ForEach(0..<14, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.pink.opacity(isPlaying ? 0.95 : 0.35))
-                        .frame(width: 3, height: CGFloat(6 + (i % 5) * 4))
-                }
-            }
-            .animation(.easeInOut(duration: 0.3), value: isPlaying)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .onDisappear { player?.stop() }
-    }
-
-    private func toggle() {
-        if isPlaying {
-            player?.stop()
-            isPlaying = false
-        } else {
-            if player == nil {
-                player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
-            }
-            // 播放需 playback 类别（录音是 record）
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            player?.currentTime = 0
-            player?.play()
-            isPlaying = true
-        }
     }
 }
 

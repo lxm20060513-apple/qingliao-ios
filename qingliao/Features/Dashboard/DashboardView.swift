@@ -98,9 +98,9 @@ struct DashboardView: View {
             await loadDockerCount()
             // v2.0.86：硬件温度（CPU / NVMe）
             await loadHw()
-            // 10s 自动刷新
+            // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
+                try? await Task.sleep(for: .seconds(30))
                 await refresh()
                 await loadHw()
             }

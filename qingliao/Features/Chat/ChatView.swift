@@ -638,12 +638,6 @@ struct ChatView: View {
     }
 
     /// v2.0.36：图片 dataURL → UIImage（大图查看用；与 MessageBubble 同逻辑）
-    private func dataURLImage(_ urlStr: String) -> UIImage? {
-        guard let comma = urlStr.firstIndex(of: ","),
-              let data = Data(base64Encoded: String(urlStr[urlStr.index(after: comma)...])),
-              let img = UIImage(data: data) else { return nil }
-        return img
-    }
 
     /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
     // MARK: - v2.0.84 文件整份上传（原件存 NAS，文本类/PDF 同时提取内容给 AI）
