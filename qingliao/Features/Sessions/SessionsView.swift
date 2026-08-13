@@ -13,6 +13,8 @@ struct SessionsView: View {
     @State private var deleteError: String?
     // v2.0.36：搜索 + 置顶
     @State private var searchText = ""
+    // v2.0.78：搜索框焦点（键盘收回）
+    @FocusState private var focused: Bool
     @State private var searchResults: [[String: Any]] = []
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
@@ -31,15 +33,27 @@ struct SessionsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "会话", trailing: AnyView(addButton))
-            // v2.0.36：会话搜索框
+            // v2.0.36：会话搜索框（v2.0.78：放大镜可点收起 + 键盘完成）
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: isSearching ? "magnifyingglass.circle.fill" : "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isSearching ? Color.accentColor : .tertiary)
+                    .onTapGesture {
+                        if isSearching {
+                            // 搜索中点击放大镜 = 清空并收起（含键盘）
+                            searchText = ""
+                            searchResults = []
+                            focused = false
+                        } else {
+                            focused = true
+                        }
+                    }
                 TextField("搜索会话与消息", text: $searchText)
                     .font(.system(size: 14))
                     .autocorrectionDisabled()
                     .submitLabel(.search)
+                    .focused($focused)
+                    .onSubmit { focused = false }   // 键盘「搜索」= 收起
                     .onChange(of: searchText) { _, new in
                         searchTask?.cancel()
                         guard !new.trimmingCharacters(in: .whitespaces).isEmpty else {
@@ -57,6 +71,7 @@ struct SessionsView: View {
                     Button {
                         searchText = ""
                         searchResults = []
+                        focused = false   // v2.0.78：清空同时收键盘
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 14))
@@ -196,6 +211,13 @@ struct SessionsView: View {
             }
         }
         .task { await load() }
+        // v2.0.78：搜索键盘完成按钮
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { focused = false }
+            }
+        }
         .alert("删除失败", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
             Button("好", role: .cancel) { deleteError = nil }
         } message: {
