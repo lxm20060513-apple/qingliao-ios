@@ -497,7 +497,7 @@ private struct DeploySection: View {
                     .foregroundStyle(m.ok ? .green : .red)
                 Text(m.text)
                     .font(.system(size: 12))
-                    .foregroundStyle(m.ok ? .primary : .red)
+                    .foregroundStyle(m.ok ? Color.primary : Color.red)   // v2.0.86k：显式 Color（.primary 是 HierarchicalShapeStyle，三元类型冲突）
                     .textSelection(.enabled)
             }
             .padding(10)
