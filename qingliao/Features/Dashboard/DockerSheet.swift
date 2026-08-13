@@ -461,14 +461,14 @@ private struct DockerImageCard: View {
                 .padding(.top, 6)
         }
         .padding(12)
-        .frame(height: 90, alignment: .top)   // v2.0.86d：全宽卡略高
+        // v2.0.86e：去掉固定高度，与智能家居 DeviceCard（门锁卡）同风格自适应等高
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .pressableScale()
     }
 }
