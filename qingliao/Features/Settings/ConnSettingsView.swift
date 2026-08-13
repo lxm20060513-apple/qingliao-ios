@@ -9,7 +9,9 @@ struct ConnSettingsView: View {
 
     @State private var showServerSheet = false
     @State private var showSessionLocSheet = false
+    @State private var showUploadDirSheet = false   // v2.0.85 文件上传位置
     @State private var sessionLoc = ""
+    @State private var uploadDir = ""
     @State private var testResult: String?
     @State private var testing = false
 
@@ -25,6 +27,15 @@ struct ConnSettingsView: View {
             return "…/" + parts.suffix(2).joined(separator: "/")
         }
         return sessionLoc.isEmpty ? "默认" : sessionLoc
+    }
+
+    /// v2.0.85：上传目录短显（取路径后两段）
+    private var uploadDirShort: String {
+        let parts = uploadDir.split(separator: "/").filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return "…/" + parts.suffix(2).joined(separator: "/")
+        }
+        return uploadDir.isEmpty ? "默认" : uploadDir
     }
 
     var body: some View {
@@ -65,6 +76,11 @@ struct ConnSettingsView: View {
                         SettingRow(icon: "tray.full.fill", iconColor: .teal,
                                    title: "会话存储位置", value: sessionLocShort, chevron: true)
                             .onTapGesture { showSessionLocSheet = true }
+                        Divider().padding(.leading, 52)
+                        // v2.0.85：文件上传位置（App 附件整份上传的落点，可自定义 NAS 目录）
+                        SettingRow(icon: "arrow.up.doc.fill", iconColor: .indigo,
+                                   title: "文件上传位置", value: uploadDirShort, chevron: true)
+                            .onTapGesture { showUploadDirSheet = true }
                     }
                     .glassListCard()
                     Text("会话记录保存在 NAS 指定目录，Web 与 App 共用同一份")
@@ -91,10 +107,21 @@ struct ConnSettingsView: View {
                 SessionLocSheet(currentPath: sessionLoc)
                     .presentationDetents([.medium])
             }
+            // v2.0.85：文件上传位置修改
+            .sheet(isPresented: $showUploadDirSheet) {
+                UploadDirSheet(current: uploadDir) { newDir in
+                    showUploadDirSheet = false
+                    uploadDir = newDir
+                }
+                .presentationDetents([.medium])
+            }
             .task {
-                // 拉取服务器端会话存储位置
+                // 拉取服务器端会话存储位置 + 文件上传位置
                 if let j = try? await auth.json("/api/sessions/location") {
                     sessionLoc = j["path"] as? String ?? ""
+                }
+                if let j = try? await auth.json("/api/files/config") {
+                    uploadDir = j["upload_dir"] as? String ?? ""
                 }
             }
         }
@@ -111,6 +138,88 @@ struct ConnSettingsView: View {
                 testResult = ok ? "✅ 连接正常，服务器：\(shortServer)" : "⚠️ 服务器响应异常"
             } catch {
                 testResult = "❌ 无法连接：\(shortServer)"
+            }
+        }
+    }
+}
+
+// MARK: - v2.0.85 文件上传位置修改（自定义 NAS 目录）
+
+private struct UploadDirSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    @State private var path = ""
+    @State private var saving = false
+    @State private var result: (ok: Bool, text: String)?
+    let current: String
+    var onSaved: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("文件上传位置")
+                .font(.system(size: 17, weight: .bold))
+                .padding(.top, 20)
+            Text("App 发送的附件（PDF/文档等）将整份保存到该 NAS 目录")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+
+            TextField("NAS 绝对路径", text: $path)
+                .font(.system(size: 14))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 20)
+
+            if let r = result {
+                Text(r.text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(r.ok ? Color.green : Color.red)
+                    .padding(.horizontal, 20)
+            }
+
+            Button {
+                save()
+            } label: {
+                Text(saving ? "保存中..." : "保存")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(saving || path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding(.horizontal, 20)
+
+            Button("取消") { dismiss() }
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .background(Color(uiColor: .systemBackground))
+        .onAppear { path = current }
+    }
+
+    private func save() {
+        let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty, !saving else { return }
+        saving = true
+        Task {
+            defer { saving = false }
+            if let j = try? await auth.json("/api/files/config", method: "POST", body: ["upload_dir": p]) {
+                let ok = (j["ok"] as? Bool) ?? false
+                result = (ok, j["message"] as? String ?? (ok ? "已保存" : "保存失败"))
+                if ok {
+                    onSaved(j["upload_dir"] as? String ?? p)
+                    dismiss()
+                }
+            } else {
+                result = (false, "请求失败，请检查连接")
             }
         }
     }
