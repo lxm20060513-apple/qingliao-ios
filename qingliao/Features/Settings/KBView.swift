@@ -38,27 +38,10 @@ struct KBView: View {
                             .foregroundStyle(.tertiary)
                     }
                     ForEach(docs, id: \.self) { d in
-                        HStack(spacing: 10) {
-                            Image(systemName: "doc.text.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(Color.accentColor)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(d["name"] as? String ?? "")
-                                    .font(.system(size: 14, weight: .medium))
-                                Text(docMeta(d))
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button {
-                                Task { await deleteDoc(d["name"] as? String ?? "") }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        KBRow(name: d["name"] as? String ?? "",
+                              chunks: (d["chunks"] as? Int) ?? 0,
+                              size: (d["size"] as? Int) ?? 0,
+                              onDelete: { name in Task { await deleteDoc(name) } })
                     }
                 }
 
@@ -153,5 +136,38 @@ struct KBView: View {
             }
         }
         return out.isEmpty ? nil : out
+    }
+}
+
+// MARK: - v2.0.81b 文档行（拆独立子视图，规避 Swift 6 类型检查超时）
+
+private struct KBRow: View {
+    let name: String
+    let chunks: Int
+    let size: Int
+    var onDelete: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 14, weight: .medium))
+                Text("\(chunks) 个片段 · \(size) 字节")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                onDelete(name)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
