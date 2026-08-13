@@ -291,7 +291,7 @@ struct ServiceControlSheet: View {
                 }
             }
             .padding(14)
-            .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
+            .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 16)
             .task {
@@ -332,7 +332,7 @@ struct ServiceControlSheet: View {
                         .foregroundStyle(.tertiary)
                 }
                 .padding(14)
-                .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
+                .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -384,8 +384,7 @@ struct ServiceControlSheet: View {
 
             Spacer()
         }
-        // v2.0.87h：看板弹窗液态玻璃
-        .glassEffect()
+        .background(Color(uiColor: .systemBackground))
     }
 
     private func restart() {
@@ -491,8 +490,8 @@ struct HADeviceSheet: View {
                 }
             }
         }
-        // v2.0.87h：看板弹窗液态玻璃（iOS 26 glassEffect——单面玻璃场景）
-        .glassEffect()
+        // v2.0.87l：弹窗玻璃罩效果不佳（用户反馈）→ 全部回退普通背景
+        .background(Color(uiColor: .systemBackground))
         .task { await load() }
     }
 
@@ -550,7 +549,7 @@ struct HADeviceSheet: View {
             // v2.0.87h：弹窗液态玻璃下卡片扁平化（去白圆角底，仅极轻底区分）
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isOn ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.05))
+                    .fill(isOn ? Color.accentColor.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground))
             )
         }
         .buttonStyle(.plain)
@@ -662,7 +661,7 @@ struct HADeviceSheet: View {
         .padding(14)
         .background(
             // v2.0.87j：弹窗玻璃下扁平化（渐变末端白底 → 轻透明）
-            LinearGradient(colors: [isOn ? Color.blue.opacity(0.20) : Color.blue.opacity(0.08), Color.white.opacity(0.05)],
+            LinearGradient(colors: [isOn ? Color.blue.opacity(0.20) : Color.blue.opacity(0.08), Color(uiColor: .secondarySystemGroupedBackground)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
         )
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -796,8 +795,7 @@ struct DisksSheet: View {
                 .padding(.bottom, 20)
             }
         }
-        // v2.0.87h：看板弹窗液态玻璃
-        .glassEffect()
+        .background(Color(uiColor: .systemBackground))
     }
 }
 
@@ -885,7 +883,7 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
+        .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
         // 浅色下卡片与白底融合 → 统一加细边框（深浅色通用：深色白边/浅色黑边）
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -941,7 +939,7 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
+        .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
