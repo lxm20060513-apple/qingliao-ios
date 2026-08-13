@@ -84,25 +84,3 @@ struct PageHeader: View {
         .padding(.bottom, 8)
     }
 }
-
-// MARK: - v2.0.85c 按压缩放动效（全局卡片，与 onTapGesture 共存不吞点击）
-
-struct PressableScale: ViewModifier {
-    @State private var pressed = false
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(pressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.25, bounce: 0.3), value: pressed)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 4)
-                    .onChanged { _ in pressed = true }
-                    .onEnded { _ in pressed = false }
-            )
-    }
-}
-
-extension View {
-    func pressableScale() -> some View {
-        modifier(PressableScale())
-    }
-}

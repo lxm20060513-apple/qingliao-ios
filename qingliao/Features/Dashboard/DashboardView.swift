@@ -27,10 +27,8 @@ struct DashboardView: View {
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         DeviceCard(name: "开关", icon: "lightbulb.fill", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
-                            .pressableScale()
                             .onTapGesture { activeSheet = .lights }
                         DeviceCard(name: "空调", icon: "air.conditioner.horizontal", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
-                            .pressableScale()
                             .onTapGesture { activeSheet = .climate }
                         DeviceCard(name: "门锁", icon: "lock.fill", value: haLockBattery, sub: "智能门锁", status: .on)
                         DeviceCard(name: "猫眼", icon: "video.fill", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
@@ -43,16 +41,13 @@ struct DashboardView: View {
                         MeterCard(name: "CPU", icon: "cpu.fill", value: String(format: "%.1f%%", nas.cpu), sub: nil, ratio: nas.cpu / 100.0, color: .blue)
                         MeterCard(name: "内存", icon: "memorychip.fill", value: nas.memUsedText, sub: "/ \(nas.memTotalText)", ratio: nas.memPct, color: .green)
                         MeterCard(name: "磁盘", icon: "internaldrive.fill", value: String(format: "%.0f%%", nas.maxDiskPct), sub: "\(nas.disks.count) 个分区 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
-                            .pressableScale()
                             .onTapGesture { activeSheet = .disks }
                         ServiceCard(name: "轻聊后端", icon: "server.rack", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
-                            .pressableScale()
                             .onTapGesture { activeSheet = .service }
                         ServiceCard(name: "Hermes 网关", icon: "sparkles", running: nas.hermesAlive, detail: nas.hermesMemText)
                         // v2.0.72：Docker 管理卡片（点击弹部署弹窗）
                         ServiceCard(name: "Docker", icon: "shippingbox.fill", running: dockerContainerCount > 0,
                                     detail: dockerContainerCount > 0 ? "\(dockerContainerCount) 个容器 · 点击管理" : "暂无容器 · 点击部署")
-                            .pressableScale()
                             .onTapGesture { activeSheet = .docker }
                         ServiceCard(name: "运行时间", icon: "clock.fill", running: true, detail: nas.uptime)
                         // v2.0.86：硬件温度（CPU / NVMe）

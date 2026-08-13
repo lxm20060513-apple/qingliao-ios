@@ -187,7 +187,6 @@ struct DockerSheet: View {
                                                 GridItem(.flexible(), spacing: 10)], spacing: 10) {
                                 ForEach(containers) { c in
                                     DockerContainerCard(container: c)
-                                        .pressableScale()
                                         .onTapGesture {
                                             // v2.0.76：卡片即开关——运行中单击停止，已停止单击启动
                                             // v2.0.77：触感反馈
@@ -469,6 +468,5 @@ private struct DockerImageCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .pressableScale()
     }
 }
