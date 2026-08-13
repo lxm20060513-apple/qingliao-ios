@@ -242,30 +242,12 @@ struct DockerSheet: View {
                             .foregroundStyle(.tertiary)
                             .padding(.vertical, 4)
                     } else {
-                        ForEach(images) { img in
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(img.name)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .lineLimit(1)
-                                    Text("\(img.id) · \(img.size)")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Button {
-                                    confirmImage = img
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(.plain)
+                        // v2.0.86c：镜像卡片 1x2 网格（对标容器卡样式）
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(images) { img in
+                                DockerImageCard(image: img)
+                                    .onTapGesture { confirmImage = img }
                             }
-                            .padding(.vertical, 7)
-                            .padding(.horizontal, 10)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                        in: RoundedRectangle(cornerRadius: 10))
                         }
                     }
                 }
@@ -450,5 +432,43 @@ extension DockerSheet {
             message = (false, "请求失败")
         }
         await loadImages()
+    }
+}
+
+// MARK: - v2.0.86c 镜像卡片（1x2 网格，对标容器卡样式；单击=删除确认）
+
+private struct DockerImageCard: View {
+    let image: DockerImage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "photo.stack")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.indigo)
+                Text(image.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "trash")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red.opacity(0.85))
+            }
+            Text("\(image.id) · \(image.size)")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .padding(.top, 6)
+        }
+        .padding(12)
+        .frame(height: 80, alignment: .top)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .pressableScale()
     }
 }
