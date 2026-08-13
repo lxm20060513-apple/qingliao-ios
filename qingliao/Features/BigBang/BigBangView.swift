@@ -40,14 +40,20 @@ struct FlowLayout: Layout {
 
 struct BigBangView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme   // v2.0.86q：主题磨砂玻璃背景
     let text: String
     @State private var words: [BigBangWord] = []
     @State private var selected = Set<Int>()
     @State private var copied = false
 
+    /// v2.0.86q：前景色跟随主题（亮玻璃用深字，深玻璃用白字）
+    private var fg: Color { scheme == .dark ? .white : Color.black.opacity(0.8) }
+    private var fgDim: Color { scheme == .dark ? .white.opacity(0.5) : Color.black.opacity(0.45) }
+
     var body: some View {
         ZStack {
-            Color.black.opacity(0.88).ignoresSafeArea()
+            // v2.0.86q：磨砂玻璃背景跟随主题（白天亮磨砂 / 晚上深色磨砂）
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // 头部
@@ -56,17 +62,17 @@ struct BigBangView: View {
                         .font(.system(size: 20))
                     Text("大爆炸")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(fg)
                     Text("\(words.count) 个词块")
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(fgDim)
                     Spacer()
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 22))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(fgDim)
                     }
                     .buttonStyle(.plain)
                 }
@@ -74,7 +80,7 @@ struct BigBangView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
 
-                Divider().overlay(Color.white.opacity(0.15))
+                Divider().overlay((scheme == .dark ? Color.white : Color.black).opacity(0.15))
 
                 // 词块区域（滚动）
                 ScrollView {
@@ -88,16 +94,16 @@ struct BigBangView: View {
 
                 // 底部操作栏
                 VStack(spacing: 8) {
-                    Divider().overlay(Color.white.opacity(0.15))
+                    Divider().overlay((scheme == .dark ? Color.white : Color.black).opacity(0.15))
                     HStack(spacing: 12) {
                         Button {
                             selected = Set(words.map(\.id))
                         } label: {
                             Text("全选")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(fg)
                                 .padding(.horizontal, 18).padding(.vertical, 9)
-                                .background(Color.white.opacity(0.15), in: Capsule())
+                                .background((scheme == .dark ? Color.white : Color.black).opacity(0.15), in: Capsule())
                         }
                         .buttonStyle(.plain)
                         Button {
@@ -105,9 +111,9 @@ struct BigBangView: View {
                         } label: {
                             Text("清除")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(fg.opacity(0.7))
                                 .padding(.horizontal, 18).padding(.vertical, 9)
-                                .background(Color.white.opacity(0.1), in: Capsule())
+                                .background((scheme == .dark ? Color.white : Color.black).opacity(0.1), in: Capsule())
                         }
                         .buttonStyle(.plain)
                         Spacer()
@@ -119,7 +125,7 @@ struct BigBangView: View {
                                 Text(copied ? "已复制" : "复制 (\(selected.count))")
                             }
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(fg)
                             .padding(.horizontal, 20).padding(.vertical, 9)
                             .background(Color.accentColor, in: Capsule())
                         }
@@ -147,16 +153,16 @@ struct BigBangView: View {
         } label: {
             Text(w.text)
                 .font(.system(size: 15, weight: isOn ? .semibold : .regular))
-                .foregroundStyle(isOn ? .white : .white.opacity(0.92))
+                .foregroundStyle(isOn ? .white : fg)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(isOn ? Color.accentColor : Color.white.opacity(0.13))
+                        .fill(isOn ? Color.accentColor : (scheme == .dark ? Color.white : Color.black).opacity(0.13))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(isOn ? Color.white.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.8)
+                        .strokeBorder(isOn ? Color.white.opacity(0.4) : (scheme == .dark ? Color.white : Color.black).opacity(0.08), lineWidth: 0.8)
                 )
         }
         .buttonStyle(.plain)
