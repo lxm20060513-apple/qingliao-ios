@@ -25,8 +25,8 @@ targets:
       path: qingliao/Info.plist
       properties:
         CFBundleDisplayName: 轻聊
-        CFBundleShortVersionString: "2.0.83"
-        CFBundleVersion: "83"
+        CFBundleShortVersionString: "2.0.84"
+        CFBundleVersion: "84"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -49,6 +49,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingliao.app2
         INFOPLIST_KEY_CFBundleDisplayName: 轻聊
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "2.0.83"
-        CURRENT_PROJECT_VERSION: "83"
+        MARKETING_VERSION: "2.0.84"
+        CURRENT_PROJECT_VERSION: "84"
         ENABLE_PREVIEWS: YES
