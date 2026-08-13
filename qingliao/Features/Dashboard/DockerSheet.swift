@@ -152,114 +152,16 @@ struct DockerSheet: View {
                                     in: RoundedRectangle(cornerRadius: 10))
                     }
 
-                    // ===== 已部署容器卡 =====
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("已部署容器", systemImage: "shippingbox.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
-                            Spacer()
-                            Text("\(containers.count) 个")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Button {
-                                Task { await load() }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.accentColor)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if containers.isEmpty {
-                            VStack(spacing: 6) {
-                                Image(systemName: "shippingbox")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(.tertiary)
-                                Text("暂无容器，输入 YAML 点击部署")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                        } else {
-                            // v2.0.75：卡片网格（对标智能家居开关面板）：
-                            // 单击卡片 = 停止容器；长按 = 删除确认
-                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
-                                                GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                                ForEach(containers) { c in
-                                    DockerContainerCard(container: c)
-                                        .onTapGesture {
-                                            // v2.0.76：卡片即开关——运行中单击停止，已停止单击启动
-                                            // v2.0.77：触感反馈
-                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                            let act = c.status.contains("Up") ? "stop" : "start"
-                                            Task { await action(c.name, act) }
-                                        }
-                                        // v2.0.81：长按删除改 contextMenu（原 onLongPressGesture 与 onTapGesture
-                                        // 手势冲突，快速点击偶发被吞；contextMenu 由系统协调长按+点击，互不干扰）
-                                        .contextMenu {
-                                            Button(role: .destructive) {
-                                                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                                                confirmTarget = c
-                                            } label: {
-                                                Label("删除容器", systemImage: "trash")
-                                            }
-                                        }
-                                }
-                            }
-                        }
-                    }
-                    .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                    )
-                }
-
-                // ===== v2.0.86 镜像管理（列表/删除，清理空间）=====
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Label("镜像管理", systemImage: "photo.stack")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.indigo)
-                        Spacer()
-                        Text("\(images.count) 个")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        Button {
-                            Task { await loadImages() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.indigo)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if images.isEmpty {
-                        Text("暂无镜像")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .padding(.vertical, 4)
-                    } else {
-                        // v2.0.86c：镜像卡片（v2.0.86d：2x1 单列竖排，全宽卡）
-                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 10) {
-                            ForEach(images) { img in
-                                DockerImageCard(image: img)
-                                    .onTapGesture { confirmImage = img }
-                            }
-                        }
-                    }
-                }
-                .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                )
-                .padding(14)
+                    // ===== 已部署容器卡（v2.0.86i：拆子视图减类型检查负载）=====
+                    ContainerSection(containers: containers,
+                                     onRefresh: { await load() },
+                                     onAction: { c, act in await action(c.name, act) },
+                                     onDelete: { confirmTarget = $0 })
+                    // ===== v2.0.86 镜像管理（v2.0.86i：拆子视图）=====
+                    ImageSection(images: images,
+                                 onRefresh: { await loadImages() },
+                                 onDelete: { confirmImage = $0 })
+        }
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Docker 管理")
@@ -471,5 +373,124 @@ private struct DockerImageCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+// MARK: - v2.0.86i 容器区 / 镜像区子视图（拆出主 body，规避 Swift 6 类型检查超时）
+
+private struct ContainerSection: View {
+    let containers: [DockerContainer]
+    var onRefresh: () async -> Void
+    var onAction: (DockerContainer, String) async -> Void
+    var onDelete: (DockerContainer) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("已部署容器", systemImage: "shippingbox.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Spacer()
+                Text("\(containers.count) 个")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await onRefresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if containers.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "shippingbox")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.tertiary)
+                    Text("暂无容器，输入 YAML 点击部署")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            } else {
+                // 单击卡片 = 停止（运行中）或启动（已停止）；长按 = 删除确认
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                    GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(containers) { c in
+                        DockerContainerCard(container: c)
+                            .onTapGesture {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                let act = c.status.contains("Up") ? "stop" : "start"
+                                Task { await onAction(c, act) }
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                    onDelete(c)
+                                } label: {
+                                    Label("删除容器", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+    }
+}
+
+private struct ImageSection: View {
+    let images: [DockerImage]
+    var onRefresh: () async -> Void
+    var onDelete: (DockerImage) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("镜像管理", systemImage: "photo.stack")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.indigo)
+                Spacer()
+                Text("\(images.count) 个")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await onRefresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.indigo)
+                }
+                .buttonStyle(.plain)
+            }
+            if images.isEmpty {
+                Text("暂无镜像")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 4)
+            } else {
+                // 单列全宽卡（2x1 竖排，门锁卡同风格）
+                LazyVGrid(columns: [GridItem(.flexible())], spacing: 10) {
+                    ForEach(images) { img in
+                        DockerImageCard(image: img)
+                            .onTapGesture { onDelete(img) }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
     }
 }
