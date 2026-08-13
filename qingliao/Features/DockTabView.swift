@@ -139,11 +139,19 @@ struct DockBar: View {
                                 .font(.system(size: 21, weight: .medium))
                                 // 放大镜效果：透镜所在的 tab 图标放大（松手后短暂保持）
                                 // v2.0.65：发送完成时聊天图标轻跳
-                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : (tab == .chat && bounce ? 1.18 : 1.0))
+                                // v2.0.85c：选中态图标轻放大
+                                .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : (selected == tab ? 1.12 : (tab == .chat && bounce ? 1.18 : 1.0)))
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
                         }
+                        // v2.0.85c：选中 tab 背景胶囊高亮
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(selected == tab
+                                      ? Color.accentColor.opacity(0.14)
+                                      : Color.clear)
+                        )
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)

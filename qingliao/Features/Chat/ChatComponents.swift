@@ -249,6 +249,9 @@ struct MessageBubble: View {
                         .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
                 )
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
+            // v2.0.85c：气泡出现微动画（缩放 + 淡入，单条插入安全）
+            .transition(.scale(scale: 0.94, anchor: message.isUser ? .trailing : .leading)
+                .combined(with: .opacity))
 
             if message.isUser {
                 // v2.0.65：用户头像（渐变圆 + 首字母，与 AI 头像对称）
