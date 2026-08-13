@@ -64,7 +64,8 @@ struct ChatView: View {
     // v2.0.59：上下文过长提示 / 失败重试
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
-    // 语音输入（按住说话 → SFSpeechRecognizer 转写）
+    // v2.0.81：语音输入（附件面板 mic，按住说话 → 中文识别 → 发送）
+    @State private var showSpeechInput = false
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
@@ -333,10 +334,7 @@ struct ChatView: View {
                                 inputFocus = true
                             } onDelete: {
                                 // v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
-                                if let idx = chat.messages.firstIndex(where: { $0.timestamp == msg.timestamp && $0.role == msg.role && $0.content == msg.content }) {
-                                    withAnimation { chat.messages.remove(at: idx) }
-                                    Task { await chat.saveToServer(auth: auth) }
-                                }
+                                deleteMessage(msg)
                             } onShare: {
                                 shareText(msg.content)
                             } onImageTap: {
@@ -635,7 +633,15 @@ struct ChatView: View {
         sendCore(text: msg.content, imageData: msg.imageDataURL)
     }
 
-    // MARK: - v2.0.61 语音消息（录音 → 本地语音条）
+    // MARK: - 消息操作
+
+    /// v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
+    private func deleteMessage(_ msg: ChatMessage) {
+        if let idx = chat.messages.firstIndex(where: { $0.timestamp == msg.timestamp && $0.role == msg.role && $0.content == msg.content }) {
+            withAnimation { chat.messages.remove(at: idx) }
+            Task { await chat.saveToServer(auth: auth) }
+        }
+    }
 
     /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
     private func shareText(_ text: String) {
