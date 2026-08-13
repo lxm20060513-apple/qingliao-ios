@@ -90,13 +90,13 @@ struct RouterPanel: View {
 
             // 2x2 指标卡（同 NAS 面板 MeterCard/ServiceCard 风格）
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                MeterCard(name: "CPU", value: String(format: "%.1f%%", router.cpuPct),
+                MeterCard(name: "CPU", icon: "cpu.fill", value: String(format: "%.1f%%", router.cpuPct),
                           sub: "使用率", ratio: router.cpuPct / 100.0, color: .blue)
-                MeterCard(name: "内存", value: router.memUsedText,
+                MeterCard(name: "内存", icon: "memorychip.fill", value: router.memUsedText,
                           sub: "/ \(String(format: "%.1fG", router.memTotal))", ratio: router.memPct, color: .green)
-                ServiceCard(name: "运行时间", running: true, detail: router.uptime)
+                ServiceCard(name: "运行时间", icon: "clock.fill", running: true, detail: router.uptime)
                 // Clash 卡：点击弹窗（同智能家居开关卡交互）
-                ServiceCard(name: "Clash", running: router.clashRunning,
+                ServiceCard(name: "Clash", icon: "bolt.shield.fill", running: router.clashRunning,
                             detail: router.clashRunning ? "代理已生效 · 点击管理" : "已停止 · 点击管理")
                     .onTapGesture { showClashSheet = true }
             }
