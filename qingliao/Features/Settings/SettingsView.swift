@@ -769,11 +769,11 @@ struct AboutView: View {
             Divider().padding(.horizontal, 30)
 
             VStack(alignment: .leading, spacing: 8) {
-                aboutRow("简介", "连接自家 Hermes Agent Server 的 AI 智能助手，支持多模型、NAS 控制、文件管理与智能家居。")
-                aboutRow("模型", "DeepSeek V4 / Kimi / StepFun 多模型聚合（OpenCode Go）")
-                aboutRow("功能", "流式对话 · 语音输入 · 会话同步 · NAS 面板 · 智能家居 · 文件管理 · 定时任务")
-                aboutRow("网络", "iOS 27 蜂窝直连优化 + Safari Relay 兜底")
-                aboutRow("架构", "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端")
+                aboutRow("简介", "连接自家 NAS 上 Hermes Agent 的 AI 智能助手——对话、读图、语音、知识库问答、Docker 部署与智能家居全掌控。")
+                aboutRow("模型", "DeepSeek V4 / Kimi / StepFun 多模型聚合（OpenCode Go + 官方 API）")
+                aboutRow("功能", "流式对话 · 语音对话（语音输入 + AI 朗读）· 图片理解 · 知识库检索 · 会话同步 · NAS 面板 · Docker 管理 · 智能家居 · 定时任务")
+                aboutRow("网络", "iOS 27 蜂窝直连优化 + Safari Relay 兜底 · 公网 IPv6")
+                aboutRow("架构", "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端（轻聊）")
             }
             .font(.system(size: 13))
             .padding(.horizontal, 24)
