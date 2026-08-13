@@ -27,6 +27,9 @@ struct DockerSheet: View {
         restart: unless-stopped
     """
 
+    /// v2.0.86g：YAML 空态提示常量（拆分复杂字符串，规避 Swift 6 类型检查超时）
+    private static let yamlHint = "services:\n  app:\n    image: nginx:latest\n    ports:\n      - \"8080:80\""
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -68,10 +71,10 @@ struct DockerSheet: View {
                                     RoundedRectangle(cornerRadius: 10)
                                         .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
                                 )
-                                // YAML 空态提示
+                                // YAML 空态提示（v2.0.86g：内容提常量，减类型检查负载）
                                 .overlay(alignment: .topLeading) {
                                     if yaml.isEmpty {
-                                        Text("services:\n  app:\n    image: nginx:latest\n    ports:\n      - \"8080:80\"")
+                                        Text(Self.yamlHint)
                                             .font(.system(size: 12, design: .monospaced))
                                             .foregroundStyle(.tertiary.opacity(0.6))
                                             .padding(.horizontal, 14)
