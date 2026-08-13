@@ -12,6 +12,9 @@ struct SettingsView: View {
     @State private var showSecrets = false
     // v2.0.81：知识库页面
     @State private var showKB = false
+    // v2.0.87：AI 记忆
+    @State private var showMemory = false
+    @State private var memoryCount = 0
     @State private var showTasks = false
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
@@ -58,6 +61,10 @@ struct SettingsView: View {
                         // v2.0.81：知识库（文档上传 → @知识库 检索问答）
                         SettingRow(icon: "books.vertical.fill", iconColor: .green, title: "知识库", value: "文档检索问答", chevron: true)
                             .onTapGesture { showKB = true }
+                        Divider().padding(.leading, 52)
+                        // v2.0.87：AI 记忆（记住用户偏好 → 对话自动参考）
+                        SettingRow(icon: "brain.head.profile", iconColor: .pink, title: "AI 记忆", value: "\(memoryCount) 条", chevron: true)
+                            .onTapGesture { showMemory = true }
                     }
                     .glassListCard()
 
@@ -193,6 +200,11 @@ struct SettingsView: View {
             KBView()
                 .presentationDetents([.medium, .large])
         }
+        // v2.0.87：AI 记忆
+        .sheet(isPresented: $showMemory) {
+            MemoryView()
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showHASettings) {
             HASettingsSheet()
                 .presentationDetents([.medium])
@@ -203,6 +215,10 @@ struct SettingsView: View {
             }
             if let j = try? await auth.json("/api/ha/config") {
                 haAddress = j["address"] as? String ?? ""
+            }
+            // v2.0.87：AI 记忆条数
+            if let j = try? await auth.json("/api/memory/list") {
+                memoryCount = (j["entries"] as? [String] ?? []).count
             }
         }
     }
