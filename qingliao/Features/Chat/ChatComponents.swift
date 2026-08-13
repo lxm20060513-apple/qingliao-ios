@@ -62,7 +62,7 @@ struct MessageContentBlock: Identifiable {
 struct MessageBlockView: View {
     let block: MessageContentBlock
     // v2.0.38：聊天字体大小（与 MessageBubble 同源）
-    @AppStorage("qingliao_font_size") private var fontSize = 14.0
+    @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
 
     var body: some View {
         switch block.kind {
@@ -120,7 +120,7 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
-    @AppStorage("qingliao_font_size") private var fontSize = 14.0
+    @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
     @State private var expanded = false

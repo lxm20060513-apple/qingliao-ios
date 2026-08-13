@@ -25,7 +25,7 @@ struct SettingsView: View {
     @State private var showHASettings = false
     @State private var haAddress = ""
     // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
-    @AppStorage("qingliao_font_size") private var fontSize = 14.0
+    @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
