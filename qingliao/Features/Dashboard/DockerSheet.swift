@@ -15,6 +15,8 @@ struct DockerSheet: View {
     // v2.0.87：升级确认
     @State private var confirmUpgrade: DockerContainer?
     @State private var upgrading = false
+    // v2.0.87p：可升级容器（容器名 → 有更新）
+    @State private var updates: [String: Bool] = [:]
     // v2.0.86：镜像管理
     @State private var images: [DockerImage] = []
     @State private var confirmImage: DockerImage?
@@ -43,7 +45,8 @@ struct DockerSheet: View {
                                      onRefresh: { await load() },
                                      onAction: { c, act in await action(c.name, act) },
                                      onDelete: { confirmTarget = $0 },
-                                     onUpgrade: { confirmUpgrade = $0 })
+                                     onUpgrade: { confirmUpgrade = $0 },
+                                     updates: updates)
                     // ===== v2.0.86 镜像管理（v2.0.86i：拆子视图）=====
                     ImageSection(images: images,
                                  onRefresh: { await loadImages() },
@@ -110,7 +113,7 @@ struct DockerSheet: View {
             } message: { c in
                 Text("将拉取「\(c.name)」最新镜像并重建容器（约需 1-5 分钟，视镜像大小）")
             }
-            .task { await load(); await loadImages() }
+            .task { await load(); await loadImages(); await loadUpdates() }
         }
     }
 
@@ -166,6 +169,7 @@ struct DockerContainer: Identifiable {
 
 struct DockerContainerCard: View {
     let container: DockerContainer
+    var hasUpdate = false   // v2.0.87p：检测到可升级才显示箭头
     var onUpgrade: () -> Void = {}   // v2.0.87：compose 项目升级按钮
 
     private var running: Bool { container.status.contains("Up") }
@@ -196,24 +200,21 @@ struct DockerContainerCard: View {
                 .font(.system(size: 13.5, weight: .semibold))   // v2.0.86o：大字状态改小
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            // v2.0.87：提示行 + compose 项目升级按钮
+            // v2.0.87p：有更新才显示向上箭头（无更新不显示；点击箭头=升级）
             HStack(spacing: 6) {
                 Text(portSuffix)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                if container.isComposeProject {
+                if container.isComposeProject && hasUpdate {
                     Spacer(minLength: 4)
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onUpgrade()
                     } label: {
-                        Label("升级", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10, weight: .semibold))
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 16))
                             .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(Color.accentColor.opacity(0.12), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -317,6 +318,7 @@ private struct ContainerSection: View {
     var onAction: (DockerContainer, String) async -> Void
     var onDelete: (DockerContainer) -> Void
     var onUpgrade: (DockerContainer) -> Void   // v2.0.87 升级
+    var updates: [String: Bool] = [:]   // v2.0.87p：容器名 → 有更新
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -354,7 +356,7 @@ private struct ContainerSection: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                     GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(containers) { c in
-                        DockerContainerCard(container: c, onUpgrade: { onUpgrade(c) })
+                        DockerContainerCard(container: c, hasUpdate: updates[c.name] == true, onUpgrade: { onUpgrade(c) })
                             .onTapGesture {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 let act = c.status.contains("Up") ? "stop" : "start"
@@ -579,5 +581,15 @@ extension DockerSheet {
         }
         await load()
         await loadImages()
+    }
+}
+
+// MARK: - v2.0.87p 更新检测（有更新才显示升级箭头）
+
+extension DockerSheet {
+    func loadUpdates() async {
+        if let j = try? await auth.json("/api/docker/updates") {
+            updates = (j["updates"] as? [String: Bool]) ?? [:]
+        }
     }
 }
