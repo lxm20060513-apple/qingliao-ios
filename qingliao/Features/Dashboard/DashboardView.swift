@@ -55,6 +55,8 @@ struct DashboardView: View {
                             .pressableScale()
                             .onTapGesture { activeSheet = .docker }
                         ServiceCard(name: "运行时间", icon: "clock.fill", running: true, detail: nas.uptime)
+                        // v2.0.86：硬件温度（CPU / NVMe）
+                        ServiceCard(name: "温度", icon: "thermometer", running: true, detail: hwDetail)
                     }
 
                     sectionTitle("路由器")
@@ -101,15 +103,35 @@ struct DashboardView: View {
             }
             // v2.0.72：Docker 容器数量（卡片状态）
             await loadDockerCount()
+            // v2.0.86：硬件温度（CPU / NVMe）
+            await loadHw()
             // 10s 自动刷新
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 await refresh()
+                await loadHw()
             }
         }
     }
 
     // MARK: - 数据
+
+    // v2.0.86：硬件温度状态
+    @State private var hwCpu: Double?
+    @State private var hwSsd: Double?
+
+    private var hwDetail: String {
+        let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
+        let s = hwSsd.map { String(format: "SSD %.0f°C", $0) } ?? "SSD --"
+        return "\(c) · \(s)"
+    }
+
+    private func loadHw() async {
+        if let j = try? await auth.json("/api/hw/status") {
+            hwCpu = j["cpu_temp"] as? Double
+            hwSsd = j["ssd_temp"] as? Double
+        }
+    }
 
     private func loadRouter() async {
         if let j = try? await auth.json("/api/router/status") {

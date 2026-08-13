@@ -12,6 +12,9 @@ struct DockerSheet: View {
     @State private var busy = false
     @FocusState private var focused: Bool
     @State private var confirmTarget: DockerContainer?
+    // v2.0.86：镜像管理
+    @State private var images: [DockerImage] = []
+    @State private var confirmImage: DockerImage?
 
     /// YAML 常用模板（一键插入）
     private static let nginxTemplate = """
@@ -213,6 +216,65 @@ struct DockerSheet: View {
                             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
                     )
                 }
+
+                // ===== v2.0.86 镜像管理（列表/删除，清理空间）=====
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("镜像管理", systemImage: "photo.stack")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.indigo)
+                        Spacer()
+                        Text("\(images.count) 个")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Button {
+                            Task { await loadImages() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.indigo)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if images.isEmpty {
+                        Text("暂无镜像")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(images) { img in
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(img.name)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .lineLimit(1)
+                                    Text("\(img.id) · \(img.size)")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    confirmImage = img
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 7)
+                            .padding(.horizontal, 10)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+                .padding(14)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                )
                 .padding(14)
             }
             .scrollDismissesKeyboard(.interactively)
@@ -242,7 +304,21 @@ struct DockerSheet: View {
                      ? "将移除容器「\(c.name)」（配置目录保留，可重新部署）"
                      : "⚠️「\(c.name)」不是 Docker 管理项目创建的容器，删除后不可恢复，请确认！")
             }
-            .task { await load() }
+            // v2.0.86：镜像删除确认
+            .confirmationDialog("删除镜像？", isPresented: .init(
+                get: { confirmImage != nil },
+                set: { if !$0 { confirmImage = nil } }
+            ), presenting: confirmImage) { img in
+                Button("删除", role: .destructive) {
+                    let target = img
+                    confirmImage = nil
+                    Task { await rmImage(target.id) }
+                }
+                Button("取消", role: .cancel) { confirmImage = nil }
+            } message: { img in
+                Text("删除镜像「\(img.name)」？\n若仍有容器使用会删除失败")
+            }
+            .task { await load(); await loadImages() }
         }
     }
 
@@ -343,5 +419,36 @@ struct DockerContainerCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         // 单击停止 / 长按删除 提示
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+// MARK: - v2.0.86 镜像
+
+struct DockerImage: Identifiable {
+    let name: String
+    let id: String
+    let size: String
+    var idStr: String { id }
+}
+
+extension DockerSheet {
+    func loadImages() async {
+        if let j = try? await auth.json("/api/docker/images") {
+            let arr = j["images"] as? [[String: Any]] ?? []
+            images = arr.compactMap { d in
+                guard let n = d["name"] as? String, let i = d["id"] as? String else { return nil }
+                return DockerImage(name: n, id: i, size: d["size"] as? String ?? "")
+            }
+        }
+    }
+
+    func rmImage(_ imageID: String) async {
+        if let j = try? await auth.json("/api/docker/image/rm", method: "POST",
+                                        body: ["id": imageID]) {
+            message = ((j["ok"] as? Bool) ?? false, j["message"] as? String ?? "")
+        } else {
+            message = (false, "请求失败")
+        }
+        await loadImages()
     }
 }
