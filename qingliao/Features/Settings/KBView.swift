@@ -45,7 +45,7 @@ struct KBView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(d["name"] as? String ?? "")
                                     .font(.system(size: 14, weight: .medium))
-                                Text("\((d["chunks"] as? Int) ?? 0) 个片段 · \((d["size"] as? Int) ?? 0) 字节")
+                                Text(docMeta(d))
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                             }
@@ -97,6 +97,13 @@ struct KBView: View {
         if let j = try? await auth.json("/api/kb/list") {
             docs = j["docs"] as? [[String: Any]] ?? []
         }
+    }
+
+    /// v2.0.81：文档 meta 文案（拆分字符串插值，避免 Swift 6 类型检查超时）
+    private func docMeta(_ d: [String: Any]) -> String {
+        let chunks = (d["chunks"] as? Int) ?? 0
+        let size = (d["size"] as? Int) ?? 0
+        return "\(chunks) 个片段 · \(size) 字节"
     }
 
     private func uploadFiles(_ urls: [URL]) async {

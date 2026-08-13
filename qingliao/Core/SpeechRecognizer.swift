@@ -34,11 +34,14 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             rq.shouldReportPartialResults = true
             request = rq
             task = recognizer?.recognitionTask(with: rq) { [weak self] result, error in
+                let final = result?.isFinal ?? false
+                let text = result?.bestTranscription.formattedString ?? ""
+                let failed = (error != nil)
                 Task { @MainActor in
-                    if let r = result {
-                        self?.text = r.bestTranscription.formattedString
+                    if !text.isEmpty {
+                        self?.text = text
                     }
-                    if r?.isFinal == true || error != nil {
+                    if final || failed {
                         self?.stop()
                     }
                 }
