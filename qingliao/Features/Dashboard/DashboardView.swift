@@ -291,7 +291,7 @@ struct ServiceControlSheet: View {
                 }
             }
             .padding(14)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 16)
             .task {
@@ -332,7 +332,7 @@ struct ServiceControlSheet: View {
                         .foregroundStyle(.tertiary)
                 }
                 .padding(14)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -547,15 +547,11 @@ struct HADeviceSheet: View {
             }
             .padding(12)
             .frame(minHeight: 92)
+            // v2.0.87h：弹窗液态玻璃下卡片扁平化（去白圆角底，仅极轻底区分）
             .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(isOn ? Color.blue.opacity(0.13) : Color(uiColor: .secondarySystemGroupedBackground))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isOn ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.05))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(isOn ? Color.accentColor.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
-            )
-            .shadow(color: isOn ? Color.accentColor.opacity(0.22) : Color.black.opacity(0.15), radius: 8, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -882,7 +878,7 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
         // 浅色下卡片与白底融合 → 统一加细边框（深浅色通用：深色白边/浅色黑边）
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -938,7 +934,7 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(Color.white.opacity(0.05))  // v2.0.87h：弹窗玻璃下扁平化
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
