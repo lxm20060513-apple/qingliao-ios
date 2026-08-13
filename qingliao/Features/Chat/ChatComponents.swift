@@ -457,7 +457,8 @@ struct ChatInputBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(.ultraThinMaterial, in: Capsule())
+        // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
+        .background { Capsule().glassEffect() }
         .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)

@@ -158,10 +158,9 @@ struct DockBar: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            // LiquidGlassKit 液态玻璃重构（参考 muhittincamdali/LiquidGlassKit）：
-            // 玻璃材质分模式：深色 ultraThin / 浅色 thin（透出页面内容与环境光晕，避免白块）
+            // v2.0.87e：原生液态玻璃（iOS 26+，替代 material 模拟）
             .background {
-                Capsule().fill(scheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.thinMaterial))
+                Capsule().glassEffect()
             }
             .clipShape(.capsule)
             .overlay {

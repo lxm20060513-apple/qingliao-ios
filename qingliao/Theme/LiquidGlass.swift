@@ -1,32 +1,30 @@
 import SwiftUI
 
-// MARK: - 液态玻璃主题组件（iOS 26+ 材质 + 高光描边）
+// MARK: - 液态玻璃主题组件（iOS 26+ 原生 glassEffect 真液态玻璃）
+// v2.0.87e：按 Apple 官方 Liquid Glass 规范——glassEffect 提供光泽/折射/边缘高光，
+// 替换旧的 material+描边模拟（用户反馈不是真液态玻璃）
 
 struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 18
-    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         content
-            // 浅色下 ultraThinMaterial 几乎不可见 → regularMaterial + 白描边 0.6 增强玻璃感
-            .background(
-                scheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial),
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            )
+            // 原生液态玻璃（iOS 26+，部署目标已 26）
+            .glassEffect()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // 液态玻璃自带边缘光泽，仅保留极轻描边增强边界
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(scheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.60),
-                                  lineWidth: 0.8)
+                    .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
             )
-            .shadow(color: scheme == .dark ? Color.black.opacity(0.25) : Color.black.opacity(0.12),
-                    radius: 14, y: 5)
+            .shadow(color: Color.black.opacity(0.12), radius: 14, y: 5)
     }
 }
 
 struct GlassListCard: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .glassEffect()
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
