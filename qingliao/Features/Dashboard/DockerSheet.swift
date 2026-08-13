@@ -56,6 +56,8 @@ struct DockerSheet: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Docker 管理")
             .navigationBarTitleDisplayMode(.inline)
+            // v2.0.87h：看板弹窗液态玻璃
+            .glassEffect()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("完成") { dismiss() }

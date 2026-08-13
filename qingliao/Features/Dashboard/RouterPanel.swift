@@ -188,5 +188,7 @@ struct ClashSheet: View {
         }
         .padding(18)
         .padding(.top, 6)
+        // v2.0.87h：看板弹窗液态玻璃（Clash 管理）
+        .glassEffect()
     }
 }

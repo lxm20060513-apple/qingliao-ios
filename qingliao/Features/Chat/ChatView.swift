@@ -283,13 +283,24 @@ struct ChatView: View {
                 if (chat.messages.isEmpty || clearing) && !stream.isStreaming {
                     // 首次进入欢迎占位（v2.0.39：.id 强制与消息列表分支区分身份，
                     // 清空会话时列表↔欢迎页切换不再复用视图身份导致崩溃）
-                    VStack(spacing: 10) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.secondary)
+                    // v2.0.87h：欢迎页扁平轻量色彩化（多彩渐变气泡 + 渐变标题）
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [.blue, .indigo, .purple],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 72, height: 72)
+                                .shadow(color: .indigo.opacity(0.25), radius: 12, y: 4)
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white)
+                        }
                         Text("你好，我是轻聊")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.primary)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(
+                                LinearGradient(colors: [.blue, .purple],
+                                               startPoint: .leading, endPoint: .trailing)
+                            )
                         Text("输入消息与 AI 对话")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)

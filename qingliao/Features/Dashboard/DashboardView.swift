@@ -384,7 +384,8 @@ struct ServiceControlSheet: View {
 
             Spacer()
         }
-        .background(Color(uiColor: .systemBackground))
+        // v2.0.87h：看板弹窗液态玻璃
+        .glassEffect()
     }
 
     private func restart() {
@@ -490,7 +491,8 @@ struct HADeviceSheet: View {
                 }
             }
         }
-        .background(Color(uiColor: .systemBackground))
+        // v2.0.87h：看板弹窗液态玻璃（iOS 26 glassEffect——单面玻璃场景）
+        .glassEffect()
         .task { await load() }
     }
 
@@ -791,7 +793,8 @@ struct DisksSheet: View {
                 .padding(.bottom, 20)
             }
         }
-        .background(Color(uiColor: .systemBackground))
+        // v2.0.87h：看板弹窗液态玻璃
+        .glassEffect()
     }
 }
 
