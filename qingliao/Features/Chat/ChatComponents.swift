@@ -469,7 +469,24 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8))
+        // v2.0.87s：等待回复时彩色流光描边（TimelineView 时间驱动旋转，水波纹感）
+        .overlay {
+            if streaming {
+                TimelineView(.animation) { context in
+                    let angle = (context.date.timeIntervalSinceReferenceDate * 45)
+                        .truncatingRemainder(dividingBy: 360)
+                    Capsule()
+                        .strokeBorder(
+                            AngularGradient(colors: [.blue, .purple, .pink, .orange, .blue],
+                                            center: .center)
+                                .rotationEffect(.degrees(angle)),
+                            lineWidth: 1.6
+                        )
+                }
+            } else {
+                Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
+            }
+        }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 12)
     }
