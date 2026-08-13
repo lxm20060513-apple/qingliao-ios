@@ -7,7 +7,7 @@ import PDFKit
 struct KBView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
-    @State private var docs: [[String: Any]] = []
+    @State private var docs: [KBDoc] = []
     @State private var showImporter = false
     @State private var message: (ok: Bool, text: String)?
     @State private var busy = false
@@ -37,10 +37,10 @@ struct KBView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                     }
-                    ForEach(docs, id: \.self) { d in
-                        KBRow(name: d["name"] as? String ?? "",
-                              chunks: (d["chunks"] as? Int) ?? 0,
-                              size: (d["size"] as? Int) ?? 0,
+                    ForEach(docs) { doc in
+                        KBRow(name: doc.name,
+                              chunks: doc.chunks,
+                              size: doc.size,
                               onDelete: { name in Task { await deleteDoc(name) } })
                     }
                 }
@@ -78,15 +78,15 @@ struct KBView: View {
 
     private func load() async {
         if let j = try? await auth.json("/api/kb/list") {
-            docs = j["docs"] as? [[String: Any]] ?? []
+            let arr = j["docs"] as? [[String: Any]] ?? []
+            // v2.0.82：解析为具体类型 KBDoc（字典索引在 ViewBuilder 里类型检查爆炸）
+            docs = arr.compactMap { d in
+                guard let n = d["name"] as? String else { return nil }
+                return KBDoc(name: n,
+                             chunks: (d["chunks"] as? Int) ?? 0,
+                             size: (d["size"] as? Int) ?? 0)
+            }
         }
-    }
-
-    /// v2.0.81：文档 meta 文案（拆分字符串插值，避免 Swift 6 类型检查超时）
-    private func docMeta(_ d: [String: Any]) -> String {
-        let chunks = (d["chunks"] as? Int) ?? 0
-        let size = (d["size"] as? Int) ?? 0
-        return "\(chunks) 个片段 · \(size) 字节"
     }
 
     private func uploadFiles(_ urls: [URL]) async {
@@ -170,4 +170,13 @@ private struct KBRow: View {
             .buttonStyle(.plain)
         }
     }
+}
+
+// MARK: - v2.0.82 知识库文档（具体类型，规避字典索引类型检查爆炸）
+
+struct KBDoc: Identifiable {
+    let name: String
+    let chunks: Int
+    let size: Int
+    var id: String { name }
 }
