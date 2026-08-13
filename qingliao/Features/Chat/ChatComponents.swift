@@ -53,6 +53,7 @@ struct MessageContentBlock: Identifiable {
     enum Kind {
         case markdown(String)
         case code(String)
+        case table([[String]])   // v2.0.87d：markdown 表格（表头+数据行）
     }
     let kind: Kind
 }
@@ -99,6 +100,9 @@ struct MessageBlockView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.black.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        case .table(let rows):
+            // v2.0.87d：markdown 表格渲染（表头加粗 + 斑马纹 + 横向滚动）
+            MarkdownTableView(rows: rows)
         }
     }
 }
@@ -312,10 +316,57 @@ struct MessageBubble: View {
                 let body = lines.count > 1 ? lines[1] : p
                 blocks.append(.init(kind: .code(body.trimmingCharacters(in: .whitespacesAndNewlines))))
             } else if !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                blocks.append(.init(kind: .markdown(p)))
+                // v2.0.87d：markdown 段内拆出表格块（| a | b | + 分隔行）
+                for k in Self.splitMarkdownTable(p) {
+                    blocks.append(.init(kind: k))
+                }
             }
         }
         return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
+    }
+
+    /// v2.0.87d：markdown 表格检测拆分（连续 | 行 → 表格块，其余保持 markdown）
+    private static func splitMarkdownTable(_ text: String) -> [MessageContentBlock.Kind] {
+        let lines = text.components(separatedBy: "\n")
+        var result: [MessageContentBlock.Kind] = []
+        var table: [String] = []
+        func flush() {
+            if !table.isEmpty {
+                if let rows = parseTable(table) {
+                    result.append(.table(rows))
+                } else {
+                    result.append(.markdown(table.joined(separator: "\n")))
+                }
+                table = []
+            }
+        }
+        for line in lines {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("|") && t.hasSuffix("|") {
+                table.append(line)
+            } else {
+                flush()
+                result.append(.markdown(line))
+            }
+        }
+        flush()
+        return result
+    }
+
+    /// v2.0.87d：表格行解析（首行表头，第二行 |---| 分隔则跳过）
+    private static func parseTable(_ lines: [String]) -> [[String]]? {
+        let rows = lines.map { line -> [String] in
+            var s = line.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("|") { s.removeFirst() }
+            if s.hasSuffix("|") { s.removeLast() }
+            return s.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        guard rows.count >= 2 else { return nil }
+        let sep = rows[1]
+        let isSep = sep.allSatisfy { $0.isEmpty || $0.allSatisfy { $0 == "-" || $0 == ":" } }
+        let data = isSep ? Array(rows.dropFirst(2)) : Array(rows.dropFirst(1))
+        let header = rows[0]
+        return data.isEmpty ? [header] : [header] + data
     }
 
 }
@@ -579,5 +630,39 @@ struct ChatLogDocument: FileDocument {
     }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+// MARK: - v2.0.87d markdown 表格视图（表头加粗 + 斑马纹 + 横向滚动）
+
+private struct MarkdownTableView: View {
+    let rows: [[String]]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows.indices, id: \.self) { r in
+                    HStack(spacing: 0) {
+                        ForEach(rows[r].indices, id: \.self) { c in
+                            Text(rows[r][c])
+                                .font(.system(size: 12, weight: r == 0 ? .semibold : .regular))
+                                .foregroundStyle(r == 0 ? Color.primary : Color.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .frame(minWidth: 64, alignment: .leading)
+                                .background(r == 0
+                                            ? Color.accentColor.opacity(0.08)
+                                            : (r % 2 == 0 ? Color.primary.opacity(0.03) : Color.clear))
+                        }
+                    }
+                    Divider().overlay(Color.primary.opacity(0.07))
+                }
+            }
+            .padding(8)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.vertical, 2)
+        }
+        .textSelection(.enabled)
     }
 }
