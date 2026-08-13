@@ -169,11 +169,16 @@ struct MessageBubble: View {
                     }
                     if !message.content.isEmpty {
                         if message.isUser {
-                            Text(AttributedString(message.content))
-                                .font(.system(size: CGFloat(fontSize)))   // v2.0.38 字号可调
-                                .lineSpacing(3)
-                                .foregroundStyle(.white)
-                                .textSelection(.enabled)
+                            // v2.0.87q：文件消息微信风格卡片（图标+文件名+状态）
+                            if let file = parseFileMessage(message.content) {
+                                FileMessageCard(file: file)
+                            } else {
+                                Text(AttributedString(message.content))
+                                    .font(.system(size: CGFloat(fontSize)))   // v2.0.38 字号可调
+                                    .lineSpacing(3)
+                                    .foregroundStyle(.white)
+                                    .textSelection(.enabled)
+                            }
                         } else {
                             // v2.0.65：AI 超长消息折叠（>800 字收成展开全文）
                             if message.content.count > 800 && !expanded {
@@ -214,11 +219,16 @@ struct MessageBubble: View {
                         .padding(.top, 2)
                     }
                     // v2.0.65：已送达小字（用户消息、非失败、非语音）
+                    // v2.0.87q：加 ✓ 图标（微信式送达状态）
                     if message.isUser && !message.failed {
-                        Text("已送达")
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 1)
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7.5, weight: .bold))
+                            Text("已送达")
+                                .font(.system(size: 9.5))
+                        }
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 1)
                     }
                     // v2.0.81：AI 消息朗读（点击播放/停止，中文 TTS）
                     if !message.isUser && !message.content.isEmpty {
@@ -675,5 +685,103 @@ private struct MarkdownTableView: View {
             .padding(.vertical, 2)
         }
         .textSelection(.enabled)
+    }
+}
+
+// MARK: - v2.0.87q 文件消息微信风格卡片（类型图标 + 文件名 + 状态）
+
+struct FileMessageInfo {
+    let name: String
+    let type: String      // pdf / doc / xlsx / txt / img / other
+    let status: String
+    let failed: Bool
+}
+
+extension MessageBubble {
+    /// 解析文件消息文本（[文件: name]（状态）/[PDF: name]（状态）…）
+    private func parseFileMessage(_ content: String) -> FileMessageInfo? {
+        guard content.hasPrefix("[文件:") || content.hasPrefix("[PDF:") || content.hasPrefix("[图片:") else { return nil }
+        // 提取方括号内文件名
+        let rest = content.dropFirst(content.hasPrefix("[图片:") ? 4 : 3)
+        guard let end = rest.firstIndex(of: "]") else { return nil }
+        let name = String(rest[..<end]).trimmingCharacters(in: .whitespaces)
+        // 提取括号内状态
+        var status = ""
+        var failed = false
+        if let s = content.firstIndex(of: "（"), let e = content.lastIndex(of: "）") {
+            status = String(content[content.index(after: s)..<e])
+            failed = status.contains("失败")
+        }
+        let lower = name.lowercased()
+        let type: String
+        if lower.hasSuffix(".pdf") { type = "pdf" }
+        else if lower.hasSuffix(".xlsx") || lower.hasSuffix(".xls") || lower.hasSuffix(".csv") { type = "xlsx" }
+        else if lower.hasSuffix(".doc") || lower.hasSuffix(".docx") { type = "doc" }
+        else if lower.hasSuffix(".txt") || lower.hasSuffix(".md") || lower.hasSuffix(".log") || lower.hasSuffix(".json") { type = "txt" }
+        else { type = "other" }
+        return FileMessageInfo(name: name, type: type,
+                               status: status.isEmpty ? (failed ? "上传失败" : "已上传") : status,
+                               failed: failed)
+    }
+}
+
+/// 微信风格文件卡片（用户气泡内：图标块 + 文件名 + 状态）
+struct FileMessageCard: View {
+    let file: FileMessageInfo
+
+    private var icon: String {
+        switch file.type {
+        case "pdf": return "doc.richtext.fill"
+        case "xlsx": return "tablecells.fill"
+        case "doc": return "doc.text.fill"
+        case "txt": return "doc.plaintext.fill"
+        case "img": return "photo.fill"
+        default: return "doc.fill"
+        }
+    }
+
+    private var color: Color {
+        switch file.type {
+        case "pdf": return .red
+        case "xlsx": return .green
+        case "doc": return .blue
+        case "txt": return .gray
+        default: return .orange
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(color.opacity(0.22))
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 38, height: 38)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.name)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if file.failed {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 9))
+                    }
+                    Text(file.status)
+                        .font(.system(size: 10))
+                        .foregroundStyle(file.failed ? Color.red.opacity(0.9) : Color.white.opacity(0.75))
+                }
+            }
+            Spacer(minLength: 4)
+            Image(systemName: file.failed ? "arrow.clockwise" : "checkmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(file.failed ? Color.red.opacity(0.8) : Color.white.opacity(0.55))
+        }
+        .padding(10)
+        .frame(maxWidth: 240)
+        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
