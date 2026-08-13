@@ -242,8 +242,8 @@ struct DockerSheet: View {
                             .foregroundStyle(.tertiary)
                             .padding(.vertical, 4)
                     } else {
-                        // v2.0.86c：镜像卡片 1x2 网格（对标容器卡样式）
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        // v2.0.86c：镜像卡片（v2.0.86d：2x1 单列竖排，全宽卡）
+                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 10) {
                             ForEach(images) { img in
                                 DockerImageCard(image: img)
                                     .onTapGesture { confirmImage = img }
@@ -461,7 +461,7 @@ private struct DockerImageCard: View {
                 .padding(.top, 6)
         }
         .padding(12)
-        .frame(height: 80, alignment: .top)
+        .frame(height: 90, alignment: .top)   // v2.0.86d：全宽卡略高
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
