@@ -6,7 +6,8 @@ struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
     @AppStorage("qingliao_appearance") private var appearance = "system"   // dark/light/system（默认跟随系统）
 
-    @State private var showServerSheet = false
+    // v2.0.83c：连接设置二级页（服务器地址/测试连接/会话存储位置收进二级）
+    @State private var showConnSettings = false
     @State private var showPasswordSheet = false
     @State private var showSecrets = false
     // v2.0.81：知识库页面
@@ -15,15 +16,11 @@ struct SettingsView: View {
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
     @State private var scrollPos = ScrollPosition()
-    @State private var showSessionLocSheet = false
-    @State private var sessionLoc = ""   // 服务器端会话存储路径（GET /api/sessions/location）
     @State private var showModelSheet = false
     @State private var showAbout = false
     @State private var secretCount = 0
     @State private var showHASettings = false
     @State private var haAddress = ""
-    @State private var testResult: String?
-    @State private var testing = false
     // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
     @AppStorage("qingliao_font_size") private var fontSize = 14.0
     @State private var showFontOptions = false
@@ -48,17 +45,12 @@ struct SettingsView: View {
                     // 连接
                     SectionHeader("连接")
                     VStack(spacing: 0) {
-                        SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "服务器地址", value: shortServer, chevron: true)
-                            .onTapGesture { showServerSheet = true }
+                        // v2.0.83c：服务器地址收进二级「连接设置」（地址/测试/存储位置）
+                        SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "连接设置", value: shortServer, chevron: true)
+                            .onTapGesture { showConnSettings = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                             .onTapGesture { showModelSheet = true }
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "network", iconColor: .blue, title: "测试连接", value: testing ? "检测中..." : nil, chevron: !testing)
-                            .onTapGesture { testConnection() }
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "tray.full.fill", iconColor: .teal, title: "会话存储位置", value: sessionLocShort, chevron: true)
-                            .onTapGesture { showSessionLocSheet = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: haAddress.isEmpty ? nil : "\(haAddress)", chevron: true)
                             .onTapGesture { showHASettings = true }
@@ -170,10 +162,6 @@ struct SettingsView: View {
                 DockVisibility.shared.update(y ?? 0)
             }
         }
-        .sheet(isPresented: $showServerSheet) {
-            ServerSheet()
-                .presentationDetents([.medium])
-        }
         .sheet(isPresented: $showPasswordSheet) {
             PasswordSheet()
                 .presentationDetents([.medium])
@@ -186,9 +174,9 @@ struct SettingsView: View {
             LogsView()
                 .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showSessionLocSheet) {
-            SessionLocSheet(currentPath: sessionLoc)
-                .presentationDetents([.medium])
+        .sheet(isPresented: $showConnSettings) {
+            ConnSettingsView()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showModelSheet) {
             ModelSheet(current: currentModel)
@@ -219,17 +207,6 @@ struct SettingsView: View {
                 haAddress = j["address"] as? String ?? ""
             }
         }
-        .alert("测试连接", isPresented: Binding(get: { testResult != nil }, set: { if !$0 { testResult = nil } })) {
-            Button("好", role: .cancel) { testResult = nil }
-        } message: {
-            Text(testResult ?? "")
-        }
-        .task {
-            // 拉取服务器端会话存储位置
-            if let j = try? await auth.json("/api/sessions/location") {
-                sessionLoc = j["path"] as? String ?? ""
-            }
-        }
     }
 
     private func appearanceOption(_ name: String, value: String) -> some View {
@@ -258,33 +235,9 @@ struct SettingsView: View {
         }
     }
 
-    /// 会话存储位置短显（取路径后两段）
-    private var sessionLocShort: String {
-        let parts = sessionLoc.split(separator: "/").filter { !$0.isEmpty }
-        if parts.count >= 2 {
-            return "…/" + parts.suffix(2).joined(separator: "/")
-        }
-        return sessionLoc.isEmpty ? "默认" : sessionLoc
-    }
-
     /// 当前默认模型（UserDefaults）
     private var currentModel: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
-    }
-
-    private func testConnection() {
-        guard !testing else { return }
-        testing = true
-        Task {
-            defer { testing = false }
-            do {
-                let j = try await auth.json("/api/auth/status")
-                let ok = (j["ok"] as? Bool) ?? false
-                testResult = ok ? "✅ 连接正常，服务器：\(shortServer)" : "⚠️ 服务器响应异常"
-            } catch {
-                testResult = "❌ 无法连接：\(shortServer)"
-            }
-        }
     }
 
     private var shortServer: String {
@@ -383,6 +336,7 @@ struct PasswordSheet: View {
 
     @State private var oldPassword = ""
     @State private var newPassword = ""
+    @State private var confirmPassword = ""   // v2.0.83c：新密码二次确认
     @State private var result: String?
     @State private var busy = false
 
@@ -418,6 +372,23 @@ struct PasswordSheet: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 10)
 
+            // v2.0.83c：新密码二次确认（两次一致才可提交）
+            SecureField("确认新密码", text: $confirmPassword)
+                .font(.system(size: 14))
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+            if !confirmPassword.isEmpty && confirmPassword != newPassword {
+                Text("两次输入的密码不一致")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 5)
+            }
+
             Button {
                 changePassword()
             } label: {
@@ -445,7 +416,12 @@ struct PasswordSheet: View {
     }
 
     private func changePassword() {
+        // v2.0.83c：新密码二次确认校验
         guard !oldPassword.isEmpty, !newPassword.isEmpty, !busy else { return }
+        guard newPassword == confirmPassword else {
+            result = "两次输入的密码不一致"
+            return
+        }
         busy = true
         Task {
             defer { busy = false }
