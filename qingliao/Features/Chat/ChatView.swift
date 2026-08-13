@@ -670,7 +670,8 @@ struct ChatView: View {
             let uploaded = await uploadFile(url, name: name)
             var content: String
             if !uploaded {
-                content = "[文件: \(name)]（上传失败：文件较大或蜂窝网络受限，请用 Web 版上传）"
+                // v2.0.86r：蜂窝 5G 上传大文件受 iOS 27 relay 限制（上行 ~2KB），提示连 WiFi 或 Web 版
+                content = "[文件: \(name)]（上传失败：蜂窝网络限制大文件，请连接 WiFi 重试或使用 Web 版上传）"
             } else if ["txt", "md", "log", "json", "csv"].contains(ext),
                       let text = try? String(contentsOf: url, encoding: .utf8) {
                 // 文本类：上传原件 + 提取前 12000 字给 AI 阅读
