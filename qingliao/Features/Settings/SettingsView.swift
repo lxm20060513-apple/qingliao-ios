@@ -45,8 +45,8 @@ struct SettingsView: View {
                     // 连接
                     SectionHeader("连接")
                     VStack(spacing: 0) {
-                        // v2.0.83c：服务器地址收进二级「连接设置」（地址/测试/存储位置）
-                        SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "连接设置", value: shortServer, chevron: true)
+                        // v2.0.83c：服务器地址收进二级「连接设置」（v2.0.83f：不显示地址，只留标题）
+                        SettingRow(icon: "globe.asia.australia.fill", iconColor: .green, title: "连接设置", value: nil, chevron: true)
                             .onTapGesture { showConnSettings = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
@@ -238,12 +238,6 @@ struct SettingsView: View {
     /// 当前默认模型（UserDefaults）
     private var currentModel: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
-    }
-
-    private var shortServer: String {
-        auth.serverURL
-            .replacingOccurrences(of: "http://", with: "")
-            .replacingOccurrences(of: "https://", with: "")
     }
 }
 

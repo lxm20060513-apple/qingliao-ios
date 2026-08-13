@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - v2.0.83c 连接设置二级页（服务器地址 / 测试连接 / 会话存储位置——从主设置页收进二级）
+// v2.0.83f：List 白底改毛玻璃卡片风格（与主设置页 glassListCard 一致）
 
 struct ConnSettingsView: View {
     @Environment(AuthStore.self) private var auth
@@ -28,44 +29,53 @@ struct ConnSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("服务器") {
-                    Button {
-                        showServerSheet = true
-                    } label: {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("服务器")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    VStack(spacing: 0) {
                         SettingRow(icon: "globe.asia.australia.fill", iconColor: .green,
                                    title: "服务器地址", value: shortServer, chevron: true)
-                    }
-                    .buttonStyle(.plain)
-                    Button {
-                        testConnection()
-                    } label: {
+                            .onTapGesture { showServerSheet = true }
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "network", iconColor: .blue,
                                    title: "测试连接", value: testing ? "检测中..." : nil,
                                    chevron: !testing)
+                            .onTapGesture { testConnection() }
+                        if let r = testResult {
+                            Text(r)
+                                .font(.system(size: 11))
+                                .foregroundStyle(r.hasPrefix("✅") ? Color.green : Color.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14)
+                                .padding(.bottom, 8)
+                                .padding(.top, 2)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    if let r = testResult {
-                        Text(r)
-                            .font(.system(size: 11))
-                            .foregroundStyle(r.hasPrefix("✅") ? Color.green : Color.red)
-                            .padding(.leading, 4)
-                            .padding(.top, 2)
-                    }
-                }
-                Section("存储") {
-                    Button {
-                        showSessionLocSheet = true
-                    } label: {
+                    .glassListCard()
+
+                    Text("存储")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                        .padding(.top, 6)
+                    VStack(spacing: 0) {
                         SettingRow(icon: "tray.full.fill", iconColor: .teal,
                                    title: "会话存储位置", value: sessionLocShort, chevron: true)
+                            .onTapGesture { showSessionLocSheet = true }
                     }
-                    .buttonStyle(.plain)
+                    .glassListCard()
                     Text("会话记录保存在 NAS 指定目录，Web 与 App 共用同一份")
                         .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 4)
                 }
+                .padding(14)
             }
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("连接设置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

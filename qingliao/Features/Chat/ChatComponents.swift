@@ -681,6 +681,13 @@ struct SpeechInputSheet: View {
                         in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 20)
 
+            // v2.0.83f：环境不支持语音识别时明确提示（LiveContainer 等），不闪退
+            if !sr.authorized {
+                Text("当前环境不支持语音识别（需系统授权/联网）")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 20)
+            } else {
             // 按住说话
             ZStack {
                 Circle()
@@ -703,6 +710,7 @@ struct SpeechInputSheet: View {
             Text(sr.isRecording ? "识别中…" : "按住说话")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+            }
 
             // 发送
             Button {

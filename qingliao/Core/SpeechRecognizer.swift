@@ -9,20 +9,27 @@ final class SpeechRecognizer: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var authorized = false
 
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
+    // v2.0.83f：懒加载——SFSpeechRecognizer 创建在 LiveContainer 环境可能 crash，用到才建
+    private lazy var recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
     private var engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
     func requestAuth() async {
+        // v2.0.83f：可用性检查（LiveContainer 等环境不可用时静默标记，不 crash）
+        guard let rec = recognizer, rec.isAvailable else {
+            authorized = false
+            return
+        }
         let status = await withCheckedContinuation { cont in
             SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
         }
-        authorized = (status == .authorized && recognizer?.isAvailable == true)
+        authorized = (status == .authorized && rec.isAvailable)
     }
 
     func start() {
         guard authorized, !isRecording else { return }
+        guard let rec = recognizer else { return }
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .spokenAudio, options: .duckOthers)
@@ -33,7 +40,7 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             let rq = SFSpeechAudioBufferRecognitionRequest()
             rq.shouldReportPartialResults = true
             request = rq
-            task = recognizer?.recognitionTask(with: rq) { [weak self] result, error in
+            task = rec.recognitionTask(with: rq) { [weak self] result, error in
                 let final = result?.isFinal ?? false
                 let text = result?.bestTranscription.formattedString ?? ""
                 let failed = (error != nil)
