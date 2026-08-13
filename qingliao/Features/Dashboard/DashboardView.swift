@@ -655,7 +655,8 @@ struct HADeviceSheet: View {
         }
         .padding(14)
         .background(
-            LinearGradient(colors: [isOn ? Color.blue.opacity(0.20) : Color.blue.opacity(0.08), Color(uiColor: .secondarySystemGroupedBackground)],
+            // v2.0.87j：弹窗玻璃下扁平化（渐变末端白底 → 轻透明）
+            LinearGradient(colors: [isOn ? Color.blue.opacity(0.20) : Color.blue.opacity(0.08), Color.white.opacity(0.05)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
         )
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

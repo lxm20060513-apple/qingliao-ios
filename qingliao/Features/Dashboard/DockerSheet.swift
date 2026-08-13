@@ -223,7 +223,7 @@ struct DockerContainerCard: View {
         }
         .padding(12)
         .frame(height: 96, alignment: .top)   // v2.0.81：固定高度 → 所有卡片等高统一
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(Color.white.opacity(0.05))  // v2.0.87j：弹窗玻璃下扁平化)
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
@@ -301,7 +301,7 @@ private struct DockerImageCard: View {
         }
         .padding(12)
         .frame(height: 96, alignment: .top)   // 与容器卡等高
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(Color.white.opacity(0.05))  // v2.0.87j：弹窗玻璃下扁平化)
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
