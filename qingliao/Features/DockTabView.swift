@@ -145,18 +145,19 @@ struct DockBar: View {
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
                         }
-                        // v2.0.85c：选中 tab 背景胶囊高亮
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(selected == tab
-                                      ? Color.accentColor.opacity(0.14)
-                                      : Color.clear)
-                        )
+                        // v2.0.85c：选中 tab 背景胶囊高亮（v2.0.85e：移到 frame 后包住整个 tab 区域）
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(selected == tab
+                                      ? Color.accentColor.opacity(0.15)
+                                      : Color.clear)
+                        )
                         .padding(.vertical, 9)
                         .contentShape(Rectangle())
                         .animation(.spring(duration: 0.3, bounce: 0.4), value: hoverIdx)
+                        .animation(.easeOut(duration: 0.18), value: selected)
                     }
                     .buttonStyle(.plain)
                 }

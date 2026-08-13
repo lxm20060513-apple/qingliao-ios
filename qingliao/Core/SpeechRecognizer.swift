@@ -21,6 +21,10 @@ final class SpeechManager: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             return
         }
         stop()
+        // v2.0.85e：朗读前激活 playback 音频会话（否则静音/其他 App 占用时无声）
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio,
+                                                         options: [.duckOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
         // 去掉 markdown 符号 + 换行变句号
         let clean = raw
             .replacingOccurrences(of: #"[*#`>_~\[\]()!|\-]"#, with: "", options: .regularExpression)

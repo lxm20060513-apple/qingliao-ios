@@ -26,16 +26,16 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        DeviceCard(name: "开关", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
+                        DeviceCard(name: "开关", icon: "lightbulb.fill", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
                             .pressableScale()
                             .onTapGesture { activeSheet = .lights }
-                        DeviceCard(name: "空调", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
+                        DeviceCard(name: "空调", icon: "air.conditioner.horizontal", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
                             .pressableScale()
                             .onTapGesture { activeSheet = .climate }
-                        DeviceCard(name: "门锁", value: haLockBattery, sub: "智能门锁", status: .on)
-                        DeviceCard(name: "猫眼", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
-                        DeviceCard(name: "安防", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
-                        DeviceCard(name: "温度", value: haTemp, sub: "室内温度", status: .on)
+                        DeviceCard(name: "门锁", icon: "lock.fill", value: haLockBattery, sub: "智能门锁", status: .on)
+                        DeviceCard(name: "猫眼", icon: "video.fill", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
+                        DeviceCard(name: "安防", icon: "shield.fill", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
+                        DeviceCard(name: "温度", icon: "thermometer", value: haTemp, sub: "室内温度", status: .on)
                     }
 
                     sectionTitle("NAS 面板")
@@ -835,6 +835,7 @@ enum DeviceStatus { case on, off, warn }
 
 struct DeviceCard: View {
     let name: String
+    let icon: String   // v2.0.85e 图标
     let value: String
     let sub: String
     let status: DeviceStatus
@@ -842,6 +843,9 @@ struct DeviceCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(status == .on ? Color.accentColor : Color.secondary)
                 Text(name)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
