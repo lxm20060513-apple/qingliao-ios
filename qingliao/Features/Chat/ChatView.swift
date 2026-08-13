@@ -64,8 +64,6 @@ struct ChatView: View {
     // v2.0.59：上下文过长提示 / 失败重试
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
-    // v2.0.81：语音输入（附件面板 mic，按住说话 → 中文识别 → 发送）
-    @State private var showSpeechInput = false
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
@@ -175,8 +173,6 @@ struct ChatView: View {
                 HStack(spacing: 26) {
                     attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
-                    // v2.0.81：语音输入（按住说话 → 中文识别 → 文字发送）
-                    attachButton("mic.fill", "语音输入", Color.teal) { showSpeechInput = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
                 }
@@ -260,9 +256,7 @@ struct ChatView: View {
             .presentationDetents([.medium, .large])
         }
         .fileImporter(isPresented: $showFileImporter,
-                      allowedContentTypes: [.pdf, .plainText,
-                                            UTType(filenameExtension: "docx") ?? .data,
-                                            UTType(filenameExtension: "xlsx") ?? .data]) { result in
+                      allowedContentTypes: [.data]) { result in
             if case .success(let url) = result {
                 sendFile(url)
             }
@@ -446,14 +440,6 @@ struct ChatView: View {
         }
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
-        }
-        // v2.0.81：语音输入（按住说话 → 文字 → 发送）
-        .sheet(isPresented: $showSpeechInput) {
-            SpeechInputSheet { text in
-                showSpeechInput = false
-                sendCore(text: text, imageData: nil)
-            }
-            .presentationDetents([.medium])
         }
         // v2.0.59：上下文过长提示（60+ 条建议压缩）
         .alert("上下文较长", isPresented: $showLongContextAlert) {
@@ -662,19 +648,47 @@ struct ChatView: View {
     }
 
     /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
-    private func sendPDF(_ url: URL) {
+    // MARK: - v2.0.84 文件整份上传（原件存 NAS，文本类/PDF 同时提取内容给 AI）
+
+    /// 上传整份文件到 NAS（/api/files/upload；WiFi 直连可传大文件，蜂窝 relay 受限自动失败）
+    private func uploadFile(_ url: URL, name: String) async -> Bool {
+        guard let data = try? Data(contentsOf: url) else { return false }
+        if let j = try? await auth.uploadMultipart("/api/files/upload", fileName: name, data: data),
+           (j["ok"] as? Bool) == true {
+            return true
+        }
+        return false
+    }
+
+    private func sendFile(_ url: URL) {
         guard !stream.isStreaming else { return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let name = url.lastPathComponent
-        let rawText = extractPDFText(from: url) ?? ""
-        let truncated = String(rawText.prefix(12000))
-        let content = truncated.isEmpty
-            ? "[PDF 文档: \(name)]"
-            : "[PDF 文档: \(name)]\n\(truncated)"
-        chat.append(.local(role: "user", content: content))
-        let history = chat.historyPayload()
+        let ext = (name as NSString).pathExtension.lowercased()
+
         Task {
+            // 整份上传 NAS（原件服务器保留，可下载）
+            let uploaded = await uploadFile(url, name: name)
+            var content: String
+            if !uploaded {
+                content = "[文件: \(name)]（上传失败：文件较大或蜂窝网络受限，请用 Web 版上传）"
+            } else if ["txt", "md", "log", "json", "csv"].contains(ext),
+                      let text = try? String(contentsOf: url, encoding: .utf8) {
+                // 文本类：上传原件 + 提取前 12000 字给 AI 阅读
+                content = "[文件: \(name)]（已上传 NAS）\n\(String(text.prefix(12000)))"
+            } else if ext == "pdf" {
+                // PDF：上传原件 + PDFKit 提取文本给 AI
+                let raw = extractPDFText(from: url) ?? ""
+                content = raw.isEmpty
+                    ? "[PDF: \(name)]（已上传 NAS，扫描件无文字层）"
+                    : "[PDF: \(name)]（已上传 NAS）\n\(String(raw.prefix(12000)))"
+            } else {
+                // Word/Excel 等：整份上传（本地不提取，文件在 NAS 可下载）
+                content = "[文件: \(name)]（已上传 NAS）"
+            }
+            chat.append(.local(role: "user", content: content))
+            let history = chat.historyPayload()
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
                 if !success {
@@ -687,71 +701,6 @@ struct ChatView: View {
                         NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
                                                   sessionId: chat.sessionId)
                     }
-                }
-                Task { await chat.saveToServer(auth: auth) }
-            }
-        }
-    }
-
-    /// 发送任意文档：txt 直接读文本（AI 可读）；Word/Excel 无法本地提取 → 降级上传 NAS 文件管理
-    private func sendFile(_ url: URL) {
-        guard !stream.isStreaming else { return }
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        let name = url.lastPathComponent
-        let ext = (name as NSString).pathExtension.lowercased()
-
-        // 文本类：直接读入对话
-        if ["txt", "md", "log", "json", "csv"].contains(ext) {
-            if let text = try? String(contentsOf: url, encoding: .utf8) {
-                let truncated = String(text.prefix(12000))
-                let content = "[文本文件: \(name)]\n\(truncated)"
-                chat.append(.local(role: "user", content: content))
-                let history = chat.historyPayload()
-                Task {
-                    await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
-                                       provider: provider, messages: history) { success, error in
-                        if !success {
-                            chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
-                        } else {
-                            chat.upsertAssistant(stream.content)
-                            showSentOK()
-                        }
-                        Task { await chat.saveToServer(auth: auth) }
-                    }
-                }
-                return
-            }
-        }
-
-        // PDF 走文本提取
-        if ext == "pdf" {
-            sendPDF(url)
-            return
-        }
-
-        // Word/Excel：本地无法提取 → 降级上传 NAS 文件管理（relay 上行限 2KB 小文件）
-        Task {
-            let content: String
-            if let data = try? Data(contentsOf: url), data.count < 2000 {
-                if let j = try? await auth.uploadMultipart("/api/files/upload", fileName: name, data: data),
-                   (j["ok"] as? Bool) == true {
-                    content = "[文档: \(name)]（已上传 NAS 文件管理）"
-                } else {
-                    content = "[文档: \(name)]（上传失败，文件未解析）"
-                }
-            } else {
-                content = "[文档: \(name)]（文件较大，请用 PWA 上传解析）"
-            }
-            chat.append(.local(role: "user", content: content))
-            let history = chat.historyPayload()
-            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
-                               provider: provider, messages: history) { success, error in
-                if !success {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
-                } else {
-                    chat.upsertAssistant(stream.content)
-                    showSentOK()
                 }
                 Task { await chat.saveToServer(auth: auth) }
             }
