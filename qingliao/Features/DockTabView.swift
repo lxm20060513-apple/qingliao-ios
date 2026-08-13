@@ -135,26 +135,27 @@ struct DockBar: View {
                         selected = tab
                     } label: {
                         VStack(spacing: 4) {
+                            // v2.0.86m：选中胶囊只包图标（小尺寸垂直居中，修复溢出 Dock 底部）
                             Image(systemName: tab.icon)
                                 .font(.system(size: 21, weight: .medium))
                                 // 放大镜效果：透镜所在的 tab 图标放大（松手后短暂保持）
                                 // v2.0.65：发送完成时聊天图标轻跳
                                 // v2.0.85c：选中态图标轻放大
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.45 : (selected == tab ? 1.12 : (tab == .chat && bounce ? 1.18 : 1.0)))
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule().fill(selected == tab
+                                                   ? Color.accentColor.opacity(0.16)
+                                                   : Color.clear)
+                                )
                             Text(tab.title)
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .scaleEffect(hoverIdx == tabIndex(tab) ? 1.3 : 1.0)
                         }
-                        // v2.0.85c：选中 tab 背景胶囊高亮（v2.0.85e：移到 frame 后包住整个 tab 区域）
                         .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
                         .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(selected == tab
-                                      ? Color.accentColor.opacity(0.15)
-                                      : Color.clear)
-                        )
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 6)
                         .contentShape(Rectangle())
                         .animation(.spring(duration: 0.3, bounce: 0.4), value: hoverIdx)
                         .animation(.easeOut(duration: 0.18), value: selected)
