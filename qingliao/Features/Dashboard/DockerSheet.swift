@@ -303,6 +303,14 @@ struct DockerContainerCard: View {
     private var running: Bool { container.status.contains("Up") }
     private var color: Color { running ? .green : .red }
 
+    /// v2.0.81：端口简化并入提示行（取第一个映射），所有卡片固定 3 行等高
+    private var portSuffix: String {
+        let tip = running ? "单击停止 · 长按删除" : "单击启动 · 长按删除"
+        guard !container.ports.isEmpty else { return tip }
+        let p = container.ports.components(separatedBy: ", ").first ?? container.ports
+        return "\(tip) · \(p)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -330,22 +338,14 @@ struct DockerContainerCard: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            // v2.0.81：端口 + 操作提示统一显示（原来有端口的卡只显示端口、无提示，用户困惑）
-            VStack(alignment: .leading, spacing: 2) {
-                if !container.ports.isEmpty {
-                    Text(container.ports)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                Text(running ? "单击停止 · 长按删除" : "单击启动 · 长按删除")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            .padding(.top, 4)
+            Text(portSuffix)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .padding(.top, 4)
         }
         .padding(12)
+        .frame(height: 96, alignment: .top)   // v2.0.81：固定高度 → 所有卡片等高统一
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var showServerSheet = false
     @State private var showPasswordSheet = false
     @State private var showSecrets = false
+    // v2.0.81：知识库页面
+    @State private var showKB = false
     @State private var showTasks = false
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
@@ -60,6 +62,10 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: haAddress.isEmpty ? nil : "\(haAddress)", chevron: true)
                             .onTapGesture { showHASettings = true }
+                        Divider().padding(.leading, 52)
+                        // v2.0.81：知识库（文档上传 → @知识库 检索问答）
+                        SettingRow(icon: "books.vertical.fill", iconColor: .green, title: "知识库", value: "文档检索问答", chevron: true)
+                            .onTapGesture { showKB = true }
                     }
                     .glassListCard()
 
@@ -194,7 +200,12 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showSecrets) {
             SecretsView()
-                .presentationDetents([.large])
+                .presentationDetents([.medium, .large])
+        }
+        // v2.0.81：知识库
+        .sheet(isPresented: $showKB) {
+            KBView()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showHASettings) {
             HASettingsSheet()

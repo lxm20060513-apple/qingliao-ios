@@ -67,6 +67,8 @@ struct ChatView: View {
     @State private var pendingSend: (text: String, imageData: String?)?
     // v2.0.61：语音消息（录音 → 语音条）
     @State private var showAudioRecorder = false
+    // v2.0.81：语音输入（按住说话 → 中文识别 → 发送）
+    @State private var showSpeechInput = false
     @State private var audioRecorder: AVAudioRecorder?
     @State private var audioTimer: Timer?
     @State private var audioSeconds = 0
@@ -185,6 +187,8 @@ struct ChatView: View {
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
                     // v2.0.61：语音消息（录音 → 语音条）
                     attachButton("waveform", "语音", Color.pink) { showAudioRecorder = true }
+                    // v2.0.81：语音输入（按住说话 → 中文识别 → 文字发送）
+                    attachButton("mic.fill", "语音输入", Color.teal) { showSpeechInput = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
                 }

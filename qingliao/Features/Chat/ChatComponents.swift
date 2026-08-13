@@ -120,6 +120,8 @@ struct MessageBubble: View {
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
     @State private var expanded = false
+    // v2.0.81：AI 回复朗读状态（全局单例）
+    @ObservedObject private var speech = SpeechManager.shared
 
     /// 用户气泡蓝：深色用深蓝，浅色用亮蓝（对比度适配）
     private var userBubbleColor: Color {
@@ -218,6 +220,20 @@ struct MessageBubble: View {
                             .font(.system(size: 9.5))
                             .foregroundStyle(.tertiary)
                             .padding(.top, 1)
+                    }
+                    // v2.0.81：AI 消息朗读（点击播放/停止，中文 TTS）
+                    if !message.isUser && !message.content.isEmpty {
+                        Button {
+                            SpeechManager.shared.toggle(message.content, id: message.id)
+                        } label: {
+                            Image(systemName: speech.speakingID == message.id
+                                  ? "speaker.wave.2.fill" : "speaker.wave.2")
+                                .font(.system(size: 11))
+                                .foregroundStyle(speech.speakingID == message.id
+                                                 ? Color.accentColor : .secondary)
+                                .padding(.top, 1)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 13)
@@ -651,5 +667,78 @@ struct ChatLogDocument: FileDocument {
     }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+// MARK: - v2.0.81 语音输入面板（按住说话 → 中文识别 → 发送）
+
+struct SpeechInputSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var sr = SpeechRecognizer()
+    var onSend: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("语音输入")
+                .font(.system(size: 17, weight: .bold))
+                .padding(.top, 24)
+
+            // 识别结果
+            ScrollView {
+                Text(sr.text.isEmpty ? "按住下方麦克风说话，松开结束" : sr.text)
+                    .font(.system(size: 15))
+                    .foregroundStyle(sr.text.isEmpty ? .tertiary : .primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+            }
+            .frame(maxHeight: 160)
+            .background(Color(uiColor: .secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 20)
+
+            // 按住说话
+            ZStack {
+                Circle()
+                    .fill(sr.isRecording ? Color.red : Color.teal)
+                    .frame(width: 84, height: 84)
+                    .shadow(color: (sr.isRecording ? Color.red : Color.teal).opacity(0.4),
+                            radius: 12, y: 4)
+                Image(systemName: sr.isRecording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !sr.isRecording { sr.start() }
+                    }
+                    .onEnded { _ in sr.stop() }
+            )
+
+            Text(sr.isRecording ? "识别中…" : "按住说话")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
+            // 发送
+            Button {
+                let t = sr.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !t.isEmpty { onSend(t) }
+                dismiss()
+            } label: {
+                Text("发送")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .disabled(sr.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
+        }
+        .presentationDetents([.medium])
+        .task { await sr.requestAuth() }
     }
 }
