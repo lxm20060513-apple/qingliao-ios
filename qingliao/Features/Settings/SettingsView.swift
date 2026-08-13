@@ -600,6 +600,8 @@ struct ModelSheet: View {
     // 服务器同步的模型（分组展示）
     @State private var stepfunModels: [String] = []
     @State private var deepseekModels: [String] = []
+    // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
+    @AppStorage("qingliao_provider") private var currentProvider = "opencode"
 
     /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）
     private let localModels: [(String, String)] = [
@@ -655,7 +657,8 @@ struct ModelSheet: View {
                 VStack(spacing: 12) {
                     groupSection("opencode", models: localModels.map { ($0.0, $0.1, "opencode") })
                     if !deepseekModels.isEmpty {
-                        groupSection("deepseek", models: deepseekModels.map { ($0, $0, "deepseek") })
+                        // v2.0.83：官方 API 分组标注（与 opencode 的 deepseek 区分）
+                        groupSection("deepseek（官方）", models: deepseekModels.map { ($0, $0, "deepseek") })
                     }
                     if !stepfunModels.isEmpty {
                         groupSection("stepfun", models: stepfunModels.map { ($0, $0, "stepfun") })
@@ -691,17 +694,19 @@ struct ModelSheet: View {
     }
 
     private func modelRow(id: String, name: String, provider: String) -> some View {
-        HStack(spacing: 10) {
+        // v2.0.83：当前判定 = 模型 id + provider 双重匹配（opencode 与官方的 deepseek 同名不同源，不能同时勾）
+        let isCur = selected == id && currentProvider == provider
+        return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(id)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(selected == id ? Color.accentColor : Color.primary)
+                    .foregroundStyle(isCur ? Color.accentColor : Color.primary)
                 Text(name)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if selected == id {
+            if isCur {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 14))
                     Text("当前").font(.system(size: 11, weight: .semibold))
