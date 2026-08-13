@@ -390,9 +390,7 @@ struct ChatView: View {
                                             value: geo.frame(in: .named("scrollspace")).minY)
                 }
             )
-            .onPreferenceChange(ScrollOffsetKey.self) { minY in
-                DockVisibility.shared.update(-minY)
-            }
+            // v2.0.86h：Dock 滑动隐藏已删除（从未生效，手动开关替代）
             // v2.0.43：搜索定位——滚动到命中消息并高亮 2 秒
             .onChange(of: chat.highlightTarget?.content) { _, _ in
                 guard let t = chat.highlightTarget,

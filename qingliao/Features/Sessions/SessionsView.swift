@@ -202,9 +202,7 @@ struct SessionsView: View {
                     .padding(.bottom, 90)
                 }
                 .scrollPosition($scrollPos)
-                .onChange(of: scrollPos.y) { _, y in
-                    DockVisibility.shared.update(y ?? 0)
-                }
+                // v2.0.86h：Dock 滑动隐藏已删除（从未生效，手动开关替代）
                 .refreshable {
                     if !isSearching { await load() }
                 }
@@ -252,7 +250,6 @@ struct SessionsView: View {
             onOpenSession?()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 chat.requestNewSession()
-                DockVisibility.shared.reset()
             }
         } label: {
             Image(systemName: "plus")
