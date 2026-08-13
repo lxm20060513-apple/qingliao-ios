@@ -97,13 +97,11 @@ final class ChatStore {
     /// 发送请求用的历史消息（payload 形态）
     /// 只保留最后一条带图消息的 imageDataURL（前面已发过的图片不进 payload，防 base64 全量重复膨胀）
     func historyPayload() -> [[String: Any]] {
-        var lastImgIdx: Int?
-        for (i, m) in messages.enumerated() where m.imageDataURL != nil {
-            lastImgIdx = i
-        }
-        return messages.enumerated().map { idx, m in
+        // v2.0.81：多图视觉——所有图片消息保留 image_url 内容块（原逻辑只发最后一张图的图，
+        // 其余图片消息 content 被覆盖为纯文本；改为全部图片都让 AI 可见）
+        return messages.map { m in
             var p = m.asPayload()
-            if idx != lastImgIdx {
+            if m.imageDataURL == nil {
                 p["content"] = m.content
             }
             return p
