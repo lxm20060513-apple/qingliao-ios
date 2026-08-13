@@ -12,6 +12,9 @@ struct DockerSheet: View {
     @State private var busy = false
     @FocusState private var focused: Bool
     @State private var confirmTarget: DockerContainer?
+    // v2.0.87：升级确认
+    @State private var confirmUpgrade: DockerContainer?
+    @State private var upgrading = false
     // v2.0.86：镜像管理
     @State private var images: [DockerImage] = []
     @State private var confirmImage: DockerImage?
@@ -43,7 +46,8 @@ struct DockerSheet: View {
                     ContainerSection(containers: containers,
                                      onRefresh: { await load() },
                                      onAction: { c, act in await action(c.name, act) },
-                                     onDelete: { confirmTarget = $0 })
+                                     onDelete: { confirmTarget = $0 },
+                                     onUpgrade: { confirmUpgrade = $0 })
                     // ===== v2.0.86 镜像管理（v2.0.86i：拆子视图）=====
                     ImageSection(images: images,
                                  onRefresh: { await loadImages() },
@@ -90,6 +94,21 @@ struct DockerSheet: View {
                 Button("取消", role: .cancel) { confirmImage = nil }
             } message: { img in
                 Text("删除镜像「\(img.name)」？\n若仍有容器使用会删除失败")
+            }
+            // v2.0.87：升级确认弹窗
+            .confirmationDialog("升级容器？", isPresented: .init(
+                get: { confirmUpgrade != nil },
+                set: { if !$0 { confirmUpgrade = nil } }
+            ), presenting: confirmUpgrade) { c in
+                Button(upgrading ? "升级中…" : "升级") {
+                    let target = c
+                    confirmUpgrade = nil
+                    Task { await upgradeContainer(target) }
+                }
+                .disabled(upgrading)
+                Button("取消", role: .cancel) { confirmUpgrade = nil }
+            } message: { c in
+                Text("将拉取「\(c.name)」最新镜像并重建容器（约需 1-5 分钟，视镜像大小）")
             }
             .task { await load(); await loadImages() }
         }
@@ -147,6 +166,7 @@ struct DockerContainer: Identifiable {
 
 struct DockerContainerCard: View {
     let container: DockerContainer
+    var onUpgrade: () -> Void = {}   // v2.0.87：compose 项目升级按钮
 
     private var running: Bool { container.status.contains("Up") }
     private var color: Color { running ? .green : .red }
@@ -176,11 +196,29 @@ struct DockerContainerCard: View {
                 .font(.system(size: 13.5, weight: .semibold))   // v2.0.86o：大字状态改小
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            Text(portSuffix)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .padding(.top, 4)
+            // v2.0.87：提示行 + compose 项目升级按钮
+            HStack(spacing: 6) {
+                Text(portSuffix)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                if container.isComposeProject {
+                    Spacer(minLength: 4)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onUpgrade()
+                    } label: {
+                        Label("升级", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.accentColor.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 4)
         }
         .padding(12)
         .frame(height: 96, alignment: .top)   // v2.0.81：固定高度 → 所有卡片等高统一
@@ -278,6 +316,7 @@ private struct ContainerSection: View {
     var onRefresh: () async -> Void
     var onAction: (DockerContainer, String) async -> Void
     var onDelete: (DockerContainer) -> Void
+    var onUpgrade: (DockerContainer) -> Void   // v2.0.87 升级
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -315,7 +354,7 @@ private struct ContainerSection: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                     GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(containers) { c in
-                        DockerContainerCard(container: c)
+                        DockerContainerCard(container: c, onUpgrade: { onUpgrade(c) })
                             .onTapGesture {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 let act = c.status.contains("Up") ? "stop" : "start"
@@ -521,5 +560,24 @@ private struct DeploySection: View {
             .background((m.ok ? Color.green : Color.red).opacity(0.1),
                         in: RoundedRectangle(cornerRadius: 10))
         }
+    }
+}
+
+// MARK: - v2.0.87 容器升级
+
+extension DockerSheet {
+    func upgradeContainer(_ c: DockerContainer) async {
+        guard !upgrading else { return }
+        upgrading = true
+        defer { upgrading = false }
+        if let j = try? await auth.json("/api/docker/upgrade", method: "POST",
+                                        body: ["name": c.name]) {
+            let ok = (j["ok"] as? Bool) ?? false
+            message = (ok, j["message"] as? String ?? (ok ? "升级完成" : "升级失败"))
+        } else {
+            message = (false, "请求失败，请检查连接")
+        }
+        await load()
+        await loadImages()
     }
 }
