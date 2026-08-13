@@ -201,6 +201,7 @@ struct DockerImage: Identifiable {
     let name: String
     let id: String
     let size: String
+    let inUse: Bool   // v2.0.86n：被容器使用（绿点）/ 空镜像（红点）
     var idStr: String { id }
 }
 
@@ -210,7 +211,8 @@ extension DockerSheet {
             let arr = j["images"] as? [[String: Any]] ?? []
             images = arr.compactMap { d in
                 guard let n = d["name"] as? String, let i = d["id"] as? String else { return nil }
-                return DockerImage(name: n, id: i, size: d["size"] as? String ?? "")
+                return DockerImage(name: n, id: i, size: d["size"] as? String ?? "",
+                                   inUse: (d["in_use"] as? Bool) ?? false)
             }
         }
     }
@@ -231,35 +233,41 @@ extension DockerSheet {
 private struct DockerImageCard: View {
     let image: DockerImage
 
+    private var inUse: Bool { image.inUse }
+    private var color: Color { inUse ? .green : .red }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "photo.stack")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.indigo)
+            HStack {
                 Text(image.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                Image(systemName: "trash")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red.opacity(0.85))
+                // v2.0.86n：绿点=被容器使用，红点=空镜像
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: color.opacity(0.6), radius: 4)
             }
-            Text("\(image.id) · \(image.size)")
+            Text(inUse ? "使用中" : "未使用")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.primary)
+                .padding(.top, 6)
+            Text("\(image.id) · \(image.size) · 长按删除")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
-                .padding(.top, 6)
+                .padding(.top, 4)
         }
         .padding(12)
-        // v2.0.86e：去掉固定高度，与智能家居 DeviceCard（门锁卡）同风格自适应等高
+        .frame(height: 96, alignment: .top)   // 与容器卡等高
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -364,11 +372,19 @@ private struct ImageSection: View {
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 4)
             } else {
-                // 单列全宽卡（2x1 竖排，门锁卡同风格）
-                LazyVGrid(columns: [GridItem(.flexible())], spacing: 10) {
+                // v2.0.86n：2 列网格（同容器卡风格）+ 长按删除
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                    GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(images) { img in
                         DockerImageCard(image: img)
-                            .onTapGesture { onDelete(img) }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                    onDelete(img)
+                                } label: {
+                                    Label("删除镜像", systemImage: "trash")
+                                }
+                            }
                     }
                 }
             }
