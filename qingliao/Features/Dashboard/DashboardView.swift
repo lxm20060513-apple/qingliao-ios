@@ -639,14 +639,20 @@ struct HADeviceSheet: View {
                     Button {
                         setMode(e, mode: m)
                     } label: {
+                        // v2.0.87k：判定 lowercased（HA 部分实体返回 "Off" 大写导致选中态不匹配）
+                        let active = e.state.lowercased() == m
                         Text(modeName(m))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(e.state == m ? Color.white : Color.primary)
+                            .font(.system(size: 11, weight: active ? .bold : .medium))
+                            .foregroundStyle(active ? Color.white : Color.primary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
                             .background(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(e.state == m ? Color.accentColor : Color(uiColor: .systemGray5))
+                                    .fill(active ? Color.accentColor : Color(uiColor: .systemGray5))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(active ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1.2)
                             )
                     }
                     .buttonStyle(.plain)
