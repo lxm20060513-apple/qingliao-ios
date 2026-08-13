@@ -268,6 +268,131 @@ struct MessageBubble: View {
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
         // 长按：复制 / 引用 / 删除 / 分享 / 大爆炸 / 重新生成（AI 消息）
         .contextMenu {
+            Button {
+                UIPasteboard.general.string = message.content
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+            }
+            Button {
+                onQuote()
+            } label: {
+                Label("引用", systemImage: "quote.opening")
+            }
+            Button {
+                onShare()
+            } label: {
+                Label("分享", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                onBigBang()
+            } label: {
+                Label("大爆炸", systemImage: "burst.fill")
+            }
+            if !message.isUser {
+                Button {
+                    onRegenerate()
+                } label: {
+                    Label("重新生成", systemImage: "arrow.clockwise")
+                }
+            }
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+        }
+    }
+
+    /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
+    private var contentBlocks: [MessageContentBlock] {
+        let parts = message.content.components(separatedBy: "```")
+        var blocks: [MessageContentBlock] = []
+        for (i, p) in parts.enumerated() {
+            if i % 2 == 1 {
+                // 代码块：去掉语言标记行
+                let lines = p.split(separator: "\n", maxSplits: 1).map(String.init)
+                let body = lines.count > 1 ? lines[1] : p
+                blocks.append(.init(kind: .code(body.trimmingCharacters(in: .whitespacesAndNewlines))))
+            } else if !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(.init(kind: .markdown(p)))
+            }
+        }
+        return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
+    }
+
+    private func dataURLImage(_ urlStr: String) -> UIImage? {
+        guard let comma = urlStr.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(urlStr[urlStr.index(after: comma)...])),
+              let img = UIImage(data: data) else { return nil }
+        return img
+    }
+}
+
+// MARK: - 液态玻璃输入栏
+
+struct ChatInputBar: View {
+    @Binding var text: String
+    @FocusState.Binding var focused: Bool
+    var streaming: Bool
+    var onSend: () -> Void
+    var onStop: () -> Void = {}
+    var onPickAttachment: () -> Void = {}
+    var onCamera: () -> Void = {}   // v2.0.38 拍照输入
+    // 语音输入（按住说话）
+    var isRecording: Bool = false
+    var onVoiceStart: () -> Void = {}
+    var onVoiceEnd: () -> Void = {}
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onPickAttachment) {
+                Image(systemName: "paperclip")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+            .buttonStyle(.plain)
+
+            // v2.0.38：拍照输入
+            Button(action: onCamera) {
+                Image(systemName: "camera")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+            .buttonStyle(.plain)
+
+            if isRecording {
+                // 录音中：红点 + 提示
+                HStack(spacing: 5) {
+                    Circle().fill(Color.red).frame(width: 7, height: 7)
+                    Text("松开结束")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.red)
+                }
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity)
+                .background(Color.red.opacity(0.08), in: Capsule())
+            } else {
+                // v2.0.34：placeholder 用 overlay 自定义（vertical axis 的 TextField 自带
+                // placeholder 在 lineLimit(2...6) 多行高下顶部对齐，视觉不居中）
+                TextField("", text: $text, axis: .vertical)
+                    .font(.system(size: 15))
+                    .lineLimit(1...6)   // v2.0.35：1行起（原来2...6最小2行高→单行光标/文字偏上不居中）
+                    .padding(.vertical, 9)
+                    .padding(.horizontal, 2)
+                    .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
+                    .focused($focused)
+                    .overlay {
+                        if text.isEmpty {
+                            Text("输入消息...")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
 
             Button {
                 if streaming {
