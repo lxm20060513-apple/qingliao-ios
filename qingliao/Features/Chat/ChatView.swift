@@ -648,14 +648,23 @@ struct ChatView: View {
     /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
     // MARK: - v2.0.84 文件整份上传（原件存 NAS，文本类/PDF 同时提取内容给 AI）
 
+    /// v2.0.86s：上传结果细分（区分服务器拒绝 / 蜂窝限制 / 连接失败，提示不误导）
+    enum UploadResult {
+        case success
+        case rejected(String)       // 服务器返回错误（带信息）
+        case networkFailed(String)  // 网络/连接失败（错误信息含蜂窝限制时提示 WiFi/Web）
+    }
+
     /// 上传整份文件到 NAS（/api/files/upload；WiFi 直连可传大文件，蜂窝 relay 受限自动失败）
-    private func uploadFile(_ url: URL, name: String) async -> Bool {
-        guard let data = try? Data(contentsOf: url) else { return false }
-        if let j = try? await auth.uploadMultipart("/api/files/upload", fileName: name, data: data),
-           (j["ok"] as? Bool) == true {
-            return true
+    private func uploadFile(_ url: URL, name: String) async -> UploadResult {
+        guard let data = try? Data(contentsOf: url) else { return .rejected("文件读取失败") }
+        do {
+            let j = try await auth.uploadMultipart("/api/files/upload", fileName: name, data: data)
+            if (j["ok"] as? Bool) == true { return .success }
+            return .rejected(j["message"] as? String ?? j["error"] as? String ?? "上传失败")
+        } catch {
+            return .networkFailed("\(error)")
         }
-        return false
     }
 
     private func sendFile(_ url: URL) {
@@ -667,24 +676,34 @@ struct ChatView: View {
 
         Task {
             // 整份上传 NAS（原件服务器保留，可下载）
-            let uploaded = await uploadFile(url, name: name)
+            let result = await uploadFile(url, name: name)
             var content: String
-            if !uploaded {
-                // v2.0.86r：蜂窝 5G 上传大文件受 iOS 27 relay 限制（上行 ~2KB），提示连 WiFi 或 Web 版
-                content = "[文件: \(name)]（上传失败：蜂窝网络限制大文件，请连接 WiFi 重试或使用 Web 版上传）"
-            } else if ["txt", "md", "log", "json", "csv"].contains(ext),
-                      let text = try? String(contentsOf: url, encoding: .utf8) {
-                // 文本类：上传原件 + 提取前 12000 字给 AI 阅读
-                content = "[文件: \(name)]（已上传 NAS）\n\(String(text.prefix(12000)))"
-            } else if ext == "pdf" {
-                // PDF：上传原件 + PDFKit 提取文本给 AI
-                let raw = extractPDFText(from: url) ?? ""
-                content = raw.isEmpty
-                    ? "[PDF: \(name)]（已上传 NAS，扫描件无文字层）"
-                    : "[PDF: \(name)]（已上传 NAS）\n\(String(raw.prefix(12000)))"
-            } else {
-                // Word/Excel 等：整份上传（本地不提取，文件在 NAS 可下载）
-                content = "[文件: \(name)]（已上传 NAS）"
+            switch result {
+            case .success:
+                if ["txt", "md", "log", "json", "csv"].contains(ext),
+                   let text = try? String(contentsOf: url, encoding: .utf8) {
+                    // 文本类：上传原件 + 提取前 12000 字给 AI 阅读
+                    content = "[文件: \(name)]（已上传 NAS）\n\(String(text.prefix(12000)))"
+                } else if ext == "pdf" {
+                    // PDF：上传原件 + PDFKit 提取文本给 AI
+                    let raw = extractPDFText(from: url) ?? ""
+                    content = raw.isEmpty
+                        ? "[PDF: \(name)]（已上传 NAS，扫描件无文字层）"
+                        : "[PDF: \(name)]（已上传 NAS）\n\(String(raw.prefix(12000)))"
+                } else {
+                    // Word/Excel 等：整份上传（本地不提取，文件在 NAS 可下载）
+                    content = "[文件: \(name)]（已上传 NAS）"
+                }
+            case .rejected(let msg):
+                // v2.0.86s：服务器拒绝（磁盘满/路径错误等）→ 显示具体原因
+                content = "[文件: \(name)]（上传失败：\(msg)）"
+            case .networkFailed(let msg):
+                // v2.0.86s：蜂窝 relay 上行 ~2KB 限制大文件；WiFi 网络异常则提示重试
+                if msg.contains("蜂窝") || msg.contains("文件过大") || NetworkMonitor.shared.isCellular {
+                    content = "[文件: \(name)]（上传失败：蜂窝网络限制大文件，请连接 WiFi 重试或使用 Web 版上传）"
+                } else {
+                    content = "[文件: \(name)]（上传失败：连接异常，请重试）"
+                }
             }
             chat.append(.local(role: "user", content: content))
             let history = chat.historyPayload()
