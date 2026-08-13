@@ -37,11 +37,7 @@ struct DockerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    // ===== 新建部署卡 =====
-                    // ===== 新建部署（v2.0.86j：拆子视图减类型检查负载）=====
-                    DeploySection(name: $name, yaml: $yaml, message: $message,
-                                  busy: busy, onDeploy: { await deploy() })
-
+                    // v2.0.87h：顺序调整——容器/镜像常用在前，新建部署移到最后
                     // ===== 已部署容器卡（v2.0.86i：拆子视图减类型检查负载）=====
                     ContainerSection(containers: containers,
                                      onRefresh: { await load() },
@@ -52,6 +48,9 @@ struct DockerSheet: View {
                     ImageSection(images: images,
                                  onRefresh: { await loadImages() },
                                  onDelete: { confirmImage = $0 })
+                    // ===== 新建部署（v2.0.86j：拆子视图；v2.0.87h：移到末尾）=====
+                    DeploySection(name: $name, yaml: $yaml, message: $message,
+                                  busy: busy, onDeploy: { await deploy() })
         }
             }
             .scrollDismissesKeyboard(.interactively)
