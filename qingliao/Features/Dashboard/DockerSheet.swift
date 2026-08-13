@@ -173,7 +173,7 @@ struct DockerContainerCard: View {
                     .shadow(color: color.opacity(0.6), radius: 4)
             }
             Text(running ? "运行中" : "已停止")
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 13.5, weight: .semibold))   // v2.0.86o：大字状态改小
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
             Text(portSuffix)
@@ -251,7 +251,7 @@ private struct DockerImageCard: View {
                     .shadow(color: color.opacity(0.6), radius: 4)
             }
             Text(inUse ? "使用中" : "未使用")
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 13.5, weight: .semibold))   // v2.0.86o：大字状态改小
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
             Text("\(image.id) · \(image.size) · 长按删除")
