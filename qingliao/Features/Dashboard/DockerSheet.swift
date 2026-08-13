@@ -17,7 +17,7 @@ struct DockerSheet: View {
     @State private var confirmImage: DockerImage?
 
     /// YAML 常用模板（一键插入）
-    private static let nginxTemplate = """
+    static let nginxTemplate = """
     services:
       app:
         image: nginx:latest
@@ -28,129 +28,16 @@ struct DockerSheet: View {
     """
 
     /// v2.0.86g：YAML 空态提示常量（拆分复杂字符串，规避 Swift 6 类型检查超时）
-    private static let yamlHint = "services:\n  app:\n    image: nginx:latest\n    ports:\n      - \"8080:80\""
+    static let yamlHint = "services:\n  app:\n    image: nginx:latest\n    ports:\n      - \"8080:80\""
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
                     // ===== 新建部署卡 =====
-                    VStack(alignment: .leading, spacing: 10) {
-                        Label("新建部署", systemImage: "plus.circle.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-
-                        // 项目名（实时预览目录）
-                        TextField("项目名（如 myapp）", text: $name)
-                            .font(.system(size: 14))
-                            .focused($focused)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
-                            )
-                        if !name.isEmpty {
-                            Text("目录：/volume1/docker/\(name)/")
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-
-                        // YAML 编辑器
-                        ZStack(alignment: .topTrailing) {
-                            TextEditor(text: $yaml)
-                                .font(.system(size: 12, design: .monospaced))
-                                .focused($focused)
-                                .frame(minHeight: 180)
-                                .padding(8)
-                                .scrollContentBackground(.hidden)
-                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
-                                )
-                                // YAML 空态提示（v2.0.86g：内容提常量，减类型检查负载）
-                                .overlay(alignment: .topLeading) {
-                                    if yaml.isEmpty {
-                                        Text(Self.yamlHint)
-                                            .font(.system(size: 12, design: .monospaced))
-                                            .foregroundStyle(.tertiary.opacity(0.6))
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 16)
-                                            .allowsHitTesting(false)
-                                    }
-                                }
-                            // 模板按钮
-                            if yaml.isEmpty {
-                                Button {
-                                    yaml = Self.nginxTemplate
-                                } label: {
-                                    Label("模板", systemImage: "text.badge.plus")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(.ultraThinMaterial, in: Capsule())
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(8)
-                            }
-                        }
-
-                        // 部署按钮（渐变蓝，确认后生效）
-                        Button {
-                            focused = false
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()   // v2.0.77 触感
-                            Task { await deploy() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if busy {
-                                    ProgressView().tint(.white)
-                                }
-                                Text(busy ? "部署中…" : "部署")
-                                    .font(.system(size: 15, weight: .semibold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                LinearGradient(colors: [.blue, .indigo],
-                                               startPoint: .leading, endPoint: .trailing),
-                                in: RoundedRectangle(cornerRadius: 12)
-                            )
-                            .foregroundStyle(.white)
-                            .shadow(color: .blue.opacity(0.35), radius: 8, y: 3)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
-                                     || yaml.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .opacity(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
-                                   || yaml.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-                    }
-                    .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                    )
-
-                    // 结果
-                    if let m = message {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: m.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(m.ok ? .green : .red)
-                            Text(m.text)
-                                .font(.system(size: 12))
-                                .foregroundStyle(m.ok ? .green : .red)
-                                .textSelection(.enabled)
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background((m.ok ? Color.green : Color.red).opacity(0.1),
-                                    in: RoundedRectangle(cornerRadius: 10))
-                    }
+                    // ===== 新建部署（v2.0.86j：拆子视图减类型检查负载）=====
+                    DeploySection(name: $name, yaml: $yaml, message: $message,
+                                  busy: busy, onDeploy: { await deploy() })
 
                     // ===== 已部署容器卡（v2.0.86i：拆子视图减类型检查负载）=====
                     ContainerSection(containers: containers,
@@ -492,5 +379,131 @@ private struct ImageSection: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
         )
+    }
+}
+
+// MARK: - v2.0.86j 新建部署子视图（拆出主 body，规避 Swift 6 类型检查超时）
+
+private struct DeploySection: View {
+    @Binding var name: String
+    @Binding var yaml: String
+    @Binding var message: (ok: Bool, text: String)?
+    var busy: Bool
+    var onDeploy: () async -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("新建部署", systemImage: "plus.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+
+            TextField("项目名（如 myapp）", text: $name)
+                .font(.system(size: 14))
+                .focused($focused)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+                )
+            if !name.isEmpty {
+                Text("目录：/volume1/docker/\(name)/")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            // YAML 编辑器
+            ZStack(alignment: .topTrailing) {
+                TextEditor(text: $yaml)
+                    .font(.system(size: 12, design: .monospaced))
+                    .focused($focused)
+                    .frame(minHeight: 180)
+                    .padding(8)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+                    )
+                    .overlay(alignment: .topLeading) {
+                        if yaml.isEmpty {
+                            Text(DockerSheet.yamlHint)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.tertiary.opacity(0.6))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 16)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                if yaml.isEmpty {
+                    Button {
+                        yaml = DockerSheet.nginxTemplate
+                    } label: {
+                        Label("模板", systemImage: "text.badge.plus")
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                }
+            }
+
+            Button {
+                focused = false
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Task { await onDeploy() }
+            } label: {
+                HStack(spacing: 8) {
+                    if busy {
+                        ProgressView().tint(.white)
+                    }
+                    Text(busy ? "部署中…" : "部署")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(colors: [.blue, .indigo],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .foregroundStyle(.white)
+                .shadow(color: .blue.opacity(0.35), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
+                         || yaml.trimmingCharacters(in: .whitespaces).isEmpty)
+            .opacity(busy || name.trimmingCharacters(in: .whitespaces).isEmpty
+                       || yaml.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+        }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+
+        // 结果提示
+        if let m = message {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: m.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(m.ok ? .green : .red)
+                Text(m.text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(m.ok ? .primary : .red)
+                    .textSelection(.enabled)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((m.ok ? Color.green : Color.red).opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 }
