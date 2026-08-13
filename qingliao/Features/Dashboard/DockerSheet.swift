@@ -253,8 +253,7 @@ struct DockerSheet: View {
                 return DockerContainer(name: n,
                                        status: d["status"] as? String ?? "",
                                        ports: d["ports"] as? String ?? "",
-                                       isComposeProject: (d["is_compose"] as? Bool) ?? false,
-                                       isSystem: (d["is_system"] as? Bool) ?? false)
+                                       isComposeProject: (d["is_compose"] as? Bool) ?? false)
             }
         }
     }
@@ -291,7 +290,6 @@ struct DockerContainer: Identifiable {
     let status: String
     let ports: String
     let isComposeProject: Bool
-    let isSystem: Bool   // v2.0.81：系统关键容器（后端拒绝停止/删除）
     var id: String { name }
 }
 
@@ -318,16 +316,6 @@ struct DockerContainerCard: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                // v2.0.81：系统关键容器标记（后端拒绝停止/删除）
-                if container.isSystem {
-                    Text("系统")
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.red.opacity(0.15))
-                        .clipShape(Capsule())
-                        .foregroundStyle(.red)
-                }
                 Spacer()
                 Circle()
                     .fill(color)

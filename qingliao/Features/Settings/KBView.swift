@@ -9,6 +9,7 @@ struct KBView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var docs: [KBDoc] = []
     @State private var showImporter = false
+    @State private var showPasteSheet = false   // v2.0.83 粘贴文本上传
     @State private var message: (ok: Bool, text: String)?
     @State private var busy = false
 
@@ -23,6 +24,17 @@ struct KBView: View {
                             Image(systemName: "plus.circle.fill")
                                 .foregroundStyle(Color.accentColor)
                             Text("上传文档（txt / md / PDF）")
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                    // v2.0.83：粘贴文本上传（LiveContainer 环境文件选择器可能无反应）
+                    Button {
+                        showPasteSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "doc.plaintext")
+                                .foregroundStyle(Color.teal)
+                            Text("粘贴文本上传")
                                 .foregroundStyle(.primary)
                         }
                     }
@@ -61,6 +73,14 @@ struct KBView: View {
                 }
             }
             .task { await load() }
+            // v2.0.83：粘贴文本上传 sheet
+            .sheet(isPresented: $showPasteSheet) {
+                PasteKBSheet { name, content in
+                    showPasteSheet = false
+                    Task { await uploadContent(name, content) }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .fileImporter(isPresented: $showImporter,
                           allowedContentTypes: [.plainText, .pdf,
                                                 UTType(filenameExtension: "md") ?? .data,
@@ -126,6 +146,23 @@ struct KBView: View {
         await load()
     }
 
+    /// v2.0.83：直接上传文本内容（粘贴上传用）
+    private func uploadContent(_ name: String, _ content: String) async {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !trimmed.isEmpty else {
+            message = (false, "名称和内容不能为空")
+            return
+        }
+        if let j = try? await auth.json("/api/kb/upload", method: "POST",
+                                        body: ["name": name, "content": trimmed]) {
+            let ok = (j["ok"] as? Bool) ?? false
+            message = (ok, j["message"] as? String ?? (ok ? "已保存" : "上传失败"))
+        } else {
+            message = (false, "请求失败")
+        }
+        await load()
+    }
+
     /// PDFKit 提取文本（文本型 PDF 才有内容）
     private func extractPDFText(from url: URL) -> String? {
         guard let doc = PDFDocument(url: url) else { return nil }
@@ -179,4 +216,43 @@ struct KBDoc: Identifiable {
     let chunks: Int
     let size: Int
     var id: String { name }
+}
+
+// MARK: - v2.0.83 粘贴文本上传（LiveContainer 文件选择器无反应的备用通道）
+
+private struct PasteKBSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var content = ""
+    var onSave: (String, String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("文档名称") {
+                    TextField("如：TPS6594 手册笔记", text: $name)
+                }
+                Section("内容（粘贴文本）") {
+                    TextEditor(text: $content)
+                        .frame(minHeight: 180)
+                        .font(.system(size: 13))
+                }
+            }
+            .navigationTitle("粘贴文本上传")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        onSave(name.trimmingCharacters(in: .whitespacesAndNewlines),
+                               content)
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
 }

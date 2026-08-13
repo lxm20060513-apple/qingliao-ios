@@ -904,6 +904,8 @@ struct MeterCard: View {
             .padding(.top, 7)
         }
         .padding(12)
+        // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
+        .frame(height: 106, alignment: .top)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -931,6 +933,8 @@ struct ServiceCard: View {
             Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary).padding(.top, 1)
         }
         .padding(12)
+        // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
+        .frame(height: 106, alignment: .top)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

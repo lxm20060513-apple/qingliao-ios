@@ -55,7 +55,6 @@ struct ChatView: View {
     @State private var showMoreMenu = false
     @State private var showExporter = false
     @State private var exportText = ""
-    @State private var showVoiceDenied = false   // v2.0.36 录音权限被拒提示
     @State private var clearing = false          // v2.0.40 清空会话两步走标志
     // v2.0.43：快捷指令 / 搜索定位高亮
     @State private var showQuickPrompts = false
@@ -65,17 +64,7 @@ struct ChatView: View {
     // v2.0.59：上下文过长提示 / 失败重试
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
-    // v2.0.61：语音消息（录音 → 语音条）
-    @State private var showAudioRecorder = false
-    // v2.0.81：语音输入（按住说话 → 中文识别 → 发送）
-    @State private var showSpeechInput = false
-    @State private var audioRecorder: AVAudioRecorder?
-    @State private var audioTimer: Timer?
-    @State private var audioSeconds = 0
-    @State private var isAudioRecording = false
     // 语音输入（按住说话 → SFSpeechRecognizer 转写）
-    @State private var isRecording = false
-    @State private var voiceBusy = false
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
     // 大爆炸（BigBang）文本炸开
@@ -185,8 +174,6 @@ struct ChatView: View {
                 HStack(spacing: 26) {
                     attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
-                    // v2.0.61：语音消息（录音 → 语音条）
-                    attachButton("waveform", "语音", Color.pink) { showAudioRecorder = true }
                     // v2.0.81：语音输入（按住说话 → 中文识别 → 文字发送）
                     attachButton("mic.fill", "语音输入", Color.teal) { showSpeechInput = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
@@ -236,11 +223,8 @@ struct ChatView: View {
                                  showAttachmentMenu.toggle()
                              }
                          },
-                         onCamera: { showCameraPicker = true },
-                         isRecording: isRecording,
-                         onVoiceStart: { startVoice() },
-                         onVoiceEnd: { endVoice() })
-            // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
+                         onCamera: { showCameraPicker = true })
+                         // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
                      ? max(0, UIScreen.main.bounds.height - kb.topY)
@@ -465,38 +449,13 @@ struct ChatView: View {
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
         }
-        // v2.0.61：语音消息录音面板
-        .sheet(isPresented: $showAudioRecorder) {
-            VStack(spacing: 28) {
-                Text("语音消息")
-                    .font(.system(size: 17, weight: .bold))
-                Text(isAudioRecording ? "录音中… \(audioSeconds)″" : "点击开始录音（最长 60 秒）")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Button {
-                    isAudioRecording ? stopRecordingAndSend() : startAudioRecording()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(isAudioRecording ? Color.red : Color.pink)
-                            .frame(width: 84, height: 84)
-                            .shadow(color: (isAudioRecording ? Color.red : Color.pink).opacity(0.4),
-                                    radius: 12, y: 4)
-                        Image(systemName: isAudioRecording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-                Button("取消") {
-                    discardRecording()
-                    showAudioRecorder = false
-                }
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+        // v2.0.81：语音输入（按住说话 → 文字 → 发送）
+        .sheet(isPresented: $showSpeechInput) {
+            SpeechInputSheet { text in
+                showSpeechInput = false
+                sendCore(text: text, imageData: nil)
             }
-            .padding(.vertical, 40)
-            .presentationDetents([.height(280)])
+            .presentationDetents([.medium])
         }
         // v2.0.59：上下文过长提示（60+ 条建议压缩）
         .alert("上下文较长", isPresented: $showLongContextAlert) {
@@ -527,16 +486,6 @@ struct ChatView: View {
                       contentType: .plainText,
                       defaultFilename: "轻聊会话") { _ in }
         // v2.0.36：录音权限被拒提示
-        .alert("无法使用语音输入", isPresented: $showVoiceDenied) {
-            Button("去设置", role: .cancel) {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("麦克风权限被拒绝，请在系统设置中允许轻聊使用麦克风")
-        }
     }
 
     /// 思考中动画（三点跳动）
@@ -687,64 +636,6 @@ struct ChatView: View {
     }
 
     // MARK: - v2.0.61 语音消息（录音 → 本地语音条）
-
-    private func startAudioRecording() {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Audio", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("voice_\(Int(Date().timeIntervalSince1970)).m4a")
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-        try? AVAudioSession.sharedInstance().setCategory(.record, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        audioRecorder = try? AVAudioRecorder(url: url, settings: settings)
-        guard audioRecorder != nil else {
-            // 权限被拒等
-            showVoiceDenied = true
-            return
-        }
-        audioRecorder?.record()
-        isAudioRecording = true
-        audioSeconds = 0
-        audioTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            audioSeconds += 1
-            if audioSeconds >= 60 { stopRecordingAndSend() }
-        }
-    }
-
-    private func stopRecordingAndSend() {
-        audioTimer?.invalidate()
-        audioTimer = nil
-        guard let r = audioRecorder else { return }
-        let dur = max(1, Int(r.currentTime.rounded()))
-        let path = r.url.path
-        r.stop()
-        audioRecorder = nil
-        isAudioRecording = false
-        // 本地语音条消息（AI 暂不解析音频；内容带时长便于显示）
-        withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
-            chat.append(ChatMessage(role: "user", content: "[语音 \(dur)″]",
-                                    timestamp: Date().timeIntervalSince1970 * 1000,
-                                    audioPath: path))
-        }
-        Task { await chat.saveToServer(auth: auth) }
-        showAudioRecorder = false
-    }
-
-    private func discardRecording() {
-        audioTimer?.invalidate()
-        audioTimer = nil
-        if let r = audioRecorder {
-            r.stop()
-            try? FileManager.default.removeItem(at: r.url)
-        }
-        audioRecorder = nil
-        isAudioRecording = false
-    }
 
     /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
     private func shareText(_ text: String) {
@@ -915,74 +806,6 @@ struct ChatView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - 语音输入（按住说话 → 录音 → SFSpeechRecognizer 转写填入输入框）
-
-    private func startVoice() {
-        guard !voiceBusy, !isRecording else { return }
-        AVAudioApplication.requestRecordPermission { granted in
-            guard granted else {
-                // v2.0.36：权限被拒明确提示（不再静默失败）
-                DispatchQueue.main.async {
-                    showVoiceDenied = true
-                }
-                return
-            }
-            DispatchQueue.main.async {
-                let url = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("voice-\(Int(Date().timeIntervalSince1970)).m4a")
-                let settings: [String: Any] = [
-                    AVFormatIDKey: kAudioFormatMPEG4AAC,
-                    AVSampleRateKey: 16000,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
-                ]
-                do {
-                    let rec = try AVAudioRecorder(url: url, settings: settings)
-                    rec.record()
-                    audioRecorder = rec
-                    isRecording = true
-                    inputFocus = false
-                } catch {}
-            }
-        }
-    }
-
-    private func endVoice() {
-        guard isRecording else { return }
-        isRecording = false
-        voiceBusy = true
-        let url = audioRecorder?.url
-        audioRecorder?.stop()
-        audioRecorder = nil
-        guard let url, FileManager.default.fileExists(atPath: url.path) else {
-            voiceBusy = false
-            return
-        }
-        transcribe(url)
-    }
-
-    private func transcribe(_ url: URL) {
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN")),
-              recognizer.isAvailable else {
-            voiceBusy = false
-            return
-        }
-        let request = SFSpeechURLRecognitionRequest(url: url)
-        recognizer.recognitionTask(with: request) { result, error in
-            if let result {
-                let t = result.bestTranscription.formattedString
-                DispatchQueue.main.async {
-                    inputText = t
-                    voiceBusy = false
-                }
-            } else if error != nil {
-                DispatchQueue.main.async {
-                    voiceBusy = false
-                }
-            }
-        }
     }
 
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
