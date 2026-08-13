@@ -635,9 +635,19 @@ struct ChatLogDocument: FileDocument {
 }
 
 // MARK: - v2.0.87d markdown 表格视图（表头加粗 + 斑马纹 + 横向滚动）
+// v2.0.87m：统一列宽（按每列最大内容宽度，列对齐不再错位）
 
 private struct MarkdownTableView: View {
     let rows: [[String]]
+
+    /// 每列统一宽度（按该列最长内容估宽，中文 12pt 约 13px/字）
+    private var colWidths: [CGFloat] {
+        guard let first = rows.first else { return [] }
+        return first.indices.map { c in
+            let maxLen = rows.map { $0.indices.contains(c) ? $0[c].count : 0 }.max() ?? 0
+            return max(56, min(CGFloat(maxLen) * 13 + 22, 160))
+        }
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -650,7 +660,7 @@ private struct MarkdownTableView: View {
                                 .foregroundStyle(r == 0 ? Color.primary : Color.secondary)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .frame(minWidth: 64, alignment: .leading)
+                                .frame(width: colWidths.indices.contains(c) ? colWidths[c] : 80, alignment: .leading)
                                 .background(r == 0
                                             ? Color.accentColor.opacity(0.08)
                                             : (r % 2 == 0 ? Color.primary.opacity(0.03) : Color.clear))
