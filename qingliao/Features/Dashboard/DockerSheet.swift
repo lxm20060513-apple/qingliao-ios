@@ -191,10 +191,15 @@ struct DockerSheet: View {
                                             let act = c.status.contains("Up") ? "stop" : "start"
                                             Task { await action(c.name, act) }
                                         }
-                                        .onLongPressGesture {
-                                            // v2.0.77：长按删除确认触感
-                                            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                                            confirmTarget = c
+                                        // v2.0.81：长按删除改 contextMenu（原 onLongPressGesture 与 onTapGesture
+                                        // 手势冲突，快速点击偶发被吞；contextMenu 由系统协调长按+点击，互不干扰）
+                                        .contextMenu {
+                                            Button(role: .destructive) {
+                                                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                                confirmTarget = c
+                                            } label: {
+                                                Label("删除容器", systemImage: "trash")
+                                            }
                                         }
                                 }
                             }
@@ -313,13 +318,20 @@ struct DockerContainerCard: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            Text(container.ports.isEmpty
-                 ? (running ? "单击停止 · 长按删除" : "单击启动 · 长按删除")
-                 : container.ports)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .padding(.top, 2)
+            // v2.0.81：端口 + 操作提示统一显示（原来有端口的卡只显示端口、无提示，用户困惑）
+            VStack(alignment: .leading, spacing: 2) {
+                if !container.ports.isEmpty {
+                    Text(container.ports)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                Text(running ? "单击停止 · 长按删除" : "单击启动 · 长按删除")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .padding(.top, 4)
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
