@@ -469,31 +469,20 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复时彩色流光描边（v2.0.87y：双层流光+光晕+加速；v2.0.87z：Siri 淡雅蓝紫粉配色）
+        // v2.0.87s：等待回复流光（v2.0.87an：去掉边框跑马灯旋转，只保留内部流光加深）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
-                    let angle = (t * 80).truncatingRemainder(dividingBy: 360)
-                    ZStack {
-                        // 内部淡流光（v2.0.87ak：加深——水波更明显）
-                        Capsule().fill(
-                            AngularGradient(
-                                colors: [.blue.opacity(0.20), .indigo.opacity(0.20),
-                                         .pink.opacity(0.20), .red.opacity(0.15), .blue.opacity(0.20)],
-                                center: .center, angle: .degrees(angle))
-                        )
-                        // 外部流光描边（v2.0.87ak：边框跑马灯变淡——低调）
-                        Capsule()
-                            .strokeBorder(
-                                AngularGradient(colors: [.blue.opacity(0.5), .indigo.opacity(0.5),
-                                                         .pink.opacity(0.5), .red.opacity(0.38),
-                                                         .blue.opacity(0.5)],
-                                                center: .center, angle: .degrees(angle)),
-                                lineWidth: 1.6
-                            )
-                    }
-                    .shadow(color: .indigo.opacity(0.28), radius: 6)
+                    let angle = (t * 70).truncatingRemainder(dividingBy: 360)
+                    // 内部流光（v2.0.87an：加深 0.20→0.32）
+                    Capsule().fill(
+                        AngularGradient(
+                            colors: [.blue.opacity(0.32), .indigo.opacity(0.32),
+                                     .pink.opacity(0.32), .red.opacity(0.25), .blue.opacity(0.32)],
+                            center: .center, angle: .degrees(angle))
+                    )
+                    .shadow(color: .indigo.opacity(0.30), radius: 6)
                     .allowsHitTesting(false)   // v2.0.87al：流光层不拦截点击（停止按钮可点）
                 }
             } else {

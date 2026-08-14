@@ -26,6 +26,9 @@ struct SettingsView: View {
     @State private var haAddress = ""
     // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
+    // v2.0.87am：天气城市（手动输入）
+    @AppStorage("qingliao_weather_city") private var weatherCity = ""
+    @State private var showWeatherCity = false
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -125,6 +128,33 @@ struct SettingsView: View {
                                 }
                             }
                             .padding(.bottom, 4)
+                        }
+                        // v2.0.87am：天气城市（手动输入，看板右上角天气）
+                        SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showWeatherCity.toggle() } }
+                        if showWeatherCity {
+                            HStack(spacing: 10) {
+                                TextField("如：上海 / 北京", text: $weatherCity)
+                                    .font(.system(size: 13))
+                                    .textInputAutocapitalization(.never)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .onSubmit {
+                                        UserDefaults.standard.set(weatherCity.trimmingCharacters(in: .whitespaces), forKey: "qingliao_weather_city")
+                                        withAnimation { showWeatherCity = false }
+                                    }
+                                Button("保存") {
+                                    UserDefaults.standard.set(weatherCity.trimmingCharacters(in: .whitespaces), forKey: "qingliao_weather_city")
+                                    withAnimation { showWeatherCity = false }
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 10)
                         }
                         Divider().padding(.leading, 52)
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）

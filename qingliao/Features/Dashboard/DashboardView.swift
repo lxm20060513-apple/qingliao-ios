@@ -100,8 +100,8 @@ struct DashboardView: View {
             await loadDockerCount()
             // v2.0.86：硬件温度（CPU / NVMe）
             await loadHw()
-            // v2.0.87u/v：天气（右上角徽章；定位授权后按坐标，拒绝则不显示）
-            await loadWeatherWithLocation()
+            // v2.0.87am：天气（右上角徽章；手动城市名）
+            await loadWeatherWithCity()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -119,7 +119,7 @@ struct DashboardView: View {
     // v2.0.87u：天气
     @State private var weatherTemp: Double?
     @State private var weatherCode: Int?
-    @State private var weatherCity = ""   // v2.0.87ag：城市名
+    @State private var weatherCity = UserDefaults.standard.string(forKey: "qingliao_weather_city") ?? ""   // v2.0.87am：手动城市
 
     private var hwDetail: String {
         let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
@@ -142,20 +142,19 @@ struct DashboardView: View {
         }
     }
 
-    // v2.0.87v：定位授权 → 按坐标查天气（拒绝/未授权不显示徽章）
-    private func loadWeatherWithLocation() async {
-        let loc = LocationManager.shared
-        loc.request()
-        // 等待定位结果（最多 16 秒）
-        for _ in 0..<32 {
-            if loc.resolved { break }
-            try? await Task.sleep(for: .seconds(0.5))
+    // v2.0.87am：手动城市名 → 天气（未设置城市不显示徽章）
+    private func loadWeatherWithCity() async {
+        weatherCity = UserDefaults.standard.string(forKey: "qingliao_weather_city") ?? ""
+        guard !weatherCity.isEmpty else {
+            weatherTemp = nil
+            weatherCode = nil
+            return
         }
-        guard let coord = loc.location else { return }   // 拒绝/失败 → 不显示天气
-        if let j = try? await auth.json("/api/weather?lat=\(coord.latitude)&lon=\(coord.longitude)") {
+        let enc = weatherCity.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? weatherCity
+        if let j = try? await auth.json("/api/weather?city=\(enc)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
-            weatherCity = j["city"] as? String ?? ""
+            if let c = j["city"] as? String, !c.isEmpty { weatherCity = c }
         }
     }
 
