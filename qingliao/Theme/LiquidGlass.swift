@@ -104,24 +104,26 @@ struct SiriGlowOverlay: View {
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height + geo.safeAreaInsets.top
+                // v2.0.87bm：呼吸效果（透明度 sin 周期变化，0.25↔0.55）
+                let breathe = 0.25 + 0.15 * (sin(t * 2.2) + 1) / 2
                 Rectangle()
                     .fill(
                         AngularGradient(
-                            colors: [.blue.opacity(0.30), .indigo.opacity(0.26),
-                                     .pink.opacity(0.26), .red.opacity(0.18), .blue.opacity(0.30)],
-                            center: .center, angle: .degrees(angle)
+                            colors: [.blue.opacity(0.30 * breathe), .indigo.opacity(0.26 * breathe),
+                                     .pink.opacity(0.26 * breathe), .red.opacity(0.18 * breathe), .blue.opacity(0.30 * breathe)],
+                            center: .center
                         )
                     )
                     .mask(
                         Path { p in
-                            let e: CGFloat = 44
-                            // v2.0.87bk：四边均匀光带
+                            // v2.0.87bm：光带收窄到边框边缘（44→22pt，不挤进内容区）
+                            let e: CGFloat = 22
                             p.addRect(CGRect(x: 0, y: 0, width: w, height: h))
                             p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e))
                         }
                         .fill(style: FillStyle(eoFill: true))
                     )
-                    .blur(radius: 10)
+                    .blur(radius: 8)
                     .frame(width: w, height: h)
                     .allowsHitTesting(false)
             }
