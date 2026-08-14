@@ -91,3 +91,34 @@ struct PageHeader: View {
         .padding(.bottom, 8)
     }
 }
+
+// MARK: - v2.0.87bb 新版 Siri 边框发光特效（AI 回答时屏幕边缘渐变光晕）
+
+struct SiriGlowOverlay: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let angle = (t * 22).truncatingRemainder(dividingBy: 360)
+            GeometryReader { geo in
+                // 全屏旋转渐变 → 边缘 40pt 光晕（mask 边框 + 模糊柔化）
+                Rectangle()
+                    .fill(
+                        AngularGradient(
+                            colors: [.blue.opacity(0.30), .indigo.opacity(0.26),
+                                     .pink.opacity(0.26), .red.opacity(0.18), .blue.opacity(0.30)],
+                            center: .center, angle: .degrees(angle)
+                        )
+                    )
+                    .mask(
+                        Rectangle()
+                            .strokeBorder(style: StrokeStyle(lineWidth: 44))
+                            .padding(-22)
+                    )
+                    .blur(radius: 10)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .allowsHitTesting(false)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}

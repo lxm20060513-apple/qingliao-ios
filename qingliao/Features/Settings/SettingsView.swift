@@ -31,6 +31,8 @@ struct SettingsView: View {
     @State private var showWeatherCity = false
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
+    // v2.0.87bb：Siri 边框发光开关
+    @AppStorage("qingliao_siri_glow") private var siriGlowOn = true
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -143,6 +145,24 @@ struct SettingsView: View {
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 Toggle("", isOn: $glowOn)
+                                    .labelsHidden()
+                                    .tint(Color.accentColor)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            // v2.0.87bb：AI 回答 Siri 边框发光
+                            Divider().padding(.leading, 52)
+                            HStack(spacing: 12) {
+                                Image(systemName: "sparkles.rectangle.stack")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.indigo, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                Text("Siri 边框发光")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Toggle("", isOn: $siriGlowOn)
                                     .labelsHidden()
                                     .tint(Color.accentColor)
                             }
