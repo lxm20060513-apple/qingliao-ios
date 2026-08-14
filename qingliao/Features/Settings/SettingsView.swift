@@ -130,6 +130,24 @@ struct SettingsView: View {
                                 }
                             }
                             .padding(.bottom, 4)
+                            // v2.0.87ax/ba：输入框流光光效开关（外观二级菜单内，Dock 栏设置同风格）
+                            Divider().padding(.leading, 52)
+                            HStack(spacing: 12) {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.purple, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                Text("输入框流光光效")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Toggle("", isOn: $glowOn)
+                                    .labelsHidden()
+                                    .tint(Color.accentColor)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                         }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
@@ -158,10 +176,6 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
-                        // v2.0.87ax：输入框流光光效开关（v2.0.87az：行尾开关防错位）
-                        SettingRow(icon: "waveform", iconColor: .purple, title: "输入框流光光效",
-                                   value: glowOn ? "开" : "关", toggle: $glowOn)
-                        Divider().padding(.leading, 52)
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
                         SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showFontOptions.toggle() } }
