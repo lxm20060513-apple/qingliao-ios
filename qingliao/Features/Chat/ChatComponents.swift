@@ -476,21 +476,21 @@ struct ChatInputBar: View {
                     let t = context.date.timeIntervalSinceReferenceDate
                     let angle = (t * 80).truncatingRemainder(dividingBy: 360)
                     ZStack {
-                        // 内部淡流光（水波感，Siri 淡色）
+                        // 内部淡流光（v2.0.87ak：加深——水波更明显）
                         Capsule().fill(
                             AngularGradient(
-                                colors: [.blue.opacity(0.10), .indigo.opacity(0.10),
-                                         .pink.opacity(0.10), .red.opacity(0.08), .blue.opacity(0.10)],
+                                colors: [.blue.opacity(0.20), .indigo.opacity(0.20),
+                                         .pink.opacity(0.20), .red.opacity(0.15), .blue.opacity(0.20)],
                                 center: .center, angle: .degrees(angle))
                         )
-                        // 外部流光描边（Siri 蓝-紫-粉-红，低饱和）
+                        // 外部流光描边（v2.0.87ak：边框跑马灯变淡——低调）
                         Capsule()
                             .strokeBorder(
-                                AngularGradient(colors: [.blue.opacity(0.7), .indigo.opacity(0.7),
-                                                         .pink.opacity(0.7), .red.opacity(0.55),
-                                                         .blue.opacity(0.7)],
+                                AngularGradient(colors: [.blue.opacity(0.5), .indigo.opacity(0.5),
+                                                         .pink.opacity(0.5), .red.opacity(0.38),
+                                                         .blue.opacity(0.5)],
                                                 center: .center, angle: .degrees(angle)),
-                                lineWidth: 1.8
+                                lineWidth: 1.6
                             )
                     }
                     .shadow(color: .indigo.opacity(0.28), radius: 6)
