@@ -158,11 +158,9 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
-                        // v2.0.87ax：输入框流光光效开关（聊天页等待回复动画）
-                        SettingRow(icon: "waveform", iconColor: .purple, title: "输入框流光光效", value: glowOn ? "开" : "关", chevron: false)
-                        Toggle("", isOn: $glowOn)
-                            .labelsHidden()
-                            .padding(.trailing, 14)
+                        // v2.0.87ax：输入框流光光效开关（v2.0.87az：行尾开关防错位）
+                        SettingRow(icon: "waveform", iconColor: .purple, title: "输入框流光光效",
+                                   value: glowOn ? "开" : "关", toggle: $glowOn)
                         Divider().padding(.leading, 52)
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
                         SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
@@ -509,6 +507,8 @@ struct SettingRow: View {
     let title: String
     var value: String? = nil
     var chevron: Bool = false
+    // v2.0.87az：行尾开关（替代独立 Toggle 行，避免错位）
+    var toggle: Binding<Bool>? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -530,6 +530,12 @@ struct SettingRow: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.tertiary)
+            }
+            // v2.0.87az：行尾开关
+            if let toggle {
+                Toggle("", isOn: toggle)
+                    .labelsHidden()
+                    .scaleEffect(0.8)
             }
         }
         .padding(.horizontal, 14)
