@@ -23,12 +23,15 @@ struct GlassCard: ViewModifier {
 
 // v2.0.87g：设置页密集列表卡改回毛玻璃（glassEffect 在密集卡上透出背景光斑显脏，
 // 单卡场景（看板 GlassCard）保留 glassEffect；列表用低调 material 保证文字可读）
+// v2.0.87ac：浅色下去 thinMaterial 灰蒙板 → 白底 0.85（用户反馈灰色蒙板）
 struct GlassListCard: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         content
             .background(
-                scheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.thinMaterial),
+                scheme == .dark
+                    ? AnyShapeStyle(.ultraThinMaterial)
+                    : AnyShapeStyle(Color.white.opacity(0.85)),
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
