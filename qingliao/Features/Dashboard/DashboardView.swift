@@ -23,7 +23,7 @@ struct DashboardView: View {
         VStack(spacing: 0) {
             // v2.0.87u：右上角天气（小图标 + 温度）
             PageHeader(title: "看板", subtitle: "智能家居 · NAS 状态",
-                       trailing: AnyView(WeatherBadge(temp: weatherTemp, code: weatherCode)))
+                       trailing: AnyView(WeatherBadge(temp: weatherTemp, code: weatherCode, city: weatherCity)))
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionTitle("智能家居")
@@ -119,6 +119,7 @@ struct DashboardView: View {
     // v2.0.87u：天气
     @State private var weatherTemp: Double?
     @State private var weatherCode: Int?
+    @State private var weatherCity = ""   // v2.0.87ag：城市名
 
     private var hwDetail: String {
         let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
@@ -154,6 +155,7 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/weather?lat=\(coord.latitude)&lon=\(coord.longitude)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
+            weatherCity = j["city"] as? String ?? ""
         }
     }
 
@@ -1018,6 +1020,7 @@ struct ServiceCard: View {
 struct WeatherBadge: View {
     let temp: Double?
     let code: Int?
+    var city = ""   // v2.0.87ag：具体地点
 
     /// WMO 天气码 → SF Symbol 图标
     private var icon: String {
@@ -1071,7 +1074,7 @@ struct WeatherBadge: View {
             .padding(.vertical, 4)
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.6))
-            Text("当前定位")
+            Text(city.isEmpty ? "当前定位" : "当前定位 · \(city)")
                 .font(.system(size: 8))
                 .foregroundStyle(.tertiary)
         }
