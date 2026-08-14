@@ -494,6 +494,7 @@ struct ChatInputBar: View {
                             )
                     }
                     .shadow(color: .indigo.opacity(0.28), radius: 6)
+                    .allowsHitTesting(false)   // v2.0.87al：流光层不拦截点击（停止按钮可点）
                 }
             } else {
                 Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
