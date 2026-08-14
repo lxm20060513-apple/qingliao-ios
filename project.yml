@@ -27,6 +27,7 @@ targets:
         CFBundleDisplayName: 轻聊
         CFBundleShortVersionString: "2.0.87"
         CFBundleVersion: "87"
+        NSLocationWhenInUseUsageDescription: 用于获取当前定位显示天气信息
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

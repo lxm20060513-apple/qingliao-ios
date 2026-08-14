@@ -100,8 +100,8 @@ struct DashboardView: View {
             await loadDockerCount()
             // v2.0.86：硬件温度（CPU / NVMe）
             await loadHw()
-            // v2.0.87u：天气（右上角徽章）
-            await loadWeather()
+            // v2.0.87u/v：天气（右上角徽章；定位授权后按坐标，拒绝则不显示）
+            await loadWeatherWithLocation()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -136,6 +136,22 @@ struct DashboardView: View {
     // v2.0.87u：天气加载（后端缓存 30 分钟）
     private func loadWeather() async {
         if let j = try? await auth.json("/api/weather") {
+            weatherTemp = j["temp"] as? Double
+            weatherCode = j["code"] as? Int
+        }
+    }
+
+    // v2.0.87v：定位授权 → 按坐标查天气（拒绝/未授权不显示徽章）
+    private func loadWeatherWithLocation() async {
+        let loc = LocationManager.shared
+        loc.request()
+        // 等待定位结果（最多 16 秒）
+        for _ in 0..<32 {
+            if loc.resolved { break }
+            try? await Task.sleep(for: .seconds(0.5))
+        }
+        guard let coord = loc.location else { return }   // 拒绝/失败 → 不显示天气
+        if let j = try? await auth.json("/api/weather?lat=\(coord.latitude)&lon=\(coord.longitude)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
         }
@@ -1036,6 +1052,10 @@ struct WeatherBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            // v2.0.87v：定位标识（当前定位）
+            Image(systemName: "location.fill")
+                .font(.system(size: 8.5))
+                .foregroundStyle(Color.blue)
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(iconColor)
