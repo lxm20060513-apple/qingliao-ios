@@ -480,14 +480,15 @@ struct ChatInputBar: View {
                         Capsule().fill(
                             AngularGradient(
                                 colors: [.blue.opacity(0.10), .indigo.opacity(0.10),
-                                         .pink.opacity(0.10), .blue.opacity(0.10)],
+                                         .pink.opacity(0.10), .red.opacity(0.08), .blue.opacity(0.10)],
                                 center: .center, angle: .degrees(angle))
                         )
-                        // 外部流光描边（Siri 蓝-紫-粉，低饱和）
+                        // 外部流光描边（Siri 蓝-紫-粉-红，低饱和）
                         Capsule()
                             .strokeBorder(
                                 AngularGradient(colors: [.blue.opacity(0.7), .indigo.opacity(0.7),
-                                                         .pink.opacity(0.7), .blue.opacity(0.7)],
+                                                         .pink.opacity(0.7), .red.opacity(0.55),
+                                                         .blue.opacity(0.7)],
                                                 center: .center, angle: .degrees(angle)),
                                 lineWidth: 1.8
                             )
