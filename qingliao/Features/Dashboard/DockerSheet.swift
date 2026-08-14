@@ -212,9 +212,15 @@ struct DockerContainerCard: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onUpgrade()
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.accentColor)
+                        // v2.0.87ap：圆形升级按钮（圆底浅色 + 箭头）
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.14))
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .frame(width: 26, height: 26)
                     }
                     .buttonStyle(.plain)
                 }
