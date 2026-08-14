@@ -2,9 +2,10 @@ import CoreLocation
 import Foundation
 
 // MARK: - v2.0.87v 定位（天气用）：授权后获取坐标，拒绝/未授权则 resolved=true 不再请求
+// v2.0.87w：@MainActor 与 CLLocationManagerDelegate 协议 conformance 冲突（Swift 6）→
+// 类改非隔离 + @unchecked Sendable（CLLocationManager delegate 回调本身在主线程，实际安全）
 
-@MainActor
-final class LocationManager: NSObject, CLLocationManagerDelegate {
+final class LocationManager: NSObject, CLLocationManagerDelegate, @unchecked Sendable {
     static let shared = LocationManager()
 
     private let manager = CLLocationManager()
@@ -17,7 +18,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyKilometer   // 天气精度足够，省电
     }
 
-    /// 请求定位（首次弹授权；拒绝后不再弹）
+    /// 请求定位（首次弹授权；拒绝后不再弹；主线程调用）
     func request() {
         guard !resolved else { return }
         let s = manager.authorizationStatus
@@ -29,8 +30,8 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
             resolved = true   // 拒绝/受限 → 不再请求，不显示天气
         }
         // 15 秒超时兜底（授权后无回调等极端情况）
-        Task {
-            try? await Task.sleep(for: .seconds(15))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self else { return }
             if !self.resolved { self.resolved = true }
         }
     }
@@ -40,18 +41,16 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         if s == .authorizedWhenInUse || s == .authorizedAlways {
             manager.requestLocation()
         } else if s == .denied || s == .restricted {
-            Task { @MainActor in self.resolved = true }
+            resolved = true
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        Task { @MainActor in
-            self.location = locations.first?.coordinate
-            self.resolved = true
-        }
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        location = locations.first?.coordinate
+        resolved = true
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        Task { @MainActor in self.resolved = true }   // 定位失败（权限弹窗未响应等）→ 不显示天气
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        resolved = true   // 定位失败（权限弹窗未响应等）→ 不显示天气
     }
 }
