@@ -1051,12 +1051,9 @@ struct WeatherBadge: View {
     }
 
     var body: some View {
-        // v2.0.87x：胶囊下方标注"当前定位"
+        // v2.0.87x：胶囊下方标注"当前定位"（v2.0.87ab：去掉胶囊内定位图标，更简洁）
         VStack(spacing: 2) {
             HStack(spacing: 4) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 8.5))
-                    .foregroundStyle(Color.blue)
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(iconColor)
