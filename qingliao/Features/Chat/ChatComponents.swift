@@ -469,29 +469,30 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复时彩色流光描边（v2.0.87y：双层流光+光晕+加速，跑马灯更动效）
+        // v2.0.87s：等待回复时彩色流光描边（v2.0.87y：双层流光+光晕+加速；v2.0.87z：Siri 淡雅蓝紫粉配色）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let angle = (t * 80).truncatingRemainder(dividingBy: 360)
                     ZStack {
-                        // 内部淡流光（水波感）
+                        // 内部淡流光（水波感，Siri 淡色）
                         Capsule().fill(
                             AngularGradient(
-                                colors: [.blue.opacity(0.14), .purple.opacity(0.14),
-                                         .pink.opacity(0.14), .orange.opacity(0.14), .blue.opacity(0.14)],
+                                colors: [.blue.opacity(0.10), .indigo.opacity(0.10),
+                                         .pink.opacity(0.10), .blue.opacity(0.10)],
                                 center: .center, angle: .degrees(angle))
                         )
-                        // 外部流光描边（加粗）
+                        // 外部流光描边（Siri 蓝-紫-粉，低饱和）
                         Capsule()
                             .strokeBorder(
-                                AngularGradient(colors: [.blue, .purple, .pink, .orange, .blue],
+                                AngularGradient(colors: [.blue.opacity(0.7), .indigo.opacity(0.7),
+                                                         .pink.opacity(0.7), .blue.opacity(0.7)],
                                                 center: .center, angle: .degrees(angle)),
-                                lineWidth: 2
+                                lineWidth: 1.8
                             )
                     }
-                    .shadow(color: .purple.opacity(0.35), radius: 6)
+                    .shadow(color: .indigo.opacity(0.28), radius: 6)
                 }
             } else {
                 Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
