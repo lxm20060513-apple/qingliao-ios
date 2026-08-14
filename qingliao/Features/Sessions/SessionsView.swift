@@ -566,13 +566,6 @@ struct SearchResultRow: View {
                     .foregroundStyle(Color.green.opacity(0.8))
             }
             .frame(width: 38, height: 38)
-            // v2.0.87ad：多选勾选圈（行尾覆盖显示）
-            if showCheck {
-                Spacer()
-                Image(systemName: checked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(checked ? Color.accentColor : Color.secondary.opacity(0.4))
-            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(result["title"] as? String ?? "新对话")
@@ -655,9 +648,16 @@ struct SessionRow: View {
                 Text(session.relativeTime)
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                // v2.0.87ad：多选勾选圈（编辑模式替代 chevron）
+                if showCheck {
+                    Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 19))
+                        .foregroundStyle(checked ? Color.accentColor : Color.secondary.opacity(0.4))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(.horizontal, 14)
