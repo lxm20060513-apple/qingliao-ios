@@ -29,6 +29,7 @@ struct DockTabView: View {
     @Environment(KeyboardObserver.self) private var kb
     @Environment(AuthStore.self) private var auth   // v2.0.63 通知直达需要
     @Environment(ChatStore.self) private var chat
+    @Environment(StreamClient.self) private var stream   // v2.0.87bi：流式期间 dock 保持原位
     @Environment(\.horizontalSizeClass) private var hSize   // v2.0.62 iPad 多栏
     // @Observable 单例必须 @State 持有，body 才能观察其属性变化（否则 hidden 更新不触发重绘）
     @State private var dockVisibility = DockVisibility.shared
@@ -90,10 +91,11 @@ struct DockTabView: View {
                 Spacer()
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 // 下滑隐藏 / 上滑显示（scrollPosition 驱动 + Dock 栏拖拽手势兜底）
+                // v2.0.87bi：流式回复期间 dock 保持原位（键盘状态触发下移与发光并存 → 根因修复）
                 DockBar(selected: $selected)
-                    .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
-                    .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
-                    .allowsHitTesting(!kb.isVisible && !dockVisibility.hidden)
+                    .offset(y: ((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming) ? 120 : 0)
+                    .opacity(((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming) ? 0 : 1)
+                    .allowsHitTesting(!((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming))
                     .animation(.spring(duration: 0.5, bounce: 0.25), value: dockVisibility.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
                     .gesture(

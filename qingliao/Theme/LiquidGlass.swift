@@ -98,7 +98,7 @@ struct SiriGlowOverlay: View {
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let angle = (t * 45).truncatingRemainder(dividingBy: 360)   // v2.0.87bg：光效频率加快(22→45)
+            let angle = (t * 22).truncatingRemainder(dividingBy: 360)   // v2.0.87bj：频率回第一版(22)
             // v2.0.87bc：UIScreen 全尺寸（覆盖状态栏顶部，GeometryReader 在 safe area 内取不到全屏）
             let w = UIScreen.main.bounds.width
             let h = UIScreen.main.bounds.height
