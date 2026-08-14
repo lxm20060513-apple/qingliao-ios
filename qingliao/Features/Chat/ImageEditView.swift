@@ -1,18 +1,22 @@
 import SwiftUI
 
 // MARK: - v2.0.92 发送前图片编辑（裁剪框拖动/缩放 + 涂鸦标注 4 色 + 撤销）
+// v2.0.92f：Canvas 渲染不可靠（编辑时看不到涂鸦）→ 改 Path 叠加；补 dismiss 退出；
+// 每条笔迹存颜色；onChange(geo.size) 重算裁剪框。
 
 struct ImageEditView: View {
     let image: UIImage
     let onDone: (UIImage) -> Void
     let onCancel: () -> Void
 
+    @Environment(\.dismiss) private var dismiss
+
     enum EditMode { case crop, draw }
 
     @State private var mode: EditMode = .crop
     @State private var cropRect: CGRect = .zero
     @State private var viewRect: CGRect = .zero      // 图片 aspectFit 显示区域（view 坐标）
-    @State private var strokes: [[CGPoint]] = []     // 已完成的涂鸦笔迹
+    @State private var strokes: [(color: Color, points: [CGPoint])] = []   // 笔迹（带颜色）
     @State private var currentStroke: [CGPoint] = []
     @State private var penColor: Color = .red
     @State private var dragStart: CGRect?
@@ -33,18 +37,18 @@ struct ImageEditView: View {
                         .frame(width: vr.width, height: vr.height)
                         .position(x: vr.midX, y: vr.midY)
 
-                    // 涂鸦层（图片区域内，不拦截手势）
-                    if !strokes.isEmpty || !currentStroke.isEmpty {
-                        Canvas { ctx, _ in
-                            for s in strokes { drawPath(s, in: &ctx) }
-                            drawPath(currentStroke, in: &ctx)
+                    // 涂鸦显示（Path 叠加，逐条绘制——比 Canvas 可靠）
+                    ZStack(alignment: .topLeading) {
+                        ForEach(Array(strokes.enumerated()), id: \.offset) { _, s in
+                            strokePath(s.points, color: s.color)
                         }
-                        .frame(width: vr.width, height: vr.height)
-                        .position(x: vr.midX, y: vr.midY)
-                        .allowsHitTesting(false)
+                        strokePath(currentStroke, color: penColor)
                     }
+                    .frame(width: vr.width, height: vr.height)
+                    .position(x: vr.midX, y: vr.midY)
+                    .allowsHitTesting(false)
 
-                    // 裁剪模式：框 + 框外遮罩
+                    // 裁剪模式：框外遮罩 + 白色裁剪框
                     if mode == .crop {
                         cropMask(vr)
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -54,7 +58,7 @@ struct ImageEditView: View {
                             .gesture(cropDragGesture(vr))
                             .simultaneousGesture(cropZoomGesture(vr))
                     } else {
-                        // 涂鸦模式：画笔层接收手势
+                        // 涂鸦模式：画笔层接收手势（覆盖图片区域）
                         Color.clear
                             .frame(width: vr.width, height: vr.height)
                             .position(x: vr.midX, y: vr.midY)
@@ -62,12 +66,22 @@ struct ImageEditView: View {
                             .gesture(drawGesture(vr))
                     }
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
                 .onAppear {
                     viewRect = vr
                     cropRect = CGRect(x: vr.minX + vr.width * 0.06,
                                       y: vr.minY + vr.height * 0.06,
                                       width: vr.width * 0.88,
                                       height: vr.height * 0.88)
+                }
+                .onChange(of: geo.size) { _, _ in
+                    let vr2 = aspectFitRect(image.size, in: geo.size)
+                    viewRect = vr2
+                    cropRect = CGRect(x: vr2.minX + vr2.width * 0.06,
+                                      y: vr2.minY + vr2.height * 0.06,
+                                      width: vr2.width * 0.88,
+                                      height: vr2.height * 0.88)
                 }
             }
 
@@ -106,6 +120,7 @@ struct ImageEditView: View {
                 HStack(spacing: 20) {
                     Button {
                         onCancel()
+                        dismiss()
                     } label: {
                         Text("取消")
                             .font(.system(size: 15, weight: .medium))
@@ -116,6 +131,7 @@ struct ImageEditView: View {
                     }
                     Button {
                         finish()
+                        dismiss()
                     } label: {
                         Text("完成")
                             .font(.system(size: 15, weight: .semibold))
@@ -131,6 +147,16 @@ struct ImageEditView: View {
     }
 
     // MARK: - 组件
+
+    /// 一条笔迹 → Path 视图（v2.0.92f：替代 Canvas，实时可见）
+    private func strokePath(_ points: [CGPoint], color: Color) -> some View {
+        Path { p in
+            guard points.count > 1 else { return }
+            p.move(to: points[0])
+            for pt in points.dropFirst() { p.addLine(to: pt) }
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+    }
 
     private func modeButton(_ name: String, mode m: EditMode) -> some View {
         Button {
@@ -150,10 +176,10 @@ struct ImageEditView: View {
     private func cropMask(_ vr: CGRect) -> some View {
         let r = cropRect
         return ZStack(alignment: .topLeading) {
-            Color.black.opacity(0.55).frame(width: vr.width, height: r.minY - vr.minY).offset(x: vr.minX, y: vr.minY)
-            Color.black.opacity(0.55).frame(width: vr.width, height: vr.maxY - r.maxY).offset(x: vr.minX, y: r.maxY)
-            Color.black.opacity(0.55).frame(width: r.minX - vr.minX, height: r.height).offset(x: vr.minX, y: r.minY)
-            Color.black.opacity(0.55).frame(width: vr.maxX - r.maxX, height: r.height).offset(x: r.maxX, y: r.minY)
+            Color.black.opacity(0.55).frame(width: vr.width, height: max(0, r.minY - vr.minY)).offset(x: vr.minX, y: vr.minY)
+            Color.black.opacity(0.55).frame(width: vr.width, height: max(0, vr.maxY - r.maxY)).offset(x: vr.minX, y: r.maxY)
+            Color.black.opacity(0.55).frame(width: max(0, r.minX - vr.minX), height: max(0, r.height)).offset(x: vr.minX, y: r.minY)
+            Color.black.opacity(0.55).frame(width: max(0, vr.maxX - r.maxX), height: max(0, r.height)).offset(x: r.maxX, y: r.minY)
         }
         .allowsHitTesting(false)
     }
@@ -201,21 +227,13 @@ struct ImageEditView: View {
             }
             .onEnded { _ in
                 if !currentStroke.isEmpty {
-                    strokes.append(currentStroke)
+                    strokes.append((color: penColor, points: currentStroke))
                 }
                 currentStroke = []
             }
     }
 
-    // MARK: - 渲染/合成
-
-    private func drawPath(_ points: [CGPoint], in ctx: inout GraphicsContext) {
-        guard points.count > 1 else { return }
-        var path = Path()
-        path.move(to: points[0])
-        for p in points.dropFirst() { path.addLine(to: p) }
-        ctx.stroke(path, with: .color(penColor), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-    }
+    // MARK: - 合成
 
     private func finish() {
         // 1) 归一化方向（EXIF orientation → up），保证像素坐标与显示一致
@@ -238,7 +256,7 @@ struct ImageEditView: View {
                         width: inter.width * scaleX,
                         height: inter.height * scaleY)
         guard let cropped = cg.cropping(to: px) else { onCancel(); return }
-        // 3) 合成：裁剪图 + 涂鸦
+        // 3) 合成：裁剪图 + 涂鸦（每条线用自己颜色）
         let outSize = CGSize(width: cropped.width, height: cropped.height)
         let renderer = UIGraphicsImageRenderer(size: outSize)
         let result = renderer.image { ctx in
@@ -246,16 +264,16 @@ struct ImageEditView: View {
             ctx.cgContext.setLineCap(.round)
             ctx.cgContext.setLineJoin(.round)
             for s in strokes {
-                guard s.count > 1 else { continue }
+                guard s.points.count > 1 else { continue }
                 let path = UIBezierPath()
-                let p0 = CGPoint(x: (s[0].x - viewRect.minX) * scaleX - px.minX,
-                                 y: (s[0].y - viewRect.minY) * scaleY - px.minY)
+                let p0 = CGPoint(x: (s.points[0].x - viewRect.minX) * scaleX - px.minX,
+                                 y: (s.points[0].y - viewRect.minY) * scaleY - px.minY)
                 path.move(to: p0)
-                for p in s.dropFirst() {
+                for p in s.points.dropFirst() {
                     path.addLine(to: CGPoint(x: (p.x - viewRect.minX) * scaleX - px.minX,
                                              y: (p.y - viewRect.minY) * scaleY - px.minY))
                 }
-                ctx.cgContext.setStrokeColor(UIColor(penColor).cgColor)
+                ctx.cgContext.setStrokeColor(UIColor(s.color).cgColor)
                 ctx.cgContext.setLineWidth(4 * scaleX)
                 ctx.cgContext.addPath(path.cgPath)
                 ctx.cgContext.strokePath()
