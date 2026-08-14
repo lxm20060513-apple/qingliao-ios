@@ -200,20 +200,21 @@ struct DockerContainerCard: View {
                 .font(.system(size: 13.5, weight: .semibold))   // v2.0.86o：大字状态改小
                 .foregroundStyle(.primary)
                 .padding(.top, 6)
-            // v2.0.87p：有更新才显示向上箭头（无更新不显示；点击箭头=升级）
+            // v2.0.87p：升级入口（v2.0.87ai：docker hub 国内直连不通 → 检测不可靠，
+            // 改回常驻按钮：点击 = 拉取对比（有更新升级/无更新提示已最新）
             HStack(spacing: 6) {
                 Text(portSuffix)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                if container.isComposeProject && hasUpdate {
+                if container.isComposeProject {
                     Spacer(minLength: 4)
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onUpgrade()
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.accentColor)
                     }
                     .buttonStyle(.plain)
