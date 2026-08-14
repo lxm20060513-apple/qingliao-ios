@@ -1074,9 +1074,12 @@ struct WeatherBadge: View {
             .padding(.vertical, 4)
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.6))
-            Text(city.isEmpty ? "当前定位" : "当前定位 · \(city)")
-                .font(.system(size: 8))
-                .foregroundStyle(.tertiary)
+            // v2.0.87aj：只显示城市名（去掉"当前定位"前缀）
+            if !city.isEmpty {
+                Text(city)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
