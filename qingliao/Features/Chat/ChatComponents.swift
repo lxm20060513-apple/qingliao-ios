@@ -450,7 +450,7 @@ struct ChatInputBar: View {
                 TextField("", text: $text, axis: .vertical)
                     .font(.system(size: 15))
                     .lineLimit(1...6)   // v2.0.35：1行起（原来2...6最小2行高→单行光标/文字偏上不居中）
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 12)   // v2.0.93f：9→12 输入框加高（用户反馈太窄）
                     .padding(.horizontal, 2)
                     .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
                     .focused($focused)

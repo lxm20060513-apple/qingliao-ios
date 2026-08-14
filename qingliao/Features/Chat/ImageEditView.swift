@@ -50,13 +50,18 @@ struct ImageEditView: View {
 
                     // 裁剪模式：框外遮罩 + 白色裁剪框
                     if mode == .crop {
-                        cropMask(vr)
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .strokeBorder(Color.white, lineWidth: 2)
-                            .frame(width: cropRect.width, height: cropRect.height)
-                            .position(x: cropRect.midX, y: cropRect.midY)
-                            .gesture(cropDragGesture(vr))
-                            .simultaneousGesture(cropZoomGesture(vr))
+                        // v2.0.93f：捏合手势挂整层（裁剪框小，双指常在框外——挂框上识别不到）
+                        ZStack {
+                            cropMask(vr)
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .strokeBorder(Color.white, lineWidth: 2)
+                                .frame(width: cropRect.width, height: cropRect.height)
+                                .position(x: cropRect.midX, y: cropRect.midY)
+                                .gesture(cropDragGesture(vr))
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .contentShape(Rectangle())
+                        .gesture(cropZoomGesture(vr))
                     } else {
                         // 涂鸦模式：画笔层接收手势（覆盖图片区域）
                         Color.clear
