@@ -469,18 +469,20 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复流光（v2.0.87an：去掉边框跑马灯旋转，只保留内部流光加深）
+        // v2.0.87s：等待回复流光（v2.0.87aq：波浪流动——LinearGradient 横向平移替代中间旋转）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
-                    let angle = (t * 70).truncatingRemainder(dividingBy: 360)
-                    // 内部流光（v2.0.87an：加深 0.20→0.32）
+                    let x = (t * 0.35).truncatingRemainder(dividingBy: 1.0)   // 0-1 循环
+                    // 波浪流光：渐变沿横向平移（左→右流动）
                     Capsule().fill(
-                        AngularGradient(
+                        LinearGradient(
                             colors: [.blue.opacity(0.32), .indigo.opacity(0.32),
                                      .pink.opacity(0.32), .red.opacity(0.25), .blue.opacity(0.32)],
-                            center: .center, angle: .degrees(angle))
+                            startPoint: .init(x: x - 0.6, y: 0),
+                            endPoint: .init(x: x + 0.4, y: 0)
+                        )
                     )
                     .shadow(color: .indigo.opacity(0.30), radius: 6)
                     .allowsHitTesting(false)   // v2.0.87al：流光层不拦截点击（停止按钮可点）
