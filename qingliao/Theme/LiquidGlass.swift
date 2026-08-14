@@ -114,10 +114,11 @@ struct SiriGlowOverlay: View {
                 .mask(
                     Path { p in
                         let e: CGFloat = 44
-                        // 外框（全屏）
+                        // 顶部/左右光带（44pt）
                         p.addRect(CGRect(x: 0, y: 0, width: w, height: h))
-                        // 内框挖空（四边均匀光带）
                         p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e))
+                        // v2.0.87bh：底部 dock 区域只留 24pt 细光带（dock 下沿微光，不盖 dock 主体）
+                        p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e - 24))
                     }
                     .fill(style: FillStyle(eoFill: true))
                 )
