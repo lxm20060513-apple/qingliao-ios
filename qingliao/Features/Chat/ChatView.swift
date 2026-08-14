@@ -80,7 +80,6 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
-    @State private var showImageEditor = false   // v2.0.92：发送前图片编辑（裁剪/涂鸦）
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
 
@@ -168,15 +167,6 @@ struct ChatView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    // v2.0.92：图片编辑（裁剪/涂鸦）
-                    Button {
-                        showImageEditor = true
-                    } label: {
-                        Image(systemName: "pencil.tip.crop.circle")
-                            .font(.system(size: 17))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
                     Button {
                         pendingImage = nil
                         pendingImageData = nil
@@ -482,20 +472,6 @@ struct ChatView: View {
         }
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
-        }
-        // v2.0.92：发送前图片编辑（裁剪/涂鸦）
-        .fullScreenCover(isPresented: $showImageEditor) {
-            if let img = pendingImage {
-                ImageEditView(image: img,
-                              onDone: { edited in
-                                  // 编辑结果回填：重新编码 dataURL（保持与发送链路一致）
-                                  pendingImage = edited
-                                  if let data = edited.jpegData(compressionQuality: 0.8) {
-                                      pendingImageData = "data:image/jpeg;base64," + data.base64EncodedString()
-                                  }
-                              },
-                              onCancel: {})
-            }
         }
         // v2.0.59：上下文过长提示（60+ 条建议压缩）
         .alert("上下文较长", isPresented: $showLongContextAlert) {
