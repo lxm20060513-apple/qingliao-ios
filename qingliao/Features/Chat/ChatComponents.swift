@@ -469,27 +469,27 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复特效（v2.0.87at：正弦波浪线——3条波从左到右流动，像声波/心电图）
+        // v2.0.87s：等待回复特效（v2.0.87au：淡雅流光波浪光效——柔和光带起伏流动，非线条）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     Canvas { ctx, size in
-                        let midY = size.height / 2
-                        let colors: [Color] = [.blue, .indigo, .pink]
+                        let colors: [Color] = [.blue.opacity(0.16), .indigo.opacity(0.14), .pink.opacity(0.12)]
                         for i in 0..<3 {
-                            let phase = t * 2.5 + Double(i) * 2.1   // 相位递增 → 波浪从左到右流动
+                            let phase = t * 1.8 + Double(i) * 2.1
+                            let baseY = size.height / 2 + Double(i) * 6 - 6
+                            // 波浪光带：正弦起伏的柔和填充（光效，非线条）
                             var path = Path()
+                            path.move(to: CGPoint(x: 0, y: baseY))
                             for x in stride(from: 0.0, through: size.width, by: 2) {
-                                let y = midY + sin(x / 16 + phase) * 3.5
-                                if x == 0 {
-                                    path.move(to: CGPoint(x: x, y: y))
-                                } else {
-                                    path.addLine(to: CGPoint(x: x, y: y))
-                                }
+                                path.addLine(to: CGPoint(x: x, y: baseY + sin(x / 14 + phase) * 3))
                             }
-                            ctx.stroke(path, with: .color(colors[i].opacity(0.5 - Double(i) * 0.12)),
-                                       lineWidth: 1.3)
+                            for x in stride(from: size.width, through: 0.0, by: -2) {
+                                path.addLine(to: CGPoint(x: x, y: baseY + 7 + sin(x / 14 + phase) * 3))
+                            }
+                            path.closeSubpath()
+                            ctx.fill(path, with: .color(colors[i]))
                         }
                     }
                     .allowsHitTesting(false)   // v2.0.87al：不拦截点击（停止按钮可点）
