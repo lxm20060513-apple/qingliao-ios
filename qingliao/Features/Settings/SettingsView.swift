@@ -357,6 +357,28 @@ struct SettingsView: View {
     private var currentModel: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
     }
+
+    /// v2.0.89f：打开 Face ID 开关时立即申请系统权限（用户实测"点开关没有权限申请"）
+    private func requestFaceIDAuth() {
+        let context = LAContext()
+        var err: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+            faceIDLogin = false   // 设备不支持/已被拒绝 → 回滚开关
+            faceIDAuthFailed = true
+            return
+        }
+        context.localizedReason = "用于登录页一键登录轻聊"
+        context.evaluatePolicy(.deviceOwnerAuthentication,
+                               localizedReason: "用于登录页一键登录轻聊") { success, _ in
+            DispatchQueue.main.async {
+                if !success {
+                    // 用户取消/拒绝 → 回滚开关，提示去系统设置开启
+                    faceIDLogin = false
+                    faceIDAuthFailed = true
+                }
+            }
+        }
+    }
 }
 
 // MARK: - 服务器地址修改
@@ -525,28 +547,6 @@ struct PasswordSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
-    }
-
-    /// v2.0.89f：打开 Face ID 开关时立即申请系统权限（用户实测"点开关没有权限申请"）
-    private func requestFaceIDAuth() {
-        let context = LAContext()
-        var err: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
-            faceIDLogin = false   // 设备不支持/已被拒绝 → 回滚开关
-            faceIDAuthFailed = true
-            return
-        }
-        context.localizedReason = "用于登录页一键登录轻聊"
-        context.evaluatePolicy(.deviceOwnerAuthentication,
-                               localizedReason: "用于登录页一键登录轻聊") { success, _ in
-            DispatchQueue.main.async {
-                if !success {
-                    // 用户取消/拒绝 → 回滚开关，提示去系统设置开启
-                    faceIDLogin = false
-                    faceIDAuthFailed = true
-                }
-            }
-        }
     }
 
     private func changePassword() {
