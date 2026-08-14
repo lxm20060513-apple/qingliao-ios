@@ -476,9 +476,11 @@ struct ChatInputBar: View {
                     let t = context.date.timeIntervalSinceReferenceDate
                     Canvas { ctx, size in
                         let colors: [Color] = [.blue.opacity(0.16), .indigo.opacity(0.14), .pink.opacity(0.12)]
+                        // v2.0.87av：光带填满整个输入框（均匀分布覆盖全高度）
+                        let bandH = size.height / 3
                         for i in 0..<3 {
                             let phase = t * 1.8 + Double(i) * 2.1
-                            let baseY = size.height / 2 + Double(i) * 6 - 6
+                            let baseY = CGFloat(i) * bandH
                             // 波浪光带：正弦起伏的柔和填充（光效，非线条）
                             var path = Path()
                             path.move(to: CGPoint(x: 0, y: baseY))
@@ -486,7 +488,7 @@ struct ChatInputBar: View {
                                 path.addLine(to: CGPoint(x: x, y: baseY + sin(x / 14 + phase) * 3))
                             }
                             for x in stride(from: size.width, through: 0.0, by: -2) {
-                                path.addLine(to: CGPoint(x: x, y: baseY + 7 + sin(x / 14 + phase) * 3))
+                                path.addLine(to: CGPoint(x: x, y: baseY + bandH + sin(x / 14 + phase) * 3))
                             }
                             path.closeSubpath()
                             ctx.fill(path, with: .color(colors[i]))
