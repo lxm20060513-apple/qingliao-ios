@@ -288,6 +288,7 @@ struct SessionsView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
+                .padding(.bottom, 78)   // v2.0.87af：避开 Dock 栏高度
                 .background(.ultraThinMaterial)
             }
         }
