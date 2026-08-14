@@ -99,25 +99,26 @@ struct SiriGlowOverlay: View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let angle = (t * 22).truncatingRemainder(dividingBy: 360)
-            GeometryReader { geo in
-                // 全屏旋转渐变 → 边缘 40pt 光晕（mask 边框 + 模糊柔化）
-                Rectangle()
-                    .fill(
-                        AngularGradient(
-                            colors: [.blue.opacity(0.30), .indigo.opacity(0.26),
-                                     .pink.opacity(0.26), .red.opacity(0.18), .blue.opacity(0.30)],
-                            center: .center, angle: .degrees(angle)
-                        )
+            // v2.0.87bc：UIScreen 全尺寸（覆盖状态栏顶部，GeometryReader 在 safe area 内取不到全屏）
+            let w = UIScreen.main.bounds.width
+            let h = UIScreen.main.bounds.height
+            // 全屏旋转渐变 → 边缘 44pt 光晕（mask 边框 + 模糊柔化）
+            Rectangle()
+                .fill(
+                    AngularGradient(
+                        colors: [.blue.opacity(0.30), .indigo.opacity(0.26),
+                                 .pink.opacity(0.26), .red.opacity(0.18), .blue.opacity(0.30)],
+                        center: .center, angle: .degrees(angle)
                     )
-                    .mask(
-                        Rectangle()
-                            .strokeBorder(style: StrokeStyle(lineWidth: 44))
-                            .padding(-22)
-                    )
-                    .blur(radius: 10)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .allowsHitTesting(false)
-            }
+                )
+                .mask(
+                    Rectangle()
+                        .strokeBorder(style: StrokeStyle(lineWidth: 44))
+                        .padding(-22)
+                )
+                .blur(radius: 10)
+                .frame(width: w, height: h)
+                .allowsHitTesting(false)
         }
         .ignoresSafeArea()
     }
