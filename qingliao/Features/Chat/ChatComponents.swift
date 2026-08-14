@@ -469,18 +469,29 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复时彩色流光描边（TimelineView 时间驱动旋转，水波纹感）
+        // v2.0.87s：等待回复时彩色流光描边（v2.0.87y：双层流光+光晕+加速，跑马灯更动效）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
-                    let angle = (context.date.timeIntervalSinceReferenceDate * 45)
-                        .truncatingRemainder(dividingBy: 360)
-                    Capsule()
-                        .strokeBorder(
-                            AngularGradient(colors: [.blue, .purple, .pink, .orange, .blue],
-                                            center: .center, angle: .degrees(angle)),
-                            lineWidth: 1.6
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let angle = (t * 80).truncatingRemainder(dividingBy: 360)
+                    ZStack {
+                        // 内部淡流光（水波感）
+                        Capsule().fill(
+                            AngularGradient(
+                                colors: [.blue.opacity(0.14), .purple.opacity(0.14),
+                                         .pink.opacity(0.14), .orange.opacity(0.14), .blue.opacity(0.14)],
+                                center: .center, angle: .degrees(angle))
                         )
+                        // 外部流光描边（加粗）
+                        Capsule()
+                            .strokeBorder(
+                                AngularGradient(colors: [.blue, .purple, .pink, .orange, .blue],
+                                                center: .center, angle: .degrees(angle)),
+                                lineWidth: 2
+                            )
+                    }
+                    .shadow(color: .purple.opacity(0.35), radius: 6)
                 }
             } else {
                 Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
