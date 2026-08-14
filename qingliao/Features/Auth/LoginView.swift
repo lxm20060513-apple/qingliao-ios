@@ -1,6 +1,7 @@
 import SwiftUI
+import LocalAuthentication
 
-// MARK: - 登录页（服务器地址 + 账号密码 + 记住登录）
+// MARK: - 登录页（服务器地址 + 账号密码 + 记住登录 + Face ID 快捷登录）
 
 struct LoginView: View {
     @Environment(AuthStore.self) private var auth
@@ -13,6 +14,8 @@ struct LoginView: View {
     @State private var remember = true
     @State private var testing = false
     @State private var testResult: String?
+    // v2.0.88：Face ID 快捷登录（有保存的凭据且服务器匹配时显示按钮）
+    @State private var faceIDReady = false
 
     var body: some View {
         ZStack {
@@ -137,6 +140,38 @@ struct LoginView: View {
                 .padding(.horizontal, 28)
                 .disabled(auth.isLoading)
 
+                // v2.0.88：Face ID 快捷登录（设置开关开启且有保存凭据时才显示）
+                if faceIDReady {
+                    Button {
+                        let context = LAContext()
+                        context.localizedReason = "验证后自动登录轻聊"
+                        context.evaluatePolicy(.deviceOwnerAuthentication,
+                                               localizedReason: "验证后自动登录轻聊") { success, _ in
+                            DispatchQueue.main.async {
+                                guard success, let cred = FaceIDStore.load() else { return }
+                                // 用保存的服务器/账号/密码自动登录（失败会显示错误，可重试/手动登录）
+                                auth.saveServer(cred.server)
+                                Task { await auth.login(username: cred.username, password: cred.password, remember: true) }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "faceid")
+                                .font(.system(size: 15))
+                            Text(auth.isLoading ? "登录中..." : "Face ID 登录")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 10)
+                    .disabled(auth.isLoading)
+                }
+
                 // 测试连接按钮
                 Button {
                     testing = true
@@ -180,6 +215,26 @@ struct LoginView: View {
             if server.isEmpty {
                 server = auth.serverURL
             }
+            refreshFaceID()
+        }
+        .onChange(of: server) { _, _ in
+            refreshFaceID()
+        }
+        .onChange(of: auth.isLoggedIn) { _, loggedIn in
+            if !loggedIn {
+                refreshFaceID()   // 登出回到登录页时刷新（可能凭据已更新）
+            }
+        }
+    }
+
+    /// v2.0.88：Face ID 按钮显示条件 = 开关开启 + 有保存凭据 + 服务器地址匹配（或未修改）
+    private func refreshFaceID() {
+        faceIDReady = false
+        let on = UserDefaults.standard.object(forKey: "qingliao_faceid_login") as? Bool ?? true
+        guard on, let cred = FaceIDStore.load() else { return }
+        let s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty || s == cred.server {
+            faceIDReady = true
         }
     }
 }

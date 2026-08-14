@@ -220,11 +220,12 @@ struct MessageBubble: View {
                     }
                     // v2.0.65：已送达小字（用户消息、非失败、非语音）
                     // v2.0.87q：加 ✓ 图标（微信式送达状态）
+                    // v2.0.88：排队中的消息显示 ⏳ 排队中（AI 回答完自动发送）
                     if message.isUser && !message.failed {
                         HStack(spacing: 2.5) {
-                            Image(systemName: "checkmark")
+                            Image(systemName: message.queued ? "hourglass" : "checkmark")
                                 .font(.system(size: 7.5, weight: .bold))
-                            Text("已送达")
+                            Text(message.queued ? "排队中" : "已送达")
                                 .font(.system(size: 9.5))
                         }
                         .foregroundStyle(.tertiary)
@@ -447,14 +448,23 @@ struct ChatInputBar: View {
                     }
             }
 
-            Button {
-                if streaming {
-                    onStop()
-                } else {
-                    onSend()
+            // v2.0.88：AI 回答中也可继续发送（消息排队，答完自动逐条回）；
+            // 停止按钮独立保留（取消当前回答 + 清空队列）
+            if streaming {
+                Button(action: onStop) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.red.opacity(0.8), in: Circle())
                 }
+                .buttonStyle(.plain)
+            }
+
+            Button {
+                onSend()
             } label: {
-                Image(systemName: streaming ? "stop.fill" : "arrow.up")
+                Image(systemName: "arrow.up")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)

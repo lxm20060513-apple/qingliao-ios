@@ -9,6 +9,7 @@ struct ChatMessage: Identifiable {
     var imageDataURL: String?      // data:image/jpeg;base64,...（本地发送的图片）
     var failed: Bool = false       // v2.0.59：发送失败标记（显示重试按钮）
     var audioPath: String?         // v2.0.61：本地语音消息文件路径（m4a）
+    var queued: Bool = false       // v2.0.88：AI 回答中发送，排队等待自动处理
 
     var id: String { "\(role)-\(content.hashValue)-\(imageDataURL?.hashValue ?? 0)-\(timestamp ?? 0)" }
     var isUser: Bool { role == "user" }

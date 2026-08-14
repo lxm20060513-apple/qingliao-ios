@@ -33,6 +33,8 @@ struct SettingsView: View {
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
     @AppStorage("qingliao_siri_glow") private var siriGlowOn = true
+    // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
+    @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -168,6 +170,29 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
+                        }
+                        // v2.0.88：Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "faceid")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("Face ID 登录")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Toggle("", isOn: $faceIDLogin)
+                                .labelsHidden()
+                                .tint(Color.accentColor)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .onChange(of: faceIDLogin) { _, on in
+                            if !on {
+                                FaceIDStore.clear()   // 关闭 = 删除 Keychain 凭据，登录页按钮消失
+                            }
                         }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)

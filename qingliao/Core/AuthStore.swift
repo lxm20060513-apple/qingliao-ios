@@ -79,6 +79,11 @@ final class AuthStore {
                 if !token.isEmpty { defaults.set(token, forKey: tokenKey) }
                 isLoggedIn = true
                 defaults.set(true, forKey: loggedKey)
+                // v2.0.88：Face ID 登录开关开启（默认开）时保存凭据到 Keychain
+                let faceIDOn = defaults.object(forKey: "qingliao_faceid_login") as? Bool ?? true
+                if faceIDOn {
+                    FaceIDStore.save(server: serverURL, username: username, password: password)
+                }
             } else {
                 errorMessage = "用户名或密码错误"
             }

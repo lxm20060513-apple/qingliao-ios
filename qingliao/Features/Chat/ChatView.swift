@@ -39,6 +39,12 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
 // .scrollPosition 在 TabView 隐藏页内容清空时是已知崩溃点（SIGTRAP），
 // 换 GeometryReader + PreferenceKey：滚动时上报内容区 minY，取负后语义同 scrollPos.y
 
+/// v2.0.88：排队待发消息（AI 回答中发送，当前回答结束后自动逐条发送）
+private struct PendingSend {
+    let text: String
+    let imageData: String?
+}
+
 struct ChatView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
@@ -74,6 +80,8 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
+    // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
+    @State private var pendingQueue: [PendingSend] = []
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -214,7 +222,11 @@ struct ChatView: View {
                          focused: $inputFocus,
                          streaming: stream.isStreaming,
                          onSend: { send() },
-                         onStop: { stream.stop(auth: auth) },
+                         onStop: {
+                             // v2.0.88：点停止 = 取消当前回答 + 清空排队消息（不再自动发）
+                             clearPendingQueue()
+                             stream.stop(auth: auth)
+                         },
                          onPickAttachment: {
                              withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
                                  showAttachmentMenu.toggle()
@@ -341,7 +353,7 @@ struct ChatView: View {
                                 // v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
                                 deleteMessage(msg)
                             } onShare: {
-                                shareText(msg.content)
+                                shareMessage(msg)
                             } onImageTap: {
                                 // v2.0.62：相册式查看（收集全部图片消息翻页）
                                 openImageViewer(for: msg)
@@ -425,6 +437,10 @@ struct ChatView: View {
                     chat.pendingNewSession = false
                     clearing = false
                 }
+            }
+            // v2.0.88：切换/新建会话 → 清空待发队列（避免排队消息发到别的会话）
+            .onChange(of: chat.sessionId) {
+                clearPendingQueue()
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
@@ -572,8 +588,20 @@ struct ChatView: View {
     }
 
     /// v2.0.59：发送核心（send / 失败重试共用）
+    /// v2.0.88：AI 回答中发送不再被拦截——消息上屏 + 入队，当前回答结束后自动逐条发送
     private func sendCore(text: String, imageData: String?) {
-        guard (!text.isEmpty || imageData != nil), !stream.isStreaming else { return }
+        guard !text.isEmpty || imageData != nil else { return }
+        if stream.isStreaming {
+            // 排队路径：消息立即显示（标记排队中），回答结束后自动发送
+            var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
+            msg.queued = true
+            withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
+                chat.append(msg)
+            }
+            pendingQueue.append(PendingSend(text: text, imageData: imageData))
+            Task { await chat.saveToServer(auth: auth) }
+            return
+        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // v2.0.65：发送通知 → Dock 聊天图标轻跳
         NotificationCenter.default.post(name: .qingliaoSent, object: nil)
@@ -582,6 +610,11 @@ struct ChatView: View {
         withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
             chat.append(msg)
         }
+        startStream(for: msg)
+    }
+
+    /// v2.0.88：启动流式回答（消息已在列表；失败标记/回复完成/队列联动统一在这里）
+    private func startStream(for msg: ChatMessage) {
         let history = chat.historyPayload()
 
         Task {
@@ -606,7 +639,35 @@ struct ChatView: View {
                 }
                 // 保存会话到后端（会话记录同步）
                 Task { await chat.saveToServer(auth: auth) }
+                // v2.0.88：回答完成（成功/失败/停止）→ 自动发送队列中的下一条
+                if !pendingQueue.isEmpty {
+                    let next = pendingQueue.removeFirst()
+                    sendQueued(next)
+                }
             }
+        }
+    }
+
+    /// v2.0.88：发送排队消息（消息已上屏——去掉排队标记复用该消息启动流式，不重复插入）
+    private func sendQueued(_ item: PendingSend) {
+        guard !stream.isStreaming else { return }
+        // firstIndex = FIFO：先入队的先发（内容相同也会按入队顺序）
+        if let idx = chat.messages.firstIndex(where: {
+            $0.queued && $0.content == item.text && $0.imageDataURL == item.imageData
+        }) {
+            chat.messages[idx].queued = false
+            startStream(for: chat.messages[idx])
+        } else {
+            // 排队消息已不在列表（如会话被清空/切换）→ 正常发送兜底
+            sendCore(text: item.text, imageData: item.imageData)
+        }
+    }
+
+    /// v2.0.88：取消排队（停止按钮/切换会话）——清队列 + 消息恢复"已送达"状态
+    private func clearPendingQueue() {
+        pendingQueue.removeAll()
+        for i in chat.messages.indices where chat.messages[i].queued {
+            chat.messages[i].queued = false
         }
     }
 
@@ -638,14 +699,91 @@ struct ChatView: View {
         }
     }
 
-    /// v2.0.36：系统分享面板（转发消息到微信/备忘录等）
-    private func shareText(_ text: String) {
-        guard !text.isEmpty else { return }
-        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(av, animated: true)
+    /// v2.0.36+88：系统分享（微信分享扩展不支持纯文本 → 自动转 原图/URL/文字图片）
+    private func shareMessage(_ msg: ChatMessage) {
+        // 1) 图片消息：分享原图（微信支持图片；原来分享 "[图片]" 文本会失败）
+        if let urlStr = msg.imageDataURL, !urlStr.isEmpty,
+           let img = dataURLImage(urlStr) {
+            presentShare([img])
+            return
         }
+        let text = msg.content
+        guard !text.isEmpty else { return }
+        // 2) 纯链接：分享 URL（微信支持网页链接）
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed),
+           let scheme = url.scheme?.lowercased(),
+           (scheme == "http" || scheme == "https"),
+           !trimmed.contains(" ") {
+            presentShare([url])
+            return
+        }
+        // 3) 普通文本：渲染成文字图片再分享（微信唯一接受的文本形态）
+        if let img = textShareImage(text) {
+            presentShare([img])
+        } else {
+            presentShare([text])   // 兜底：渲染失败退回原始文本
+        }
+    }
+
+    /// 分享面板统一弹出（v2.0.88：iPad 必须提供 popover 锚点，否则崩溃）
+    private func presentShare(_ items: [Any]) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.windows.first?.rootViewController else { return }
+        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let pop = av.popoverPresentationController {
+            pop.sourceView = root.view
+            pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
+        }
+        root.present(av, animated: true)
+    }
+
+    /// 文本 → 分享图片（固定白底深字，宽度固定高度自适应，微信友好）
+    private func textShareImage(_ text: String) -> UIImage? {
+        let maxChars = 2000
+        var content = textShareClean(text)
+        if content.count > maxChars {
+            content = String(content.prefix(maxChars)) + "\n\n…（内容过长，已截断）"
+        }
+        let width: CGFloat = 320
+        let hPad: CGFloat = 20
+        let vPad: CGFloat = 24
+        let font = UIFont.systemFont(ofSize: 16)
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = 6
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: UIColor(white: 0.13, alpha: 1),
+            .paragraphStyle: para
+        ]
+        let ns = content as NSString
+        let drawSize = CGSize(width: width - hPad * 2, height: .greatestFiniteMagnitude)
+        let box = ns.boundingRect(with: drawSize,
+                                  options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                  attributes: attrs, context: nil)
+        let height = ceil(box.height) + vPad * 2
+        guard height < 4000 else { return nil }   // 极端超长防爆内存
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
+        return renderer.image { ctx in
+            UIColor(white: 1, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            ns.draw(with: CGRect(x: hPad, y: vPad, width: drawSize.width, height: box.height + 20),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: attrs, context: nil)
+        }
+    }
+
+    /// 分享前轻量清理 markdown 符号（转图片后更干净）
+    private func textShareClean(_ text: String) -> String {
+        var t = text
+        t = t.replacingOccurrences(of: "```", with: "")
+        t = t.replacingOccurrences(of: "`", with: "")
+        t = t.replacingOccurrences(of: "### ", with: "")
+        t = t.replacingOccurrences(of: "## ", with: "")
+        t = t.replacingOccurrences(of: "# ", with: "")
+        t = t.replacingOccurrences(of: "**", with: "")
+        t = t.replacingOccurrences(of: "> ", with: "")
+        return t
     }
 
     /// v2.0.36：图片 dataURL → UIImage（大图查看用；与 MessageBubble 同逻辑）
