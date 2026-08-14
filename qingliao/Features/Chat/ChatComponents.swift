@@ -501,7 +501,7 @@ struct ChatInputBar: View {
             }
         }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
     }
 }
 
