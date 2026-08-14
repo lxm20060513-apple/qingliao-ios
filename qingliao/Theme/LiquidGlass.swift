@@ -105,12 +105,13 @@ struct SiriGlowOverlay: View {
                 let w = geo.size.width
                 let h = geo.size.height + geo.safeAreaInsets.top
                 // v2.0.87bm：呼吸效果（透明度 sin 周期变化，0.25↔0.55）
-                let breathe = 0.25 + 0.15 * (sin(t * 2.2) + 1) / 2
+                // v2.0.87bn：颜色加深（0.30→0.42 等）
+                let breathe = 0.30 + 0.18 * (sin(t * 2.2) + 1) / 2
                 Rectangle()
                     .fill(
                         AngularGradient(
-                            colors: [.blue.opacity(0.30 * breathe), .indigo.opacity(0.26 * breathe),
-                                     .pink.opacity(0.26 * breathe), .red.opacity(0.18 * breathe), .blue.opacity(0.30 * breathe)],
+                            colors: [.blue.opacity(0.42 * breathe), .indigo.opacity(0.38 * breathe),
+                                     .pink.opacity(0.38 * breathe), .red.opacity(0.28 * breathe), .blue.opacity(0.42 * breathe)],
                             center: .center
                         )
                     )
