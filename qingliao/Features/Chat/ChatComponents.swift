@@ -469,23 +469,30 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复流光（v2.0.87aq：波浪流动——LinearGradient 横向平移替代中间旋转）
+        // v2.0.87s：等待回复特效（v2.0.87at：正弦波浪线——3条波从左到右流动，像声波/心电图）
         .overlay {
             if streaming {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
-                    let x = (t * 0.35).truncatingRemainder(dividingBy: 1.0)   // 0-1 循环
-                    // 波浪流光：渐变沿横向平移（左→右流动）
-                    Capsule().fill(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.32), .indigo.opacity(0.32),
-                                     .pink.opacity(0.32), .red.opacity(0.25), .blue.opacity(0.32)],
-                            startPoint: .init(x: x - 0.6, y: 0),
-                            endPoint: .init(x: x + 0.4, y: 0)
-                        )
-                    )
-                    .shadow(color: .indigo.opacity(0.30), radius: 6)
-                    .allowsHitTesting(false)   // v2.0.87al：流光层不拦截点击（停止按钮可点）
+                    Canvas { ctx, size in
+                        let midY = size.height / 2
+                        let colors: [Color] = [.blue, .indigo, .pink]
+                        for i in 0..<3 {
+                            let phase = t * 2.5 + Double(i) * 2.1   // 相位递增 → 波浪从左到右流动
+                            var path = Path()
+                            for x in stride(from: 0.0, through: size.width, by: 2) {
+                                let y = midY + sin(x / 16 + phase) * 3.5
+                                if x == 0 {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                            ctx.stroke(path, with: .color(colors[i].opacity(0.5 - Double(i) * 0.12)),
+                                       lineWidth: 1.3)
+                        }
+                    }
+                    .allowsHitTesting(false)   // v2.0.87al：不拦截点击（停止按钮可点）
                 }
             } else {
                 Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
