@@ -92,10 +92,12 @@ struct DockTabView: View {
                 // 键盘弹出时 Dock 下移淡出（微信 tab bar 行为）；收起时弹簧回落
                 // 下滑隐藏 / 上滑显示（scrollPosition 驱动 + Dock 栏拖拽手势兜底）
                 // v2.0.87bi：流式回复期间 dock 保持原位（键盘状态触发下移与发光并存 → 根因修复）
+                // v2.0.88f：移除 streaming 禁用——87bl 已根治光晕 safe area 干扰（真正根因），
+                // streaming 中键盘弹出时 dock 必须正常让路，否则挡住输入框/发送按钮（用户实测）
                 DockBar(selected: $selected)
-                    .offset(y: ((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming) ? 120 : 0)
-                    .opacity(((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming) ? 0 : 1)
-                    .allowsHitTesting(!((kb.isVisible || dockVisibility.hidden) && !stream.isStreaming))
+                    .offset(y: (kb.isVisible || dockVisibility.hidden) ? 120 : 0)
+                    .opacity((kb.isVisible || dockVisibility.hidden) ? 0 : 1)
+                    .allowsHitTesting(!(kb.isVisible || dockVisibility.hidden))
                     .animation(.spring(duration: 0.5, bounce: 0.25), value: dockVisibility.hidden)
                     .animation(.spring(duration: 0.5, bounce: 0.32), value: kb.isVisible)
                     .gesture(

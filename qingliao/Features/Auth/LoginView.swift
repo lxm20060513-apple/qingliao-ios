@@ -14,8 +14,9 @@ struct LoginView: View {
     @State private var remember = true
     @State private var testing = false
     @State private var testResult: String?
-    // v2.0.88：Face ID 快捷登录（有保存的凭据且服务器匹配时显示按钮）
+    // v2.0.88：Face ID 快捷登录（开关开启即显示按钮；无凭据时点击提示先手动登录）
     @State private var faceIDReady = false
+    @State private var showFaceIDHint = false
 
     var body: some View {
         ZStack {
@@ -140,9 +141,14 @@ struct LoginView: View {
                 .padding(.horizontal, 28)
                 .disabled(auth.isLoading)
 
-                // v2.0.88：Face ID 快捷登录（设置开关开启且有保存凭据时才显示）
+                // v2.0.88：Face ID 快捷登录（开关开启即显示；v2.0.88f 放宽——无凭据时提示先登录）
                 if faceIDReady {
                     Button {
+                        guard let cred = FaceIDStore.load() else {
+                            // 还没有保存的凭据（首次使用/开关刚打开）：引导先手动登录一次
+                            showFaceIDHint = true
+                            return
+                        }
                         let context = LAContext()
                         context.localizedReason = "验证后自动登录轻聊"
                         context.evaluatePolicy(.deviceOwnerAuthentication,
@@ -170,6 +176,11 @@ struct LoginView: View {
                     .padding(.horizontal, 28)
                     .padding(.top, 10)
                     .disabled(auth.isLoading)
+                    .alert("尚未保存登录凭据", isPresented: $showFaceIDHint) {
+                        Button("好的", role: .cancel) {}
+                    } message: {
+                        Text("请先手动登录一次，登录后会自动保存凭据，下次即可使用 Face ID 一键登录。")
+                    }
                 }
 
                 // 测试连接按钮
@@ -227,15 +238,11 @@ struct LoginView: View {
         }
     }
 
-    /// v2.0.88：Face ID 按钮显示条件 = 开关开启 + 有保存凭据 + 服务器地址匹配（或未修改）
+    /// v2.0.88：Face ID 按钮显示条件 = 开关开启（v2.0.88f：不再要求已有凭据/服务器匹配，
+    /// 无凭据时点击会提示先手动登录一次）
     private func refreshFaceID() {
-        faceIDReady = false
         let on = UserDefaults.standard.object(forKey: "qingliao_faceid_login") as? Bool ?? true
-        guard on, let cred = FaceIDStore.load() else { return }
-        let s = server.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty || s == cred.server {
-            faceIDReady = true
-        }
+        faceIDReady = on
     }
 }
 

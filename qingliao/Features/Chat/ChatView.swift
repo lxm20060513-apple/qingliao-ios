@@ -568,7 +568,8 @@ struct ChatView: View {
     private func send() {
         var text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let img = pendingImageData
-        guard (!text.isEmpty || img != nil), !stream.isStreaming else { return }
+        // v2.0.88f：去掉 isStreaming 拦截——AI 回答中发送走 sendCore 排队路径
+        guard !text.isEmpty || img != nil else { return }
         // v2.0.36：引用回复（markdown 引用块注入，AI 可见上下文）
         if let q = quotedMessage, !text.isEmpty {
             let quoted = q.content.replacingOccurrences(of: "\n", with: "\n> ")
