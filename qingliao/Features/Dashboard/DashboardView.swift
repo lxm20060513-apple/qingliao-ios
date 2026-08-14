@@ -1051,27 +1051,32 @@ struct WeatherBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            // v2.0.87v：定位标识（当前定位）
-            Image(systemName: "location.fill")
-                .font(.system(size: 8.5))
-                .foregroundStyle(Color.blue)
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(iconColor)
-            if let t = temp {
-                Text(String(format: "%.0f°", t))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-            } else {
-                Text("--°")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+        // v2.0.87x：胶囊下方标注"当前定位"
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(Color.blue)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(iconColor)
+                if let t = temp {
+                    Text(String(format: "%.0f°", t))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                } else {
+                    Text("--°")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.6))
+            Text("当前定位")
+                .font(.system(size: 8))
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.6))
     }
 }
