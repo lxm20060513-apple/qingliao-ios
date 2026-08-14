@@ -119,6 +119,7 @@ struct MessageBubble: View {
     var onShare: () -> Void = {}      // v2.0.36 分享文本
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
+    var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
@@ -158,7 +159,13 @@ struct MessageBubble: View {
 
             // v2.0.66：气泡主体（单 Shape 背景带尾巴，不再用 ZStack overlay）
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
-                    if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
+                    // v2.0.92：撤回消息 → 灰色"已撤回"占位（内容不再显示）
+                    if message.withdrawn {
+                        Text("已撤回")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 2)
+                    } else if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
                         Image(uiImage: uiImg)
                             .resizable()
                             .scaledToFill()
@@ -218,10 +225,10 @@ struct MessageBubble: View {
                         .buttonStyle(.plain)
                         .padding(.top, 2)
                     }
-                    // v2.0.65：已送达小字（用户消息、非失败、非语音）
+                    // v2.0.65：已送达小字（用户消息、非失败、非语音、未撤回）
                     // v2.0.87q：加 ✓ 图标（微信式送达状态）
                     // v2.0.88：排队中的消息显示 ⏳ 排队中（AI 回答完自动发送）
-                    if message.isUser && !message.failed {
+                    if message.isUser && !message.failed && !message.withdrawn {
                         HStack(spacing: 2.5) {
                             Image(systemName: message.queued ? "hourglass" : "checkmark")
                                 .font(.system(size: 7.5, weight: .bold))
@@ -251,7 +258,7 @@ struct MessageBubble: View {
                 // v2.0.68：用户反馈拿掉气泡尾巴（试了两版效果都不理想），回归纯圆角
                 .background(
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(message.isUser ? userBubbleColor : aiBubbleColor)
+                        .fill(message.withdrawn ? aiBubbleColor : (message.isUser ? userBubbleColor : aiBubbleColor))   // v2.0.92：撤回统一灰
                 )
                 // v2.0.43 搜索定位高亮边框
                 .overlay(
@@ -306,6 +313,16 @@ struct MessageBubble: View {
                     onRegenerate()
                 } label: {
                     Label("重新生成", systemImage: "arrow.clockwise")
+                }
+            }
+            // v2.0.92：撤回（仅自己的消息 + 10 秒内 + 未撤回 + 未失败）
+            if message.isUser && !message.withdrawn && !message.failed,
+               let ts = message.timestamp,
+               Date().timeIntervalSince1970 - ts / 1000 < 10 {
+                Button {
+                    onWithdraw()
+                } label: {
+                    Label("撤回", systemImage: "arrow.uturn.backward")
                 }
             }
             Button(role: .destructive) {
@@ -813,5 +830,59 @@ struct FileMessageCard: View {
         .padding(10)
         .frame(maxWidth: 240)
         .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - v2.0.92 会话分享卡片（ImageRenderer 渲染为图片，微信/系统分享）
+
+struct SessionCardView: View {
+    let rows: [(role: String, text: String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Text("轻聊 AI 会话")
+                    .font(.system(size: 17, weight: .bold))
+            }
+            Text(formattedDate)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.top, 3)
+            Divider()
+                .padding(.vertical, 10)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(row.role == "user" ? "我" : "AI")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(row.role == "user" ? Color.blue : Color.indigo, in: Capsule())
+                    Text(row.text)
+                        .font(.system(size: 13))
+                        .lineSpacing(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundStyle(.primary)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(18)
+        .frame(width: 340)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.08))
+        )
+    }
+
+    private var formattedDate: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy年M月d日 HH:mm"
+        return f.string(from: Date())
     }
 }

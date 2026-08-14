@@ -80,6 +80,7 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
+    @State private var showImageEditor = false   // v2.0.92：发送前图片编辑（裁剪/涂鸦）
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
 
@@ -117,6 +118,10 @@ struct ChatView: View {
                 Button("导出会话记录") {
                     exportText = chat.exportText()
                     showExporter = true
+                }
+                // v2.0.92：会话分享卡片（渲染精美图片 → 系统分享/微信）
+                Button("分享会话卡片") {
+                    shareSessionCard()
                 }
                 // v2.0.43：上下文信息 + 一键压缩
                 Button("上下文：约 \(chat.contextInfo.tokens) tokens · \(chat.contextInfo.count) 条") {}
@@ -163,6 +168,15 @@ struct ChatView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Spacer()
+                    // v2.0.92：图片编辑（裁剪/涂鸦）
+                    Button {
+                        showImageEditor = true
+                    } label: {
+                        Image(systemName: "pencil.tip.crop.circle")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
                     Button {
                         pendingImage = nil
                         pendingImageData = nil
@@ -360,6 +374,9 @@ struct ChatView: View {
                             } onRetry: {
                                 // v2.0.59：失败消息重试
                                 retryMessage(msg)
+                            } onWithdraw: {
+                                // v2.0.92：消息撤回（10 秒内）
+                                withdrawMessage(msg)
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
@@ -465,6 +482,20 @@ struct ChatView: View {
         }
         .fullScreenCover(item: $bigBangPayload) { payload in
             BigBangView(text: payload.text)
+        }
+        // v2.0.92：发送前图片编辑（裁剪/涂鸦）
+        .fullScreenCover(isPresented: $showImageEditor) {
+            if let img = pendingImage {
+                ImageEditView(image: img,
+                              onDone: { edited in
+                                  // 编辑结果回填：重新编码 dataURL（保持与发送链路一致）
+                                  pendingImage = edited
+                                  if let data = edited.jpegData(compressionQuality: 0.8) {
+                                      pendingImageData = "data:image/jpeg;base64," + data.base64EncodedString()
+                                  }
+                              },
+                              onCancel: {})
+            }
         }
         // v2.0.59：上下文过长提示（60+ 条建议压缩）
         .alert("上下文较长", isPresented: $showLongContextAlert) {
@@ -688,6 +719,31 @@ struct ChatView: View {
             chat.messages.remove(at: idx)
         }
         sendCore(text: msg.content, imageData: msg.imageDataURL)
+    }
+
+    /// v2.0.92：消息撤回（标记 withdrawn → 显示"已撤回"占位 + 服务器同步）
+    private func withdrawMessage(_ msg: ChatMessage) {
+        if let idx = chat.messages.firstIndex(where: { $0.id == msg.id }) {
+            chat.messages[idx].withdrawn = true
+            Task { await chat.saveToServer(auth: auth) }
+        }
+    }
+
+    /// v2.0.92：分享会话卡片（最近 15 条渲染成图片 → 系统分享/微信）
+    private func shareSessionCard() {
+        let msgs = Array(chat.messages.suffix(15))
+        guard !msgs.isEmpty else { return }
+        let rows = msgs.map { msg -> (role: String, text: String) in
+            if msg.withdrawn { return (msg.role, "[已撤回]") }
+            var t = msg.content.replacingOccurrences(of: "\n", with: " ")
+            if t.count > 120 { t = String(t.prefix(120)) + "…" }
+            return (msg.role, t)
+        }
+        let card = SessionCardView(rows: rows)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3   // @3x 高清
+        guard let img = renderer.uiImage else { return }
+        presentShare([img])
     }
 
     // MARK: - 消息操作

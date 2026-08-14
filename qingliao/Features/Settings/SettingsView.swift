@@ -42,6 +42,9 @@ struct SettingsView: View {
     // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
     @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
     @State private var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
+    // v2.0.92：App 锁开关（启动时 Face ID 验证）
+    @AppStorage("qingliao_app_lock") private var appLockOn = false
+    @State private var appLockAuthFailed = false
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -242,6 +245,34 @@ struct SettingsView: View {
                         } message: {
                             Text("未通过系统 Face ID 验证，登录页快捷登录不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
                         }
+                        // v2.0.92：App 锁（启动时 Face ID 验证；与 Face ID 登录相互独立）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.green, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("App 锁")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Toggle("", isOn: $appLockOn)
+                                .labelsHidden()
+                                .tint(Color.accentColor)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .onChange(of: appLockOn) { _, on in
+                            if on {
+                                requestAppLockAuth()   // 打开时申请权限（失败回滚）
+                            }
+                        }
+                        .alert("Face ID 未授权", isPresented: $appLockAuthFailed) {
+                            Button("好的", role: .cancel) {}
+                        } message: {
+                            Text("未通过系统 Face ID 验证，App 锁不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
+                        }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showWeatherCity.toggle() } }
@@ -413,6 +444,27 @@ struct SettingsView: View {
                     // 用户取消/拒绝 → 回滚开关，提示去系统设置开启
                     faceIDLogin = false
                     faceIDAuthFailed = true
+                }
+            }
+        }
+    }
+
+    /// v2.0.92：打开 App 锁开关时申请权限（逻辑同 Face ID 登录）
+    private func requestAppLockAuth() {
+        let context = LAContext()
+        var err: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+            appLockOn = false
+            appLockAuthFailed = true
+            return
+        }
+        context.localizedReason = "用于启动时解锁轻聊"
+        context.evaluatePolicy(.deviceOwnerAuthentication,
+                               localizedReason: "用于启动时解锁轻聊") { success, _ in
+            DispatchQueue.main.async {
+                if !success {
+                    appLockOn = false
+                    appLockAuthFailed = true
                 }
             }
         }

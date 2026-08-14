@@ -170,6 +170,10 @@ struct DashboardView: View {
         Task {
             defer { router.busy = false }
             if let j = try? await auth.json("/api/router/clash/\(action)", method: "POST", body: nil) {
+                // v2.0.92：操作成功清空错误显示（失败原因由后端按"服务已启动"输出判断）
+                if (j["ok"] as? Bool) == true {
+                    router.error = ""
+                }
                 router = RouterStatus.merge(router, with: j)
             }
             await loadRouter()

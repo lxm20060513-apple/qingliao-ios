@@ -60,6 +60,9 @@ struct RootView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(StreamClient.self) private var stream   // v2.0.87bd：Siri 发光读取流式状态
     @State private var showSplash = true
+    // v2.0.92：App 锁（启动 Face ID 验证；与 Face ID 登录相互独立）
+    @AppStorage("qingliao_app_lock") private var appLockOn = false
+    @State private var appUnlocked = false
 
     var body: some View {
         ZStack {
@@ -68,6 +71,15 @@ struct RootView: View {
                 DockTabView()
             } else {
                 LoginView()
+            }
+
+            // v2.0.92：App 锁遮罩（已登录 + 开关开 + 未解锁时覆盖，splash 之下）
+            if auth.isLoggedIn && appLockOn && !appUnlocked {
+                AppLockView {
+                    withAnimation(.easeOut(duration: 0.3)) { appUnlocked = true }
+                }
+                .zIndex(5)
+                .transition(.opacity)
             }
 
             // 启动动画：一次淡入后淡出

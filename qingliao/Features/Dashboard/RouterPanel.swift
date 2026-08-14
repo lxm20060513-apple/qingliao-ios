@@ -100,6 +100,14 @@ struct RouterPanel: View {
                             detail: router.clashRunning ? "代理已生效 · 点击管理" : "已停止 · 点击管理")
                     .onTapGesture { showClashSheet = true }
             }
+            // v2.0.92：Clash 操作失败原因（后端以"服务已启动"输出为准，失败会带原因）
+            if !router.error.isEmpty {
+                Text(router.error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .sheet(isPresented: $showClashSheet) {
             ClashSheet(router: router, onStart: { onStart?() }, onStop: { onStop?() })

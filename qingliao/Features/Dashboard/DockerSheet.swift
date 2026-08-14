@@ -339,9 +339,17 @@ private struct ContainerSection: View {
                 Button {
                     Task { await onRefresh() }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                    // v2.0.92：刷新按钮胶囊化（图标+文字，点击区域大、不易误触）
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("刷新")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -407,9 +415,17 @@ private struct ImageSection: View {
                 Button {
                     Task { await onRefresh() }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.indigo)
+                    // v2.0.92：刷新按钮胶囊化（图标+文字，点击区域大、不易误触）
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("刷新")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.indigo)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.indigo.opacity(0.12), in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
