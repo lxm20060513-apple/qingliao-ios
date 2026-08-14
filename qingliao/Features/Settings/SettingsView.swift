@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 // MARK: - 设置页（iOS 设置风格分组列表，全部功能行可用）
 
@@ -35,6 +36,7 @@ struct SettingsView: View {
     @AppStorage("qingliao_siri_glow") private var siriGlowOn = true
     // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
     @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
+    @State private var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -64,7 +66,7 @@ struct SettingsView: View {
                         SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                             .onTapGesture { showModelSheet = true }
                         Divider().padding(.leading, 52)
-                        SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: haAddress.isEmpty ? nil : "\(haAddress)", chevron: true)
+                        SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
                             .onTapGesture { showHASettings = true }
                         Divider().padding(.leading, 52)
                         // v2.0.81：知识库（文档上传 → @知识库 检索问答）
@@ -190,9 +192,17 @@ struct SettingsView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .onChange(of: faceIDLogin) { _, on in
-                            if !on {
+                            if on {
+                                // v2.0.89f：打开开关立即申请 Face ID 权限（用户实测"点开关没有权限申请"）
+                                requestFaceIDAuth()
+                            } else {
                                 FaceIDStore.clear()   // 关闭 = 删除 Keychain 凭据，登录页按钮消失
                             }
+                        }
+                        .alert("Face ID 未授权", isPresented: $faceIDAuthFailed) {
+                            Button("好的", role: .cancel) {}
+                        } message: {
+                            Text("未通过系统 Face ID 验证，登录页快捷登录不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
                         }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
@@ -515,6 +525,28 @@ struct PasswordSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
+    }
+
+    /// v2.0.89f：打开 Face ID 开关时立即申请系统权限（用户实测"点开关没有权限申请"）
+    private func requestFaceIDAuth() {
+        let context = LAContext()
+        var err: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+            faceIDLogin = false   // 设备不支持/已被拒绝 → 回滚开关
+            faceIDAuthFailed = true
+            return
+        }
+        context.localizedReason = "用于登录页一键登录轻聊"
+        context.evaluatePolicy(.deviceOwnerAuthentication,
+                               localizedReason: "用于登录页一键登录轻聊") { success, _ in
+            DispatchQueue.main.async {
+                if !success {
+                    // 用户取消/拒绝 → 回滚开关，提示去系统设置开启
+                    faceIDLogin = false
+                    faceIDAuthFailed = true
+                }
+            }
+        }
     }
 
     private func changePassword() {
