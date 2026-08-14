@@ -102,7 +102,7 @@ struct SiriGlowOverlay: View {
             // v2.0.87bc：UIScreen 全尺寸（覆盖状态栏顶部，GeometryReader 在 safe area 内取不到全屏）
             let w = UIScreen.main.bounds.width
             let h = UIScreen.main.bounds.height
-            // v2.0.87be：底部避让 dock（底部 86pt 不发光，避免盖住/挤出 dock）
+            // v2.0.87bf：恢复全屏四边光晕（dock 半透明玻璃透出底部光晕；dock 在发光上层不被盖）
             Rectangle()
                 .fill(
                     AngularGradient(
@@ -114,11 +114,10 @@ struct SiriGlowOverlay: View {
                 .mask(
                     Path { p in
                         let e: CGFloat = 44
-                        let dockPad: CGFloat = 86   // dock 高度避让
                         // 外框（全屏）
                         p.addRect(CGRect(x: 0, y: 0, width: w, height: h))
-                        // 内框挖空（底部留 dock 区域不发光）
-                        p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e - dockPad))
+                        // 内框挖空（四边均匀光带）
+                        p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e))
                     }
                     .fill(style: FillStyle(eoFill: true))
                 )

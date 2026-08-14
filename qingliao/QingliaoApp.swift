@@ -63,6 +63,11 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            // v2.0.87bf：AI 回答时 Siri 边框发光（先渲染 → DockTabView 在上层，dock 不被盖且半透明透出底部光晕）
+            if stream.isStreaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
+                SiriGlowOverlay()
+            }
+
             // 登录门禁：未登录显示登录页，登录后进主界面（登录状态 UserDefaults 持久化）
             if auth.isLoggedIn {
                 DockTabView()
@@ -75,12 +80,6 @@ struct RootView: View {
                 SplashView()
                     .transition(.opacity)
                     .zIndex(10)
-            }
-
-            // v2.0.87bd：AI 回答时 Siri 边框发光（RootView 顶层，全屏覆盖含状态栏）
-            if stream.isStreaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
-                SiriGlowOverlay()
-                    .zIndex(20)
             }
         }
         .task {
