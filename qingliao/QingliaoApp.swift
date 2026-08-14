@@ -58,6 +58,7 @@ struct QingliaoApp: App {
 
 struct RootView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(StreamClient.self) private var stream   // v2.0.87bd：Siri 发光读取流式状态
     @State private var showSplash = true
 
     var body: some View {
@@ -74,6 +75,12 @@ struct RootView: View {
                 SplashView()
                     .transition(.opacity)
                     .zIndex(10)
+            }
+
+            // v2.0.87bd：AI 回答时 Siri 边框发光（RootView 顶层，全屏覆盖含状态栏）
+            if stream.isStreaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
+                SiriGlowOverlay()
+                    .zIndex(20)
             }
         }
         .task {

@@ -228,12 +228,6 @@ struct ChatView: View {
                      : (hideDock ? 0 : 86))
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
-        // v2.0.87bb：AI 回答时 Siri 边框发光（设置开关控制）
-        .overlay {
-            if stream.isStreaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
-                SiriGlowOverlay()
-            }
-        }
         // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
         .task {
             await stream.restoreIfNeeded(auth: auth) { success, err in
