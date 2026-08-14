@@ -28,6 +28,10 @@ struct QingliaoApp: App {
                     if phase == .background {
                         stream.persistState(sessionId: chat.sessionId)
                     }
+                    // v2.0.87t：前台恢复自动重连（蜂窝 IPv6 会话后台过期 → 重建，免手动飞行模式）
+                    if phase == .active {
+                        Task { await auth.refreshConnection() }
+                    }
                 }
         }
     }

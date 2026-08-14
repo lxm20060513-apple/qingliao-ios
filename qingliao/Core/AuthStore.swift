@@ -355,6 +355,21 @@ final class AuthStore {
         }
     }
 
+    /// v2.0.87t：前台恢复自动重连（后台挂起蜂窝 IPv6 会话过期 → 恢复时重建连接，
+    /// 重新解析/新建会话，避免手动飞行模式；失败静默不打扰）
+    func refreshConnection() async {
+        guard !serverURL.isEmpty else { return }
+        let result = await testConnection(server: serverURL)
+        if result.hasPrefix("✅") {
+            // 连接恢复（无感）；token 无效时由 RootView 正常引导
+            return
+        }
+        // 失败：蜂窝下重试一次（新会话可能已建立）
+        if NetworkMonitor.shared.isCellular {
+            _ = await testConnection(server: serverURL)
+        }
+    }
+
     /// 测试 relay 中转：GET /r/ping（经 Safari 进程，验证整条链路）
     func testRelay() async -> String {
         do {
