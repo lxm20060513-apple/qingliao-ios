@@ -26,13 +26,32 @@ struct SessionsView: View {
     @State private var renameText = ""
     // v2.0.57：删除确认（contextMenu 关闭瞬间不改数据）
     @State private var confirmDelete: ChatSession?
+    // v2.0.87ad：多选删除
+    @State private var editing = false
+    @State private var selectedIds = Set<String>()
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "会话", trailing: AnyView(addButton))
+            // v2.0.87ad：多选编辑入口（非空会话时显示）
+            PageHeader(title: "会话", trailing: AnyView(HStack(spacing: 14) {
+                if !sessions.isEmpty {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            editing.toggle()
+                            if !editing { selectedIds.removeAll() }
+                        }
+                    } label: {
+                        Image(systemName: editing ? "checkmark.circle.fill" : "checkmark.circle")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(editing ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                addButton
+            }))
             // v2.0.36：会话搜索框（v2.0.78：放大镜可点收起 + 键盘完成）
             HStack(spacing: 8) {
                 Image(systemName: isSearching ? "magnifyingglass.circle.fill" : "magnifyingglass")
@@ -162,9 +181,14 @@ struct SessionsView: View {
                                 // 每条会话独立卡片 + 间隔（会话条目间距）
                                 VStack(spacing: 8) {
                                     ForEach(sortedSessions) { s in
-                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id)) {
-                                            chat.load(s)
-                                            onOpenSession?()
+                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
+                                                   showCheck: editing, checked: selectedIds.contains(s.id)) {
+                                            if editing {
+                                                toggleSelect(s.id)
+                                            } else {
+                                                chat.load(s)
+                                                onOpenSession?()
+                                            }
                                         }
                                         // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
                                         .contextMenu {
@@ -228,6 +252,45 @@ struct SessionsView: View {
             Button("取消", role: .cancel) {}
         }
         // v2.0.57：删除确认（弹窗完全关闭后再执行删除，绕开 contextMenu 动画期数据变更）
+        // v2.0.87ad：多选底部删除栏
+        .safeAreaInset(edge: .bottom) {
+            if editing {
+                HStack(spacing: 14) {
+                    Button {
+                        if selectedIds.count == sessions.count {
+                            selectedIds.removeAll()
+                        } else {
+                            selectedIds = Set(sortedSessions.map(\.id))
+                        }
+                    } label: {
+                        Text(selectedIds.count == sessions.count ? "取消全选" : "全选")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    Text("\(selectedIds.count) 条")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Button {
+                        deleteSelected()
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 9)
+                            .background(selectedIds.isEmpty ? Color.red.opacity(0.4) : Color.red,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedIds.isEmpty)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
+            }
+        }
         .alert("删除会话", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
             Button("删除", role: .destructive) {
                 if let s = confirmDelete {
@@ -369,6 +432,31 @@ struct SessionsView: View {
         isLoading = false
     }
 
+    // v2.0.87ad：多选切换 / 批量删除
+    private func toggleSelect(_ id: String) {
+        if selectedIds.contains(id) { selectedIds.remove(id) } else { selectedIds.insert(id) }
+    }
+
+    private func deleteSelected() {
+        let ids = Array(selectedIds)
+        guard !ids.isEmpty else { return }
+        let idsCopy = ids
+        selectedIds.removeAll()
+        editing = false
+        Task {
+            do {
+                let j = try await auth.json("/api/sessions/merge", method: "POST", body: [
+                    "sessions": [] as [Any], "deleted": idsCopy
+                ])
+                if (j["ok"] as? Bool) == true {
+                    await load()
+                }
+            } catch {
+                errorText = "删除失败，请重试"
+            }
+        }
+    }
+
     private func delete(_ s: ChatSession) {
         // v2.0.57：三保险——①contextMenu 关闭瞬间不改数据（先弹确认再删）
         // ②后端删除成功才 load() 整体刷新（不就地改 sessions）
@@ -478,6 +566,13 @@ struct SearchResultRow: View {
                     .foregroundStyle(Color.green.opacity(0.8))
             }
             .frame(width: 38, height: 38)
+            // v2.0.87ad：多选勾选圈（行尾覆盖显示）
+            if showCheck {
+                Spacer()
+                Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(checked ? Color.accentColor : Color.secondary.opacity(0.4))
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(result["title"] as? String ?? "新对话")
@@ -515,6 +610,8 @@ struct SessionRow: View {
     let session: ChatSession
     var pinned: Bool = false
     var faved: Bool = false   // v2.0.60 收藏
+    var showCheck = false   // v2.0.87ad：多选模式
+    var checked = false
     var action: () -> Void = {}
 
     var body: some View {
