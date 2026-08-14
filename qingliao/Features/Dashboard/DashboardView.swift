@@ -21,7 +21,9 @@ struct DashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "看板", subtitle: "智能家居 · NAS 状态")
+            // v2.0.87u：右上角天气（小图标 + 温度）
+            PageHeader(title: "看板", subtitle: "智能家居 · NAS 状态",
+                       trailing: AnyView(WeatherBadge(temp: weatherTemp, code: weatherCode)))
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionTitle("智能家居")
@@ -98,6 +100,8 @@ struct DashboardView: View {
             await loadDockerCount()
             // v2.0.86：硬件温度（CPU / NVMe）
             await loadHw()
+            // v2.0.87u：天气（右上角徽章）
+            await loadWeather()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -112,6 +116,9 @@ struct DashboardView: View {
     // v2.0.86：硬件温度状态
     @State private var hwCpu: Double?
     @State private var hwSsd: Double?
+    // v2.0.87u：天气
+    @State private var weatherTemp: Double?
+    @State private var weatherCode: Int?
 
     private var hwDetail: String {
         let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
@@ -123,6 +130,14 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/hw/status") {
             hwCpu = j["cpu_temp"] as? Double
             hwSsd = j["ssd_temp"] as? Double
+        }
+    }
+
+    // v2.0.87u：天气加载（后端缓存 30 分钟）
+    private func loadWeather() async {
+        if let j = try? await auth.json("/api/weather") {
+            weatherTemp = j["temp"] as? Double
+            weatherCode = j["code"] as? Int
         }
     }
 
@@ -979,5 +994,64 @@ struct ServiceCard: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+// MARK: - v2.0.87u 天气徽章（右上角小图标 + 温度）
+
+struct WeatherBadge: View {
+    let temp: Double?
+    let code: Int?
+
+    /// WMO 天气码 → SF Symbol 图标
+    private var icon: String {
+        guard let c = code else { return "cloud.fill" }
+        switch c {
+        case 0: return "sun.max.fill"
+        case 1: return "sun.min.fill"
+        case 2: return "cloud.sun.fill"
+        case 3: return "cloud.fill"
+        case 45, 48: return "cloud.fog.fill"
+        case 51...67: return "cloud.rain.fill"
+        case 71...77: return "cloud.snow.fill"
+        case 80...82: return "cloud.heavyrain.fill"
+        case 95...99: return "cloud.bolt.rain.fill"
+        default: return "cloud.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        guard let c = code else { return .secondary }
+        switch c {
+        case 0, 1: return .orange
+        case 2: return .yellow
+        case 3: return .secondary
+        case 45, 48: return .gray
+        case 51...82: return .blue
+        case 71...77: return .cyan
+        case 95...99: return .purple
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(iconColor)
+            if let t = temp {
+                Text(String(format: "%.0f°", t))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+            } else {
+                Text("--°")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.6))
     }
 }
