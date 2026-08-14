@@ -95,18 +95,23 @@ struct PageHeader: View {
 // MARK: - v2.0.87bb 新版 Siri 边框发光特效（AI 回答时屏幕边缘渐变光晕）
 
 struct SiriGlowOverlay: View {
+    // v2.0.90a：动效参数可调（设置 → 外观 → Siri 边框发光 → 动效调整）
+    // 默认值 = v2.0.87bn 定稿效果（亮度 1.0 / 频率 2.2 / 幅度 0.18 / 光带 22pt）
+    @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
+    @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
+    @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
+    @AppStorage("qingliao_siri_glow_width") private var glowWidth = 22.0
+
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let angle = (t * 22).truncatingRemainder(dividingBy: 360)   // v2.0.87bj：频率回第一版(22)
             // v2.0.87bl：GeometryReader 取容器尺寸 + 顶部补偿状态栏；只 ignoresSafeArea(.top)
             //（底部 dock 的 safe area 保持不动 → 根治 dock 偏位）
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height + geo.safeAreaInsets.top
-                // v2.0.87bm：呼吸效果（透明度 sin 周期变化，0.25↔0.55）
-                // v2.0.87bn：颜色加深（0.30→0.42 等）
-                let breathe = 0.30 + 0.18 * (sin(t * 2.2) + 1) / 2
+                // v2.0.87bm：呼吸效果（透明度 sin 周期变化）；v2.0.90a：频率/幅度/亮度可调
+                let breathe = (0.30 + glowAmp * (sin(t * glowFreq) + 1) / 2) * glowBrightness
                 Rectangle()
                     .fill(
                         AngularGradient(
@@ -117,8 +122,8 @@ struct SiriGlowOverlay: View {
                     )
                     .mask(
                         Path { p in
-                            // v2.0.87bm：光带收窄到边框边缘（44→22pt，不挤进内容区）
-                            let e: CGFloat = 22
+                            // v2.0.90a：光带宽度可调（默认 22pt）
+                            let e = CGFloat(glowWidth)
                             p.addRect(CGRect(x: 0, y: 0, width: w, height: h))
                             p.addRect(CGRect(x: e, y: e, width: w - 2 * e, height: h - 2 * e))
                         }

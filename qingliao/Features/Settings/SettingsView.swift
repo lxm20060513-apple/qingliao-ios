@@ -34,6 +34,11 @@ struct SettingsView: View {
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
     @AppStorage("qingliao_siri_glow") private var siriGlowOn = true
+    // v2.0.90a：Siri 动效自定义参数（默认 = v2.0.87bn 定稿效果）
+    @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
+    @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
+    @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
+    @AppStorage("qingliao_siri_glow_width") private var glowWidth = 22.0
     // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
     @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
     @State private var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
@@ -172,6 +177,39 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
+                            // v2.0.90a：Siri 动效自定义（开关开启时内联展开，实时生效）
+                            if siriGlowOn {
+                                Divider().padding(.leading, 52)
+                                HStack(spacing: 10) {
+                                    Text("亮度").font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                                    Slider(value: $glowBrightness, in: 0.2...1.5).tint(Color.accentColor)
+                                    Text(String(format: "%.0f%%", glowBrightness * 100)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 42, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 4)
+                                HStack(spacing: 10) {
+                                    Text("呼吸频率").font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                                    Slider(value: $glowFreq, in: 0.5...6.0).tint(Color.accentColor)
+                                    Text(String(format: "%.1f", glowFreq)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 42, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 4)
+                                HStack(spacing: 10) {
+                                    Text("呼吸幅度").font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                                    Slider(value: $glowAmp, in: 0...0.4).tint(Color.accentColor)
+                                    Text(String(format: "%.2f", glowAmp)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 42, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 4)
+                                HStack(spacing: 10) {
+                                    Text("光带范围").font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                                    Slider(value: $glowWidth, in: 10...44).tint(Color.accentColor)
+                                    Text(String(format: "%.0fpt", glowWidth)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 42, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 4)
+                                .padding(.bottom, 6)
+                            }
                         }
                         // v2.0.88：Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
