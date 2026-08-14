@@ -40,16 +40,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         if s == .authorizedWhenInUse || s == .authorizedAlways {
             manager.requestLocation()
         } else if s == .denied || s == .restricted {
-            resolved = true
+            Task { @MainActor in self.resolved = true }
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.first?.coordinate
-        resolved = true
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        Task { @MainActor in
+            self.location = locations.first?.coordinate
+            self.resolved = true
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        resolved = true   // 定位失败（权限弹窗未响应等）→ 不显示天气
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        Task { @MainActor in self.resolved = true }   // 定位失败（权限弹窗未响应等）→ 不显示天气
     }
 }

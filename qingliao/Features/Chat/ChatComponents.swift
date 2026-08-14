@@ -478,8 +478,7 @@ struct ChatInputBar: View {
                     Capsule()
                         .strokeBorder(
                             AngularGradient(colors: [.blue, .purple, .pink, .orange, .blue],
-                                            center: .center)
-                                .rotationEffect(.degrees(angle)),
+                                            center: .center, angle: .degrees(angle)),
                             lineWidth: 1.6
                         )
                 }
