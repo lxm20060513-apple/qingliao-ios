@@ -469,9 +469,9 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
-        // v2.0.87s：等待回复特效（v2.0.87au：淡雅流光波浪光效——柔和光带起伏流动，非线条）
+        // v2.0.87s：等待回复特效（v2.0.87au：淡雅流光波浪光效；v2.0.87ax：设置开关控制）
         .overlay {
-            if streaming {
+            if streaming && UserDefaults.standard.bool(forKey: "qingliao_input_glow") {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     Canvas { ctx, size in

@@ -29,6 +29,8 @@ struct SettingsView: View {
     // v2.0.87am：天气城市（手动输入）
     @AppStorage("qingliao_weather_city") private var weatherCity = ""
     @State private var showWeatherCity = false
+    // v2.0.87ax：输入框流光光效开关
+    @AppStorage("qingliao_input_glow") private var glowOn = true
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
@@ -156,6 +158,11 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
+                        // v2.0.87ax：输入框流光光效开关（聊天页等待回复动画）
+                        SettingRow(icon: "waveform", iconColor: .purple, title: "输入框流光光效", value: glowOn ? "开" : "关", chevron: false)
+                        Toggle("", isOn: $glowOn)
+                            .labelsHidden()
+                            .padding(.trailing, 14)
                         Divider().padding(.leading, 52)
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
                         SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
