@@ -21,6 +21,8 @@ struct DashboardView: View {
     @State private var sceneRunning = false   // v2.0.102：场景执行防抖
     // v2.0.96：场景（AI 生成动作组，一键执行）
     @State private var scenes: [SceneItem] = []
+    // v2.0.104：定时自动化（AI 生成"X分钟后执行Y"，到点自动执行后消失）
+    @State private var automations: [AutomationItem] = []
     @State private var sceneResult = ""
     @State private var showSceneResult = false
 
@@ -77,6 +79,46 @@ struct DashboardView: View {
                                             Label("删除场景", systemImage: "trash")
                                         }
                                     }
+                            }
+                        }
+                    }
+
+                    // v2.0.104：自动化（AI 生成"X分钟后执行Y"，倒计时到点自动执行后消失）
+                    sectionTitle("自动化")
+                    if automations.isEmpty {
+                        Button {
+                            Task { await refresh() }
+                        } label: {
+                            Text("暂无自动化——点此刷新，或在聊天里说「5分钟后关闭排气扇」")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(automations) { a in
+                                // TimelineView 每秒驱动倒计时刷新
+                                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                    let remain = max(a.remaining - Int(ctx.date.timeIntervalSince(a.runAt)), 0)
+                                    DeviceCard(name: a.name,
+                                               icon: "timer",
+                                               value: remainText(remain),
+                                               sub: "到点自动执行 · 长按取消",
+                                               status: .on)
+                                        .opacity(remain <= 0 ? 0.35 : 1)
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        cancelAutomation(a)
+                                    } label: {
+                                        Label("取消自动化", systemImage: "xmark.circle")
+                                    }
+                                }
                             }
                         }
                     }
@@ -252,9 +294,28 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/scenes/list") {
             scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
         }
+        // v2.0.104：定时自动化（倒计时列表）
+        if let j = try? await auth.json("/api/automations/list") {
+            automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
+        }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    /// v2.0.104：剩余时间文案（倒计时显示）
+    private func remainText(_ s: Int) -> String {
+        if s >= 3600 { return String(format: "%d小时%02d分", s / 3600, (s % 3600) / 60) }
+        if s >= 60 { return String(format: "%d分%02d秒", s / 60, s % 60) }
+        return "\(s) 秒后执行"
+    }
+
+    /// v2.0.104：取消自动化（长按卡片）
+    private func cancelAutomation(_ a: AutomationItem) {
+        Task {
+            _ = try? await auth.json("/api/automations/\(a.id)", method: "DELETE", body: nil)
+            automations.removeAll { $0.id == a.id }
+        }
     }
 
     /// v2.0.96：执行场景（v2.0.102：加防抖——连点不重复执行）
@@ -989,6 +1050,21 @@ struct SceneItem: Identifiable {
         name = d["name"] as? String ?? ""
         id = name
         actionCount = (d["actions"] as? [[String: Any]])?.count ?? 0
+    }
+}
+
+// MARK: - v2.0.104 定时自动化（倒计时卡片）
+
+struct AutomationItem: Identifiable {
+    let id: String
+    let name: String
+    let remaining: Int
+    let runAt: Date
+    init(_ d: [String: Any]) {
+        id = d["id"] as? String ?? UUID().uuidString
+        name = d["name"] as? String ?? "自动化"
+        remaining = (d["remaining"] as? Int) ?? 0
+        runAt = Date(timeIntervalSince1970: ((d["run_at"] as? Double) ?? 0))
     }
 }
 
