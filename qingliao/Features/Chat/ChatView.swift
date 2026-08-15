@@ -257,8 +257,8 @@ struct ChatView: View {
                          onCamera: { showCameraPicker = true },
                         // v2.0.96：语音转文字（长按发送按钮）
                         voiceMode: voiceMode,
-                        transcribing: transcribing,   // v2.0.100：转换中动画
-                        onVoiceModeToggle: { toggleVoiceMode() })
+                        onVoiceModeToggle: { toggleVoiceMode() },
+                        transcribing: transcribing)   // v2.0.100：转换中动画
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
