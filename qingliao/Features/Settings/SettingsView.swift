@@ -78,7 +78,12 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
                             .onTapGesture { showHASettings = true }
-                        Divider().padding(.leading, 52)
+                    }
+                    .glassListCard()
+
+                    // 功能
+                    SectionHeader("功能")
+                    VStack(spacing: 0) {
                         // v2.0.81：知识库（文档上传 → @知识库 检索问答）
                         SettingRow(icon: "books.vertical.fill", iconColor: .green, title: "知识库", value: "文档检索问答", chevron: true)
                             .onTapGesture { showKB = true }
@@ -86,12 +91,7 @@ struct SettingsView: View {
                         // v2.0.87：AI 记忆（记住用户偏好 → 对话自动参考）
                         SettingRow(icon: "brain.head.profile", iconColor: .pink, title: "AI 记忆", value: "\(memoryCount) 条", chevron: true)
                             .onTapGesture { showMemory = true }
-                    }
-                    .glassListCard()
-
-                    // 功能
-                    SectionHeader("功能")
-                    VStack(spacing: 0) {
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "key.fill", iconColor: .teal, title: "密码管理", value: "\(secretCount) 条凭据", chevron: true)
                             .onTapGesture { showSecrets = true }
                         Divider().padding(.leading, 52)
@@ -103,10 +103,10 @@ struct SettingsView: View {
                     }
                     .glassListCard()
 
-                    // 其他
-                    SectionHeader("其他")
+                    // 高级设置（v2.0.100：Agent 智能回复 + Face ID 登录 + App 锁）
+                    SectionHeader("高级设置")
                     VStack(spacing: 0) {
-                        // v2.0.98：Agent 智能回复开关
+                        // Agent 智能回复开关
                         HStack(spacing: 12) {
                             Image(systemName: "wand.and.stars")
                                 .font(.system(size: 13, weight: .semibold))
@@ -131,7 +131,71 @@ struct SettingsView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .contentShape(Rectangle())
+                        // Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "faceid")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("Face ID 登录")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Toggle("", isOn: $faceIDLogin)
+                                .labelsHidden()
+                                .tint(Color.accentColor)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .onChange(of: faceIDLogin) { _, on in
+                            if on {
+                                // v2.0.89f：打开开关立即申请 Face ID 权限（用户实测"点开关没有权限申请"）
+                                requestFaceIDAuth()
+                            } else {
+                                FaceIDStore.clear()   // 关闭 = 删除 Keychain 凭据，登录页按钮消失
+                            }
+                        }
+                        .alert("Face ID 未授权", isPresented: $faceIDAuthFailed) {
+                            Button("好的", role: .cancel) {}
+                        } message: {
+                            Text("未通过系统 Face ID 验证，登录页快捷登录不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
+                        }
+                        // App 锁（启动时 Face ID 验证；与 Face ID 登录相互独立）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.green, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("App 锁")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Toggle("", isOn: $appLockOn)
+                                .labelsHidden()
+                                .tint(Color.accentColor)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .onChange(of: appLockOn) { _, on in
+                            if on {
+                                requestAppLockAuth()   // 打开时申请权限（失败回滚）
+                            }
+                        }
+                        .alert("Face ID 未授权", isPresented: $appLockAuthFailed) {
+                            Button("好的", role: .cancel) {}
+                        } message: {
+                            Text("未通过系统 Face ID 验证，App 锁不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
+                        }
+                    }
+                    .glassListCard()
+
+                    // 其他
+                    SectionHeader("其他")
+                    VStack(spacing: 0) {
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAppearanceOptions.toggle() } }
                         if showAppearanceOptions {
@@ -241,65 +305,6 @@ struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .padding(.bottom, 6)
                             }
-                        }
-                        // v2.0.88：Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
-                        Divider().padding(.leading, 52)
-                        HStack(spacing: 12) {
-                            Image(systemName: "faceid")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            Text("Face ID 登录")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Toggle("", isOn: $faceIDLogin)
-                                .labelsHidden()
-                                .tint(Color.accentColor)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .onChange(of: faceIDLogin) { _, on in
-                            if on {
-                                // v2.0.89f：打开开关立即申请 Face ID 权限（用户实测"点开关没有权限申请"）
-                                requestFaceIDAuth()
-                            } else {
-                                FaceIDStore.clear()   // 关闭 = 删除 Keychain 凭据，登录页按钮消失
-                            }
-                        }
-                        .alert("Face ID 未授权", isPresented: $faceIDAuthFailed) {
-                            Button("好的", role: .cancel) {}
-                        } message: {
-                            Text("未通过系统 Face ID 验证，登录页快捷登录不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
-                        }
-                        // v2.0.92：App 锁（启动时 Face ID 验证；与 Face ID 登录相互独立）
-                        Divider().padding(.leading, 52)
-                        HStack(spacing: 12) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.green, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            Text("App 锁")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Toggle("", isOn: $appLockOn)
-                                .labelsHidden()
-                                .tint(Color.accentColor)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .onChange(of: appLockOn) { _, on in
-                            if on {
-                                requestAppLockAuth()   // 打开时申请权限（失败回滚）
-                            }
-                        }
-                        .alert("Face ID 未授权", isPresented: $appLockAuthFailed) {
-                            Button("好的", role: .cancel) {}
-                        } message: {
-                            Text("未通过系统 Face ID 验证，App 锁不可用。可稍后在系统设置中允许轻聊使用 Face ID 后重新打开此开关。")
                         }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)

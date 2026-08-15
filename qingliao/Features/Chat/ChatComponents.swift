@@ -427,6 +427,8 @@ struct ChatInputBar: View {
     // v2.0.96：语音转文字模式（长按发送按钮进入；Siri 彩色图标 + 输入框流光）
     var voiceMode: Bool = false
     var onVoiceModeToggle: () -> Void = {}
+    // v2.0.100：转写中动画（输入框「语音转换中…」+ 按钮转圈）
+    var transcribing: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -470,11 +472,25 @@ struct ChatInputBar: View {
                     .focused($focused)
                     .overlay {
                         if text.isEmpty {
-                            Text("输入消息...")
-                                .font(.system(size: 15))
+                            if transcribing {
+                                // v2.0.100：转写中动画（waveform 图标 + 文字脉冲）
+                                HStack(spacing: 6) {
+                                    Image(systemName: "waveform")
+                                        .font(.system(size: 12))
+                                        .symbolEffect(.pulse)
+                                    Text("语音转换中…")
+                                        .font(.system(size: 15))
+                                }
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .allowsHitTesting(false)
+                            } else {
+                                Text("输入消息...")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .allowsHitTesting(false)
+                            }
                         }
                     }
             }
@@ -497,33 +513,43 @@ struct ChatInputBar: View {
             // v2.0.98：onTapGesture+onLongPressGesture 叠加 = 两个独立手势系统在手势激活中改
             //          视图树（voiceMode 切换重建按钮）→ 实测 SIGTRAP 闪退（crash_reports 4 次）。
             //          改用 ExclusiveGesture（长按优先、互斥），onEnded 时手势已结束，视图重建安全。
-            Image(systemName: voiceMode ? "waveform" : "arrow.up")
-                .font(.system(size: voiceMode ? 15 : 14, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(
-                    LinearGradient(colors: voiceMode ? [.blue, .indigo, .pink] : [.blue, .indigo],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: Circle()
-                )
-                .contentShape(Circle())
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.4)
-                        .exclusively(before: TapGesture())
-                        .onEnded { value in
-                            // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
-                            switch value {
-                            case .first:
+            // v2.0.100：transcribing 时按钮显示转圈（转换中动画）
+            Group {
+                if transcribing {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: voiceMode ? "waveform" : "arrow.up")
+                        .font(.system(size: voiceMode ? 15 : 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                }
+            }
+            .background(
+                LinearGradient(colors: voiceMode ? [.blue, .indigo, .pink] : [.blue, .indigo],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: Circle()
+            )
+            .contentShape(Circle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.4)
+                    .exclusively(before: TapGesture())
+                    .onEnded { value in
+                        // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
+                        switch value {
+                        case .first:
+                            onVoiceModeToggle()
+                        case .second:
+                            if voiceMode {
                                 onVoiceModeToggle()
-                            case .second:
-                                if voiceMode {
-                                    onVoiceModeToggle()
-                                } else {
-                                    onSend()
-                                }
+                            } else {
+                                onSend()
                             }
                         }
-                )
+                    }
+            )
+            .disabled(transcribing)   // 转写中禁点，避免重复触发
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
