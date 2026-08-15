@@ -265,7 +265,8 @@ struct ChatView: View {
                         voiceMode: voiceMode,
                         onVoiceModeToggle: { toggleVoiceMode() },
                         transcribing: transcribing,   // v2.0.100：转换中动画
-                        onCancelTranscribe: { stopTranscribe() })   // v2.0.101：停止转写
+                        onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
+                        onLongPressInput: { toggleVoiceMode() })   // v2.0.106：长按输入框进语音模式
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
@@ -818,12 +819,14 @@ struct ChatView: View {
 
     /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
     /// v2.0.100：进入时震动反馈（UIImpactFeedbackGenerator medium）
+    /// v2.0.106：长按输入框进入同款路径；进入时收起键盘（不弹键盘输入）
     private func toggleVoiceMode() {
         if voiceMode {
             exitVoiceMode()
         } else {
             if voiceRecorder.start() {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()   // 长按激活震动反馈
+                inputFocus = false   // v2.0.106：语音模式收起键盘（长按输入框触发时不弹键盘）
                 withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
             } else {
                 voiceAuthFailed = true   // 麦克风权限被拒

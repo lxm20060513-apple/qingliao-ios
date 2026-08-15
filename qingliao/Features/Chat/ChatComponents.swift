@@ -431,6 +431,8 @@ struct ChatInputBar: View {
     var transcribing: Bool = false
     // v2.0.101：转写停止按钮回调
     var onCancelTranscribe: () -> Void = {}
+    // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
+    var onLongPressInput: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
@@ -472,6 +474,10 @@ struct ChatInputBar: View {
                     .padding(.horizontal, 2)
                     .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
                     .focused($focused)
+                    // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        onLongPressInput()
+                    }
                     .overlay {
                         if text.isEmpty {
                             if transcribing {
