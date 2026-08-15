@@ -48,6 +48,8 @@ struct SettingsView: View {
     @State private var showFontOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
+    // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
+    @AppStorage("qingliao_agent_enabled") private var agentOn = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -104,6 +106,32 @@ struct SettingsView: View {
                     // 其他
                     SectionHeader("其他")
                     VStack(spacing: 0) {
+                        // v2.0.98：Agent 智能回复开关
+                        HStack(spacing: 12) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(LinearGradient(colors: [.blue, .indigo, .pink],
+                                                           startPoint: .topLeading, endPoint: .bottomTrailing),
+                                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Agent 智能回复")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.primary)
+                                Text(agentOn ? "已开启：查磁盘/内存/控制设备等直接调用工具" : "已关闭：所有对话走普通 AI 回复")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $agentOn)
+                                .labelsHidden()
+                                .tint(Color.accentColor)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        Divider().padding(.leading, 52)
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAppearanceOptions.toggle() } }
                         if showAppearanceOptions {

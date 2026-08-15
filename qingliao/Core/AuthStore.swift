@@ -257,12 +257,15 @@ final class AuthStore {
     /// 流式启动：蜂窝 → relay POST /r/stream/start/{uid}；Wi-Fi → 直连 POST /api/stream/start
     func streamStart(sessionId: String, model: String, provider: String,
                      messages: [[String: Any]]) async throws -> String {
+        // v2.0.98：Agent 开关（设置页 qingliao_agent_enabled，默认开；关闭后后端走普通 LLM 不调用工具）
+        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
         let payload: [String: Any] = [
             "sessionId": sessionId,
             "model": model,
             "provider": provider,
             "messages": messages,
-            "pushEnabled": false
+            "pushEnabled": false,
+            "agentEnabled": agentOn
         ]
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
         let (data, code): (Data, Int)
@@ -296,6 +299,31 @@ final class AuthStore {
     }
 
     /// 流式轮询：蜂窝 → 直连 GET /r/stream/poll/{uid}/{taskId}/{offset}（路径参数）；Wi-Fi → 直连 GET /api/stream/{taskId}?offset=N
+    /// v2.0.96c：ASR 转写（raw 音频 body 上传 → 返回文字）
+    func asrTranscribe(_ audioData: Data) async throws -> String {
+        var headers: [String: String] = ["Content-Type": "application/octet-stream"]
+        if !token.isEmpty {
+            headers["X-Auth-Token"] = token
+        }
+        let (data, code): (Data, Int)
+        if NetworkMonitor.shared.isCellular {
+            let uid = RelayIdentity.uid(for: currentStreamSessionId)
+            (data, code) = try await relay.directRequest(method: "POST", path: "/r/asr/transcribe/\\(uid)",
+                                                         headers: headers, body: audioData, timeout: 90)
+        } else {
+            (data, code) = try await directHTTP(method: "POST", path: "/api/asr/transcribe",
+                                                headers: headers, body: audioData)
+        }
+        guard (200..<300).contains(code),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.badResponse
+        }
+        if let err = j["error"] as? String, !err.isEmpty, (j["ok"] as? Bool) != true {
+            throw APIError.server(400)
+        }
+        return j["text"] as? String ?? ""
+    }
+
     func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String, Bool) {
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {

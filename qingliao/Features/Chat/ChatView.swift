@@ -82,8 +82,8 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
-    // v2.0.96：语音转文字（长按发送按钮；SpeechRecognizer 实时转写）
-    @StateObject private var speech = SpeechRecognizer()
+    // v2.0.96：语音转文字（长按发送按钮；v2.0.96c 改服务器 ASR——录音上传转写，侧载全兼容）
+    @StateObject private var voiceRecorder = VoiceRecorder()
     @State private var voiceMode = false
     @State private var voiceAuthFailed = false
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
@@ -264,17 +264,11 @@ struct ChatView: View {
                      : (hideDock ? 0 : 86))
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
-        // v2.0.96：语音识别实时回填输入框
-        .onChange(of: speech.text) { _, newText in
-            if voiceMode && !newText.isEmpty {
-                inputText = newText
-            }
-        }
-        // v2.0.96：语音授权失败提示（侧载缺 entitlement 等）
-        .alert("语音识别不可用", isPresented: $voiceAuthFailed) {
+        // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
+        .alert("语音转文字不可用", isPresented: $voiceAuthFailed) {
             Button("好的", role: .cancel) {}
         } message: {
-            Text("当前环境未授权语音识别（侧载可能缺少 speech-recognition 权限）。可在系统设置中允许「轻聊」使用麦克风与语音识别后重试。")
+            Text("请检查麦克风权限（设置 → 轻聊 → 麦克风），或稍后重试。")
         }
         // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
         .task {
@@ -738,10 +732,30 @@ struct ChatView: View {
     }
 
     /// v2.0.96：退出语音转文字模式（按钮/空白点击共用）
+    /// v2.0.96c：停止录音 → 上传转写 → 文字回填输入框
     private func exitVoiceMode() {
         guard voiceMode else { return }
-        speech.stop()
+        voiceRecorder.stop()
         withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
+        uploadAndTranscribe()
+    }
+
+    /// v2.0.96c：上传录音转写（服务器 faster-whisper）
+    private func uploadAndTranscribe() {
+        guard let url = voiceRecorder.stop(), url.fileExists,
+              let data = try? Data(contentsOf: url), data.count > 100 else { return }
+        Task {
+            do {
+                let text = try await auth.asrTranscribe(data)
+                if !text.isEmpty {
+                    inputText = text
+                } else {
+                    voiceAuthFailed = true   // 没识别出内容 → 提示
+                }
+            } catch {
+                voiceAuthFailed = true
+            }
+        }
     }
 
     /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
@@ -749,14 +763,10 @@ struct ChatView: View {
         if voiceMode {
             exitVoiceMode()
         } else {
-            Task {
-                let ok = await speech.requestAuth()
-                if ok {
-                    speech.start()
-                    withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
-                } else {
-                    voiceAuthFailed = true   // 侧载缺 entitlement / 未授权 → 提示不闪退
-                }
+            if voiceRecorder.start() {
+                withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
+            } else {
+                voiceAuthFailed = true   // 麦克风权限被拒
             }
         }
     }
@@ -1022,15 +1032,14 @@ struct ChatView: View {
     }
 
     /// v2.0.96b：发牌弹出附件按钮（idx 控制延迟，依次从底部弹出 + 回弹）
+    /// v2.0.96c：onAppear 驱动（if 包裹下按钮创建即终态，值动画无效 → 子视图内部 appeared 状态）
     private func menuButton(_ icon: String, _ name: String, _ color: Color, idx: Int,
                             action: @escaping () -> Void) -> some View {
-        attachButton(icon, name, color) { action() }
-            .opacity(showAttachmentMenu ? 1 : 0)
-            .offset(y: showAttachmentMenu ? 0 : 34)
-            .rotationEffect(.degrees(showAttachmentMenu ? 0 : -10))
-            .scaleEffect(showAttachmentMenu ? 1 : 0.5)
-            .animation(.spring(duration: 0.45, bounce: 0.35).delay(Double(idx) * 0.07),
-                       value: showAttachmentMenu)
+        DealAttachmentButton(icon: icon, name: name, color: color, idx: idx,
+                             onPick: {
+                                 withAnimation(.spring(duration: 0.3, bounce: 0.2)) { showAttachmentMenu = false }
+                                 action()
+                             })
     }
 
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
@@ -1055,6 +1064,46 @@ struct ChatView: View {
         }
         guard let d = data else { return nil }
         return "data:image/jpeg;base64," + d.base64EncodedString()
+    }
+}
+
+// MARK: - v2.0.96c 发牌弹出附件按钮（onAppear stagger：依次从底部弹出 + 回弹）
+
+struct DealAttachmentButton: View {
+    let icon: String
+    let name: String
+    let color: Color
+    let idx: Int
+    let onPick: () -> Void
+    @State private var appeared = false
+
+    var body: some View {
+        Button(action: onPick) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 19))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                Text(name)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 34)
+        .rotationEffect(.degrees(appeared ? 0 : -10))
+        .scaleEffect(appeared ? 1 : 0.5)
+        .onAppear {
+            // v2.0.98：插入帧 withAnimation 的 .delay 会被父级 transition 动画吞掉（实测发牌不生效）
+            //          → 改 DispatchQueue 真延迟逐张弹出
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(idx) * 0.07) {
+                withAnimation(.spring(duration: 0.45, bounce: 0.35)) {
+                    appeared = true
+                }
+            }
+        }
     }
 }
 

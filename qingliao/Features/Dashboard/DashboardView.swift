@@ -44,16 +44,22 @@ struct DashboardView: View {
 
                     // v2.0.96：场景（AI 对话生成动作组，点一下逐条执行）
                     // v2.0.96b：改「智慧场景」标题 + HomeKit 卡片风格（对齐 DeviceCard）
+                    // v2.0.96c：空态可点击刷新（TabView 切 tab 不触发 onAppear 的 iOS 版本差异兜底）
                     sectionTitle("智慧场景")
                     if scenes.isEmpty {
-                        Text("暂无场景——在聊天里说「帮我生成离家模式：关灯、关空调、布防」")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        Button {
+                            Task { await refresh() }
+                        } label: {
+                            Text("暂无场景——点此刷新，或在聊天里说「帮我生成离家模式：关灯、关空调、布防」")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                             ForEach(scenes) { s in

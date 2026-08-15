@@ -494,6 +494,9 @@ struct ChatInputBar: View {
 
             // v2.0.96：发送按钮——普通发送；语音模式下点击=退出；长按=进入语音转文字（Siri 彩色图标）
             // v2.0.96b：Button 内置手势会拦截 onLongPressGesture → 改自定义视图 + 显式 Tap/LongPress
+            // v2.0.98：onTapGesture+onLongPressGesture 叠加 = 两个独立手势系统在手势激活中改
+            //          视图树（voiceMode 切换重建按钮）→ 实测 SIGTRAP 闪退（crash_reports 4 次）。
+            //          改用 ExclusiveGesture（长按优先、互斥），onEnded 时手势已结束，视图重建安全。
             Image(systemName: voiceMode ? "waveform" : "arrow.up")
                 .font(.system(size: voiceMode ? 15 : 14, weight: .bold))
                 .foregroundStyle(.white)
@@ -504,16 +507,23 @@ struct ChatInputBar: View {
                     in: Circle()
                 )
                 .contentShape(Circle())
-                .onTapGesture {
-                    if voiceMode {
-                        onVoiceModeToggle()
-                    } else {
-                        onSend()
-                    }
-                }
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    onVoiceModeToggle()
-                }
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .exclusively(before: TapGesture())
+                        .onEnded { value in
+                            // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
+                            switch value {
+                            case .first:
+                                onVoiceModeToggle()
+                            case .second:
+                                if voiceMode {
+                                    onVoiceModeToggle()
+                                } else {
+                                    onSend()
+                                }
+                            }
+                        }
+                )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
