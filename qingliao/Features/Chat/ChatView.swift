@@ -266,7 +266,7 @@ struct ChatView: View {
                         onVoiceModeToggle: { toggleVoiceMode() },
                         transcribing: transcribing,   // v2.0.100：转换中动画
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
-                        onLongPressInput: { toggleVoiceMode() })   // v2.0.106：长按输入框进语音模式
+                        onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) })   // v2.0.106/107：长按输入框进语音模式
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
@@ -801,7 +801,9 @@ struct ChatView: View {
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)   // 转换完成轻反馈
                 } else {
-                    voiceAuthFailed = true   // 没识别出内容 → 提示
+                    // v2.0.107：转写无结果 = 录音太短/没听清——提示「录音太短」（原误用 voiceAuthFailed「不可用」，
+                    // 那是麦克风权限/服务故障的提示，与太短场景不匹配）
+                    voiceTooShort = true
                 }
             } catch {
                 transcribing = false
@@ -819,14 +821,17 @@ struct ChatView: View {
 
     /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
     /// v2.0.100：进入时震动反馈（UIImpactFeedbackGenerator medium）
-    /// v2.0.106：长按输入框进入同款路径；进入时收起键盘（不弹键盘输入）
-    private func toggleVoiceMode() {
+    /// v2.0.106：长按输入框进入同款路径
+    /// v2.0.107：键盘两场景——按压时键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
+    private func toggleVoiceMode(keyboardWasUp: Bool = false) {
         if voiceMode {
             exitVoiceMode()
         } else {
             if voiceRecorder.start() {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()   // 长按激活震动反馈
-                inputFocus = false   // v2.0.106：语音模式收起键盘（长按输入框触发时不弹键盘）
+                if !keyboardWasUp {
+                    inputFocus = false   // 键盘原本未开 → 收回触摸聚焦弹起的键盘（语音模式不弹键盘）
+                }
                 withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
             } else {
                 voiceAuthFailed = true   // 麦克风权限被拒

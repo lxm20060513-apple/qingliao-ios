@@ -27,7 +27,8 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
         let url = dir.appendingPathComponent("voice_asr.m4a")
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44100,
+            // v2.0.107：44.1k→16k 采样（whisper 原生 16k，识别质量无损；文件小 2.7 倍，蜂窝上传更快）
+            AVSampleRateKey: 16000,
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]

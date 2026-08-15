@@ -432,7 +432,9 @@ struct ChatInputBar: View {
     // v2.0.101：转写停止按钮回调
     var onCancelTranscribe: () -> Void = {}
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
-    var onLongPressInput: () -> Void = {}
+    // v2.0.107：回调携带"按压时键盘是否已开"（onChanged 早于键盘通知，可区分两场景）
+    var onLongPressInput: (Bool) -> Void = { _ in }
+    @State private var pressKeyboardUp = false   // v2.0.107：长按按下瞬间的键盘状态
 
     var body: some View {
         HStack(spacing: 8) {
@@ -477,10 +479,15 @@ struct ChatInputBar: View {
                     // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
                     // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
                     //           → 改 simultaneousGesture 与系统手势共存触发
+                    // v2.0.107：onChanged 在按压开始即触发（早于键盘 WillShow 通知）——
+                    //           此刻记录的键盘状态即"长按前"状态，可区分两场景
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.4)
+                            .onChanged { _ in
+                                pressKeyboardUp = focused
+                            }
                             .onEnded { _ in
-                                onLongPressInput()
+                                onLongPressInput(pressKeyboardUp)
                             }
                     )
                     .overlay {
