@@ -55,7 +55,7 @@ struct AgentKeywordsSheet: View {
                     }
                 }
 
-                Section("添加关键词") {
+                Section {
                     HStack(spacing: 8) {
                         TextField("输入关键词（如：扫地机）", text: $newWord)
                             .textInputAutocapitalization(.never)
@@ -70,6 +70,8 @@ struct AgentKeywordsSheet: View {
                             .font(.system(size: 12))
                             .foregroundStyle(m.ok ? .green : .red)
                     }
+                } header: {
+                    Text("添加关键词")
                 } footer: {
                     Text("添加后立即生效：命中关键词的消息会走 Agent 智能回复（工具调用）。删除仅限自定义词。")
                 }
