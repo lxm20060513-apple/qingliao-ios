@@ -81,8 +81,9 @@ final class ChatStore {
 
     /// 流式结束后落库 assistant 消息（与最后一条相同则跳过，防重复）
     func upsertAssistant(_ text: String, agent: Bool = false) {
-        if let last = messages.last, last.role == "assistant", last.content == text {
-            last.agent = agent || last.agent
+        if let idx = messages.indices.last,
+           messages[idx].role == "assistant", messages[idx].content == text {
+            messages[idx].agent = agent || messages[idx].agent
             return
         }
         var m = ChatMessage(role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000)
