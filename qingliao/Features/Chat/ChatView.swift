@@ -418,7 +418,7 @@ struct ChatView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 90)
+                    .padding(.top, 130)   // v2.0.111：90→130 图标远离顶部，不再被头部/消息区白底遮住
                     .id("welcome")
                 } else {
                     // v2.0.40：LazyVStack → VStack（懒加载在批量移除时有复用状态残留，
@@ -510,6 +510,8 @@ struct ChatView: View {
             }
             // v2.0.50：.scrollPosition 在隐藏页内容清空时是已知崩溃点（新建会话=TabView
             // 隐藏页清空→scrollPos 更新异常→SIGTRAP）→ 换 GeometryReader + PreferenceKey 检测滚动
+            // v2.0.111：消息区背景透明（ScrollView 默认白底遮住上方 logo/内容）
+            .scrollContentBackground(.hidden)
             .background(
                 GeometryReader { geo in
                     Color.clear.preference(key: ScrollOffsetKey.self,
