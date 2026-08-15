@@ -475,9 +475,14 @@ struct ChatInputBar: View {
                     .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
                     .focused($focused)
                     // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
-                    .onLongPressGesture(minimumDuration: 0.4) {
-                        onLongPressInput()
-                    }
+                    // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
+                    //           → 改 simultaneousGesture 与系统手势共存触发
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.4)
+                            .onEnded { _ in
+                                onLongPressInput()
+                            }
+                    )
                     .overlay {
                         if text.isEmpty {
                             if transcribing {
