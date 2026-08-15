@@ -9,6 +9,7 @@ struct MemoryView: View {
     @State private var newText = ""
     @State private var message: (ok: Bool, text: String)?
     @State private var busy = false
+    @State private var confirmDelete: String?   // v2.0.102：删除确认（记忆不可恢复）
 
     var body: some View {
         NavigationStack {
@@ -72,7 +73,7 @@ struct MemoryView: View {
                                         .textSelection(.enabled)
                                     Spacer()
                                     Button {
-                                        Task { await remove(e) }
+                                        confirmDelete = e   // v2.0.102：先确认再删（记忆不可恢复）
                                     } label: {
                                         Image(systemName: "trash")
                                             .font(.system(size: 13))
@@ -93,6 +94,20 @@ struct MemoryView: View {
             }
             .navigationTitle("AI 记忆")
             .navigationBarTitleDisplayMode(.inline)
+            // v2.0.102：删除确认（记忆不可恢复）
+            .confirmationDialog("删除这条记忆？", isPresented: Binding(get: { confirmDelete != nil },
+                                                                      set: { if !$0 { confirmDelete = nil } }),
+                                titleVisibility: .visible) {
+                Button("删除", role: .destructive) {
+                    if let e = confirmDelete {
+                        Task { await remove(e) }
+                    }
+                    confirmDelete = nil
+                }
+                Button("取消", role: .cancel) { confirmDelete = nil }
+            } message: {
+                Text("将删除「\(confirmDelete ?? "")」，此操作不可恢复")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("完成") { dismiss() }

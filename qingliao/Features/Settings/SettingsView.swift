@@ -30,6 +30,8 @@ struct SettingsView: View {
     // v2.0.87am：天气城市（手动输入）
     @AppStorage("qingliao_weather_city") private var weatherCity = ""
     @State private var showWeatherCity = false
+    // v2.0.101：Agent 使用说明内联展开
+    @State private var showAgentHelp = false
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
@@ -131,6 +133,42 @@ struct SettingsView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .contentShape(Rectangle())
+                        // v2.0.101：使用说明（内联展开）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.gray, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("使用说明")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showAgentHelp ? 180 : 0))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAgentHelp.toggle() } }
+                        if showAgentHelp {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Agent 回复 = 直连模型 + NAS 本地工具，不经 Hermes。")
+                                Text("▸ 直接问：查磁盘/内存/温度、控制设备、执行场景，自动调用工具回复")
+                                Text("▸ 记忆规则：说「以后XX都用agent」，下次同类问题直接 Agent 处理")
+                                Text("▸ 复杂任务（联网搜索/写脚本/操作文件）自动转交 Hermes 执行")
+                                Text("▸ 普通聊天走 Hermes（带 AI 记忆）；Agent 只参考轻聊记忆与规则")
+                                Text("▸ 关闭开关后：所有对话走普通 AI 回复")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 12)
+                        }
                         // Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
                         HStack(spacing: 12) {
@@ -415,17 +453,18 @@ struct SettingsView: View {
             HASettingsSheet()
                 .presentationDetents([.medium])
         }
-        .task {
-            if let j = try? await auth.json("/api/secrets") {
-                secretCount = (j["secrets"] as? [Any])?.count ?? 0
-            }
-            if let j = try? await auth.json("/api/ha/config") {
-                haAddress = j["address"] as? String ?? ""
-            }
-            // v2.0.87：AI 记忆条数
-            if let j = try? await auth.json("/api/memory/list") {
-                memoryCount = (j["entries"] as? [String] ?? []).count
-            }
+        // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
+        .onAppear { Task { await loadCounts() } }
+        .task { await loadCounts() }
+    }
+
+    /// v2.0.102：加载凭据/记忆计数（设置页行尾显示）
+    private func loadCounts() async {
+        if let j = try? await auth.json("/api/secrets") {
+            secretCount = (j["secrets"] as? [Any])?.count ?? 0
+        }
+        if let j = try? await auth.json("/api/memory/list") {
+            memoryCount = (j["entries"] as? [String] ?? []).count
         }
     }
 
@@ -471,13 +510,14 @@ struct SettingsView: View {
         }
         context.localizedReason = "用于登录页一键登录轻聊"
         context.evaluatePolicy(.deviceOwnerAuthentication,
-                               localizedReason: "用于登录页一键登录轻聊") { success, _ in
+                               localizedReason: "用于登录页一键登录轻聊") { success, error in
             DispatchQueue.main.async {
-                if !success {
-                    // 用户取消/拒绝 → 回滚开关，提示去系统设置开启
-                    faceIDLogin = false
-                    faceIDAuthFailed = true
-                }
+                if success { return }
+                // v2.0.102：用户主动取消（userCancel）不算失败——保留开关不弹提示
+                if let la = error as? LAError, la.code == .userCancel { return }
+                // 拒绝/系统错误 → 回滚开关，提示去系统设置开启
+                faceIDLogin = false
+                faceIDAuthFailed = true
             }
         }
     }
@@ -493,12 +533,13 @@ struct SettingsView: View {
         }
         context.localizedReason = "用于启动时解锁轻聊"
         context.evaluatePolicy(.deviceOwnerAuthentication,
-                               localizedReason: "用于启动时解锁轻聊") { success, _ in
+                               localizedReason: "用于启动时解锁轻聊") { success, error in
             DispatchQueue.main.async {
-                if !success {
-                    appLockOn = false
-                    appLockAuthFailed = true
-                }
+                if success { return }
+                // v2.0.102：用户主动取消不算失败——保留开关不弹提示
+                if let la = error as? LAError, la.code == .userCancel { return }
+                appLockOn = false
+                appLockAuthFailed = true
             }
         }
     }

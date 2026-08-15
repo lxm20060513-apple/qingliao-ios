@@ -13,8 +13,13 @@ func dataURLImage(_ urlStr: String) -> UIImage? {
     if let img = imageCache.object(forKey: urlStr as NSString) {
         return img
     }
-    guard let data = Data(base64Encoded: String(urlStr.dropFirst("data:image/jpeg;base64,".count)),
-                          options: .ignoreUnknownCharacters) else { return nil }
+    // v2.0.102：动态匹配 data URL 前缀（png/heic 等非 jpeg 也被正确截断；纯 base64 原样解码）
+    var b64 = urlStr
+    if let comma = urlStr.firstIndex(of: ","),
+       urlStr[..<comma].hasPrefix("data:image/") {
+        b64 = String(urlStr[urlStr.index(after: comma)...])
+    }
+    guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else { return nil }
     guard let img = UIImage(data: data) else { return nil }
     if imageCache.totalCostLimit == 0 {
         imageCache.totalCostLimit = 40 * 1024 * 1024   // 40MB

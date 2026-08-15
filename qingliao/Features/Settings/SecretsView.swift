@@ -150,11 +150,13 @@ struct SecretsView: View {
     }
 
     /// Face ID / 面容验证（失败可重试）
+    /// v2.0.102：无生物识别设备直接放行（原恒 locked 只能关闭页面）
     private func authenticate() {
         let ctx = LAContext()
         var err: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {
-            authFailed = true
+            locked = false   // 设备无生物识别 → 不锁（个人自用 App 降级为明文可见）
+            authFailed = false
             return
         }
         ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
@@ -210,8 +212,13 @@ struct SecretsView: View {
 
     private func delete(_ e: SecretEntry) {
         Task {
-            _ = try? await auth.request("/api/secrets/\(e.id)", method: "DELETE", body: nil)
-            entries.removeAll { $0.id == e.id }
+            // v2.0.102：仅服务器确认成功才移除（失败保留，重进不"复活"）
+            if let j = try? await auth.json("/api/secrets/\(e.id)", method: "DELETE", body: nil),
+               (j["ok"] as? Bool) == true {
+                entries.removeAll { $0.id == e.id }
+            } else {
+                toast = "删除失败，请重试"
+            }
         }
     }
 

@@ -149,10 +149,14 @@ struct DockerSheet: View {
     }
 
     private func action(_ n: String, _ act: String) async {
-        if let j = try? await auth.json("/api/docker/\(act)", method: "POST", body: ["name": n]) {
-            let ok = (j["ok"] as? Bool) ?? false
-            message = (ok, j["message"] as? String ?? "")
+        // v2.0.102：网络失败明确反馈（原 try? 失败时 message 不变，点了毫无反应）
+        guard let j = try? await auth.json("/api/docker/\(act)", method: "POST", body: ["name": n]) else {
+            message = (false, "请求失败，请检查网络连接")
+            await load()
+            return
         }
+        let ok = (j["ok"] as? Bool) ?? false
+        message = (ok, j["message"] as? String ?? "")
         await load()
     }
 }
@@ -603,6 +607,7 @@ extension DockerSheet {
         }
         await load()
         await loadImages()
+        await loadUpdates()   // v2.0.102：升级后刷新更新状态（原升级箭头残留到重开弹窗）
     }
 }
 

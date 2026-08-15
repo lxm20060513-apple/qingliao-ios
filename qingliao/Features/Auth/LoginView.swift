@@ -17,6 +17,7 @@ struct LoginView: View {
     // v2.0.88：Face ID 快捷登录（开关开启即显示按钮；无凭据时点击提示先手动登录）
     @State private var faceIDReady = false
     @State private var showFaceIDHint = false
+    @State private var showServerMismatch = false   // v2.0.102：Face ID 凭据服务器与输入不一致提示
 
     var body: some View {
         ZStack {
@@ -155,6 +156,12 @@ struct LoginView: View {
                                                localizedReason: "验证后自动登录轻聊") { success, _ in
                             DispatchQueue.main.async {
                                 guard success, let cred = FaceIDStore.load() else { return }
+                                // v2.0.102：Face ID 凭据服务器与当前输入不一致时提示（防静默登录到旧服务器）
+                                let input = server.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !input.isEmpty && input != cred.server {
+                                    showServerMismatch = true
+                                    return
+                                }
                                 // 用保存的服务器/账号/密码自动登录（失败会显示错误，可重试/手动登录）
                                 auth.saveServer(cred.server)
                                 Task { await auth.login(username: cred.username, password: cred.password, remember: true) }
@@ -180,6 +187,11 @@ struct LoginView: View {
                         Button("好的", role: .cancel) {}
                     } message: {
                         Text("请先手动登录一次，登录后会自动保存凭据，下次即可使用 Face ID 一键登录。")
+                    }
+                    .alert("服务器地址不一致", isPresented: $showServerMismatch) {
+                        Button("好的", role: .cancel) {}
+                    } message: {
+                        Text("Face ID 保存的服务器与当前输入不一致，已取消自动登录。请确认地址后手动登录。")
                     }
                 }
 

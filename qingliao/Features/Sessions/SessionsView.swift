@@ -233,6 +233,8 @@ struct SessionsView: View {
             }
         }
         .task { await load() }
+        // v2.0.102：切回会话列表立即刷新（聊天里新建/重命名后列表即时更新，原只有 .task 首刷）
+        .onAppear { Task { await load() } }
         // v2.0.78：搜索键盘完成按钮
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -389,10 +391,14 @@ struct SessionsView: View {
         defer { searching = false }
         guard let j = try? await auth.json("/api/sessions/search", method: "POST", body: ["q": q]),
               let arr = j["results"] as? [[String: Any]] else {
-            searchResults = []
+            // v2.0.102：失败时仅当查询词未变才清空（防旧请求晚到覆盖新结果）
+            if q == searchText { searchResults = [] }
             return
         }
-        searchResults = arr
+        // v2.0.102：竞态防护——旧查询响应晚到时不覆盖新查询结果
+        if q == searchText {
+            searchResults = arr
+        }
     }
 
     /// 搜索结果 → 打开对应会话（按 id 从完整列表找到并加载），并定位命中消息
@@ -451,8 +457,16 @@ struct SessionsView: View {
                 ])
                 if (j["ok"] as? Bool) == true {
                     await load()
+                } else {
+                    // v2.0.102：失败恢复选择与编辑态（原清空后失败无恢复）
+                    selectedIds = Set(idsCopy)
+                    editing = true
+                    errorText = "删除失败，请重试"
                 }
             } catch {
+                // v2.0.102：失败恢复选择与编辑态
+                selectedIds = Set(idsCopy)
+                editing = true
                 errorText = "删除失败，请重试"
             }
         }

@@ -12,6 +12,7 @@ struct KBView: View {
     @State private var showPasteSheet = false   // v2.0.83 粘贴文本上传
     @State private var message: (ok: Bool, text: String)?
     @State private var busy = false
+    @State private var confirmDelete: String?   // v2.0.102：删除确认（文档不可恢复）
 
     var body: some View {
         NavigationStack {
@@ -53,7 +54,7 @@ struct KBView: View {
                         KBRow(name: doc.name,
                               chunks: doc.chunks,
                               size: doc.size,
-                              onDelete: { name in Task { await deleteDoc(name) } })
+                              onDelete: { name in confirmDelete = name })   // v2.0.102：先确认再删
                     }
                 }
 
@@ -67,6 +68,20 @@ struct KBView: View {
             }
             .navigationTitle("知识库")
             .navigationBarTitleDisplayMode(.inline)
+            // v2.0.102：删除确认（文档不可恢复）
+            .confirmationDialog("删除文档？", isPresented: Binding(get: { confirmDelete != nil },
+                                                                   set: { if !$0 { confirmDelete = nil } }),
+                                titleVisibility: .visible) {
+                Button("删除", role: .destructive) {
+                    if let name = confirmDelete {
+                        Task { await deleteDoc(name) }
+                    }
+                    confirmDelete = nil
+                }
+                Button("取消", role: .cancel) { confirmDelete = nil }
+            } message: {
+                Text("将删除「\(confirmDelete ?? "")」，此操作不可恢复")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("完成") { dismiss() }

@@ -86,7 +86,11 @@ struct ChatView: View {
     @StateObject private var voiceRecorder = VoiceRecorder()
     @State private var voiceMode = false
     @State private var transcribing = false   // v2.0.100：语音转文字转换中（动画）
+    @State private var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
     @State private var voiceAuthFailed = false
+    @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
+    @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
+    @State private var voiceTooShort = false   // v2.0.102：录音太短提示
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
 
@@ -258,7 +262,8 @@ struct ChatView: View {
                         // v2.0.96：语音转文字（长按发送按钮）
                         voiceMode: voiceMode,
                         onVoiceModeToggle: { toggleVoiceMode() },
-                        transcribing: transcribing)   // v2.0.100：转换中动画
+                        transcribing: transcribing,   // v2.0.100：转换中动画
+                        onCancelTranscribe: { stopTranscribe() })   // v2.0.101：停止转写
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
@@ -271,6 +276,18 @@ struct ChatView: View {
             Button("好的", role: .cancel) {}
         } message: {
             Text("请检查麦克风权限（设置 → 轻聊 → 麦克风），或稍后重试。")
+        }
+        // v2.0.102：录音太短提示
+        .alert("录音太短", isPresented: $voiceTooShort) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text("说话时间太短，请按住说话至少 1 秒再松手。")
+        }
+        // v2.0.102：AI 回答中发文件提示
+        .alert("AI 回答中", isPresented: $fileSendBlocked) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text("AI 正在回答，稍等片刻再发送文件。")
         }
         // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
         .task {
@@ -514,12 +531,18 @@ struct ChatView: View {
             Button("压缩后发送") {
                 if let p = pendingSend {
                     chat.compressContext()
+                    inputText = ""   // v2.0.102：确认发送才清空（取消保留草稿）
+                    pendingImage = nil
+                    pendingImageData = nil
                     sendCore(text: p.text, imageData: p.imageData)
                 }
                 pendingSend = nil
             }
             Button("直接发送") {
                 if let p = pendingSend {
+                    inputText = ""   // v2.0.102：确认发送才清空（取消保留草稿）
+                    pendingImage = nil
+                    pendingImageData = nil
                     sendCore(text: p.text, imageData: p.imageData)
                 }
                 pendingSend = nil
@@ -618,21 +641,22 @@ struct ChatView: View {
             let quoted = q.content.replacingOccurrences(of: "\n", with: "\n> ")
             text = "> " + quoted + "\n\n" + text
         }
-        inputText = ""
+        // v2.0.102：清空输入框移到发送确认之后——长上下文弹窗点"取消"时草稿保留（修复草稿丢失）
         quotedMessage = nil
-        pendingImage = nil
-        pendingImageData = nil
-        // v2.0.59：上下文过长时先提示压缩（60 条以上）
         if chat.messages.count > 60 {
             pendingSend = (text, img)
             showLongContextAlert = true
             return
         }
+        inputText = ""
+        pendingImage = nil
+        pendingImageData = nil
         sendCore(text: text, imageData: img)
     }
 
     /// v2.0.59：发送核心（send / 失败重试共用）
     /// v2.0.88：AI 回答中发送不再被拦截——消息上屏 + 入队，当前回答结束后自动逐条发送
+    /// v2.0.102：sendingLock 同步置位——防极快双击时 isStreaming 尚未置位导致双流竞态
     private func sendCore(text: String, imageData: String?) {
         guard !text.isEmpty || imageData != nil else { return }
         if stream.isStreaming {
@@ -646,6 +670,8 @@ struct ChatView: View {
             Task { await chat.saveToServer(auth: auth) }
             return
         }
+        guard !sendingLock else { return }   // 双击保护：第一次发送的流尚未置位时，第二次直接忽略
+        sendingLock = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // v2.0.65：发送通知 → Dock 聊天图标轻跳
         NotificationCenter.default.post(name: .qingliaoSent, object: nil)
@@ -658,8 +684,10 @@ struct ChatView: View {
     }
 
     /// v2.0.88：启动流式回答（消息已在列表；失败标记/回复完成/队列联动统一在这里）
+    /// v2.0.102：记录发起会话——回答期间切换会话则丢弃结果（防跨会话污染）；完成回调释放 sendingLock
     private func startStream(for msg: ChatMessage) {
         let history = chat.historyPayload()
+        let startSid = chat.sessionId
 
         Task {
             await stream.start(
@@ -669,6 +697,8 @@ struct ChatView: View {
                 provider: provider,
                 messages: history
             ) { success, error in
+                sendingLock = false   // 无论结果，先释放发送锁
+                guard chat.sessionId == startSid else { return }   // 已切换会话 → 本次结果丢弃
                 if !success {
                     chat.markFailed(id: msg.id)   // v2.0.59 失败标记 → 重试按钮
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
@@ -701,10 +731,8 @@ struct ChatView: View {
         }) {
             chat.messages[idx].queued = false
             startStream(for: chat.messages[idx])
-        } else {
-            // 排队消息已不在列表（如会话被清空/切换）→ 正常发送兜底
-            sendCore(text: item.text, imageData: item.imageData)
         }
+        // v2.0.102：排队消息已不在列表（被删除/清空/切换）→ 直接丢弃，不重发（修复"删除后复活"）
     }
 
     /// v2.0.88：取消排队（停止按钮/切换会话）——清队列 + 消息恢复"已送达"状态
@@ -716,11 +744,13 @@ struct ChatView: View {
     }
 
     /// v2.0.62：打开图片查看器（收集会话内全部图片消息 → 相册翻页）
+    /// v2.0.102：索引钳制——解码失败导致 images 比 imgMsgs 短时防越界
     private func openImageViewer(for msg: ChatMessage) {
         let imgMsgs = chat.messages.enumerated().filter { $0.element.imageDataURL != nil }
         let images = imgMsgs.compactMap { dataURLImage($0.element.imageDataURL ?? "") }
         guard !images.isEmpty,
-              let idx = imgMsgs.firstIndex(where: { $0.element.id == msg.id }) else { return }
+              let rawIdx = imgMsgs.firstIndex(where: { $0.element.id == msg.id }) else { return }
+        let idx = min(rawIdx, images.count - 1)   // v2.0.102：坏图跳过导致偏移时钳制
         viewerPayload = ImageViewPayload(images: images, index: idx)
     }
 
@@ -744,26 +774,44 @@ struct ChatView: View {
 
     /// v2.0.96c：上传录音转写（服务器 faster-whisper）
     /// v2.0.100：transcribing 动画（输入框「语音转换中…」+ 按钮转圈）+ 完成/失败震动
+    /// v2.0.101：停止按钮（transcribeToken 代次——停止/重录使旧 Task 结果作废，杜绝竞态回填）
     private func uploadAndTranscribe() {
         guard let url = voiceRecorder.stop(),
               FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url), data.count > 100 else { return }
+              let data = try? Data(contentsOf: url) else { return }
+        // v2.0.102：录音太短明确提示（原静默丢弃）
+        if data.count <= 100 {
+            voiceTooShort = true
+            return
+        }
+        transcribeToken += 1
+        let token = transcribeToken
         transcribing = true
         Task {
             do {
                 let text = try await auth.asrTranscribe(data)
                 transcribing = false
+                guard token == transcribeToken else { return }   // 已停止/已重录 → 丢弃结果
                 if !text.isEmpty {
-                    inputText = text
+                    if inputText.isEmpty {
+                        inputText = text   // v2.0.102：用户已在输入时不覆盖（保留正在打的内容）
+                    }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)   // 转换完成轻反馈
                 } else {
                     voiceAuthFailed = true   // 没识别出内容 → 提示
                 }
             } catch {
                 transcribing = false
+                guard token == transcribeToken else { return }
                 voiceAuthFailed = true
             }
         }
+    }
+
+    /// v2.0.101：停止转写（代次递增使旧 Task 结果作废 + 立即隐藏转换动画）
+    private func stopTranscribe() {
+        transcribeToken += 1
+        transcribing = false
     }
 
     /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
@@ -809,9 +857,11 @@ struct ChatView: View {
     // MARK: - 消息操作
 
     /// v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
+    /// v2.0.102：同步移除对应排队项（修复排队消息删除后"复活"自动重发）
     private func deleteMessage(_ msg: ChatMessage) {
         if let idx = chat.messages.firstIndex(where: { $0.timestamp == msg.timestamp && $0.role == msg.role && $0.content == msg.content }) {
             withAnimation { chat.messages.remove(at: idx) }
+            pendingQueue.removeAll { $0.text == msg.content && $0.imageData == msg.imageDataURL }
             Task { await chat.saveToServer(auth: auth) }
         }
     }
@@ -928,13 +978,18 @@ struct ChatView: View {
     }
 
     private func sendFile(_ url: URL) {
-        guard !stream.isStreaming else { return }
+        // v2.0.102：流式中发文件不再静默丢弃——明确提示
+        guard !stream.isStreaming else {
+            fileSendBlocked = true
+            return
+        }
         let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
         let name = url.lastPathComponent
         let ext = (name as NSString).pathExtension.lowercased()
 
         Task {
+            // v2.0.102：安全作用域在 Task 内保持到读取完成（原 defer 提前释放导致 iOS 读取失败）
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
             // 整份上传 NAS（原件服务器保留，可下载）
             let result = await uploadFile(url, name: name)
             var content: String

@@ -14,10 +14,11 @@ struct DashboardView: View {
     @State private var haEntities: [HAEntity] = []
     @State private var router = RouterStatus()
     @State private var scrollPos = ScrollPosition()
-    @State private var loaded = false
+    @State private var loaded = false   // v2.0.102：首刷逻辑已并入 onAppear，此变量保留占位
     @State private var activeSheet: DashboardSheet?
     // v2.0.72：Docker 容器数量（看板卡片状态）
     @State private var dockerContainerCount = 0
+    @State private var sceneRunning = false   // v2.0.102：场景执行防抖
     // v2.0.96：场景（AI 生成动作组，一键执行）
     @State private var scenes: [SceneItem] = []
     @State private var sceneResult = ""
@@ -140,20 +141,17 @@ struct DashboardView: View {
             }
         }
         // v2.0.96b：切回看板立即刷新（对话里生成场景后看板即时联动；TabView 切回触发 onAppear）
+        // v2.0.102：单一刷新入口（onAppear 首刷+切回刷），.task 只跑 30s 轮询——修并发双刷/旧响应覆盖
         .onAppear {
-            Task { await refresh() }
+            Task {
+                await refresh()
+                await loadDockerCount()      // v2.0.102：切回也刷 Docker 数（部署后返回看板即时更新）
+                await loadWeatherWithCity()  // v2.0.102：切回也刷天气（设置页改城市后即时生效）
+            }
         }
         .task {
-            if !loaded {
-                await refresh()
-                loaded = true
-            }
-            // v2.0.72：Docker 容器数量（卡片状态）
-            await loadDockerCount()
-            // v2.0.86：硬件温度（CPU / NVMe）
+            // v2.0.86：硬件温度（CPU / NVMe）首屏加载
             await loadHw()
-            // v2.0.87am：天气（右上角徽章；手动城市名）
-            await loadWeatherWithCity()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -218,6 +216,8 @@ struct DashboardView: View {
 
     /// 快捷指令：启动/关闭 Clash
     private func clashAction(_ action: String) {
+        // v2.0.102：防抖——操作中再点直接忽略（原两个并发 Task 各自 defer 释放 busy 互相覆盖）
+        guard !router.busy else { return }
         router.busy = true
         Task {
             defer { router.busy = false }
@@ -249,9 +249,12 @@ struct DashboardView: View {
         await loadRouter()
     }
 
-    /// v2.0.96：执行场景
+    /// v2.0.96：执行场景（v2.0.102：加防抖——连点不重复执行）
     private func runScene(_ s: SceneItem) {
+        guard !sceneRunning else { return }
+        sceneRunning = true
         Task {
+            defer { sceneRunning = false }
             if let j = try? await auth.json("/api/scenes/run", method: "POST", body: ["name": s.name]) {
                 sceneResult = j["message"] as? String ?? "执行完成"
             } else {
@@ -261,11 +264,16 @@ struct DashboardView: View {
         }
     }
 
-    /// v2.0.96：删除场景
+    /// v2.0.96：删除场景（v2.0.102：仅服务器确认成功才移除——失败保留并提示）
     private func deleteScene(_ s: SceneItem) {
         Task {
-            _ = try? await auth.json("/api/scenes/delete", method: "POST", body: ["name": s.name])
-            scenes.removeAll { $0.name == s.name }
+            if let j = try? await auth.json("/api/scenes/delete", method: "POST", body: ["name": s.name]),
+               (j["ok"] as? Bool) == true {
+                scenes.removeAll { $0.name == s.name }
+            } else {
+                sceneResult = "删除失败（网络或服务器错误）"
+                showSceneResult = true
+            }
         }
     }
 
@@ -846,8 +854,15 @@ struct HADeviceSheet: View {
 
     private func toggle(_ e: HAEntity) {
         // switch 域实体（NAS 插座/消毒柜追加进灯列表）用 switch 服务域
-        let d = e.entityID.hasPrefix("switch.") ? "switch" : domain
-        callService(domain: d, service: "toggle", entityID: e.entityID, extra: nil)
+        if e.entityID.hasPrefix("switch.") {
+            callService(domain: "switch", service: "toggle", entityID: e.entityID, extra: nil)
+        } else if domain == "climate" {
+            // v2.0.102：climate 域无 toggle 服务——开=auto，关=off（原调 climate.toggle 永远无效）
+            callService(domain: "climate", service: "set_hvac_mode", entityID: e.entityID,
+                        extra: ["hvac_mode": e.state == "off" ? "auto" : "off"])
+        } else {
+            callService(domain: domain, service: "toggle", entityID: e.entityID, extra: nil)
+        }
     }
 
     private func setMode(_ e: HAEntity, mode: String) {

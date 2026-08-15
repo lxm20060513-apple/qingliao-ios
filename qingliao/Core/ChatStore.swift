@@ -80,9 +80,12 @@ final class ChatStore {
     }
 
     /// 流式结束后落库 assistant 消息（与最后一条相同则跳过，防重复）
+    /// v2.0.102：去重仅限"连续两条 assistant 内容相同"（流式重复场景）——
+    ///           上一条若是用户消息（新一轮提问），即使内容相同也必须新增（修复相同回复被吞）
     func upsertAssistant(_ text: String, agent: Bool = false) {
-        if let idx = messages.indices.last,
-           messages[idx].role == "assistant", messages[idx].content == text {
+        if let idx = messages.indices.last, idx > 0,
+           messages[idx].role == "assistant", messages[idx].content == text,
+           messages[idx - 1].role == "assistant" {
             messages[idx].agent = agent || messages[idx].agent
             return
         }

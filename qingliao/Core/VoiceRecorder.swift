@@ -18,6 +18,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
         } catch {
+            // v2.0.102：启动失败清空上次残留（防 stop() 上传旧音频）
+            recorder = nil
+            audioURL = nil
             return false
         }
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -37,14 +40,20 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
             isRecording = true
             return true
         } catch {
+            recorder = nil
+            audioURL = nil
             return false
         }
     }
 
     /// 停止录音，返回音频文件（用于上传转写）
+    /// v2.0.102：恢复音频会话为 playback 并停用——否则 TTS 朗读无声（setCategory(.record) 未恢复）
     func stop() -> URL? {
         recorder?.stop()
         isRecording = false
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
         return audioURL
     }
 

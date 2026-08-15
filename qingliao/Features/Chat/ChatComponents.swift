@@ -429,6 +429,8 @@ struct ChatInputBar: View {
     var onVoiceModeToggle: () -> Void = {}
     // v2.0.100：转写中动画（输入框「语音转换中…」+ 按钮转圈）
     var transcribing: Bool = false
+    // v2.0.101：转写停止按钮回调
+    var onCancelTranscribe: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
@@ -514,42 +516,52 @@ struct ChatInputBar: View {
             //          视图树（voiceMode 切换重建按钮）→ 实测 SIGTRAP 闪退（crash_reports 4 次）。
             //          改用 ExclusiveGesture（长按优先、互斥），onEnded 时手势已结束，视图重建安全。
             // v2.0.100：transcribing 时按钮显示转圈（转换中动画）
+            // v2.0.101：转圈旁加红色停止按钮（随时中断转换）；手势只在非转写时挂载（停止按钮独立可点）
             Group {
                 if transcribing {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(width: 32, height: 32)
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(width: 32, height: 32)
+                        Button(action: onCancelTranscribe) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(Color.red.opacity(0.85), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     Image(systemName: voiceMode ? "waveform" : "arrow.up")
                         .font(.system(size: voiceMode ? 15 : 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                        .gesture(
+                            LongPressGesture(minimumDuration: 0.4)
+                                .exclusively(before: TapGesture())
+                                .onEnded { value in
+                                    // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
+                                    switch value {
+                                    case .first:
+                                        onVoiceModeToggle()
+                                    case .second:
+                                        if voiceMode {
+                                            onVoiceModeToggle()
+                                        } else {
+                                            onSend()
+                                        }
+                                    }
+                                }
+                        )
                 }
             }
             .background(
                 LinearGradient(colors: voiceMode ? [.blue, .indigo, .pink] : [.blue, .indigo],
                                startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: Circle()
+                in: Capsule()
             )
-            .contentShape(Circle())
-            .gesture(
-                LongPressGesture(minimumDuration: 0.4)
-                    .exclusively(before: TapGesture())
-                    .onEnded { value in
-                        // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
-                        switch value {
-                        case .first:
-                            onVoiceModeToggle()
-                        case .second:
-                            if voiceMode {
-                                onVoiceModeToggle()
-                            } else {
-                                onSend()
-                            }
-                        }
-                    }
-            )
-            .disabled(transcribing)   // 转写中禁点，避免重复触发
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -873,8 +885,9 @@ extension MessageBubble {
     /// 解析文件消息文本（[文件: name]（状态）/[PDF: name]（状态）…）
     private func parseFileMessage(_ content: String) -> FileMessageInfo? {
         guard content.hasPrefix("[文件:") || content.hasPrefix("[PDF:") || content.hasPrefix("[图片:") else { return nil }
-        // 提取方括号内文件名
-        let rest = content.dropFirst(content.hasPrefix("[图片:") ? 4 : 3)
+        // 提取方括号内文件名（v2.0.102：按实际前缀长度截断——[文件:/[图片: 4 字符，[PDF: 5 字符，原 drop 3 会把冒号带进文件名）
+        let drop: Int = content.hasPrefix("[PDF:") ? 5 : 4
+        let rest = content.dropFirst(drop)
         guard let end = rest.firstIndex(of: "]") else { return nil }
         let name = String(rest[..<end]).trimmingCharacters(in: .whitespaces)
         // 提取括号内状态

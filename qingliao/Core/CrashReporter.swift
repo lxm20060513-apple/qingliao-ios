@@ -102,8 +102,9 @@ enum CrashReporter {
     static func flushPending(auth: AuthStore) async {
         let path = qlCrashFilePath()
         guard FileManager.default.fileExists(atPath: path) else { return }
+        // v2.0.102：崩溃文件含数字 ts 字段，原 [String: String] 强转失败导致 NSException 上报永远丢失
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             try? FileManager.default.removeItem(atPath: path)
             return
         }

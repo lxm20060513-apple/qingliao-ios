@@ -136,7 +136,10 @@ final class StreamClient {
     }
 
     /// App 重开后恢复：有未完成任务 → 回填内容并继续轮询（无任务时静默返回）
+    /// v2.0.102：先停旧轮询再恢复——防 .task 重复触发/恢复与手动 start 重叠导致双轮询
     func restoreIfNeeded(auth: AuthStore, onFinished: ((Bool, String) -> Void)? = nil) async {
+        guard !isStreaming else { return }
+        stopPolling()
         guard let d = UserDefaults.standard.dictionary(forKey: "qingliao_stream_pending") else { return }
         // 超过 30 分钟的任务视为失效（服务器端流可能已回收）
         if let ts = d["ts"] as? TimeInterval, Date().timeIntervalSince1970 - ts > 1800 {

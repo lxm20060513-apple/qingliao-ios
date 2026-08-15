@@ -74,9 +74,14 @@ final class AuthStore {
             if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                (j["ok"] as? Bool) == true {
                 self.username = username
-                if let t = j["token"] as? String, !t.isEmpty { token = t }
+                // v2.0.102：登录前清空旧 token——换服务器登录时防残留旧服务器凭据
+                if let t = j["token"] as? String, !t.isEmpty {
+                    token = t
+                } else {
+                    token = ""
+                }
                 defaults.set(username, forKey: userKey)
-                if !token.isEmpty { defaults.set(token, forKey: tokenKey) }
+                if !token.isEmpty { defaults.set(token, forKey: tokenKey) } else { defaults.removeObject(forKey: tokenKey) }
                 isLoggedIn = true
                 defaults.set(true, forKey: loggedKey)
                 // v2.0.88：Face ID 登录开关开启（默认开）时保存凭据到 Keychain
@@ -232,6 +237,10 @@ final class AuthStore {
                 guard data.count < 2000 else {
                     throw APIError.badResponseDetail("文件过大（蜂窝下 relay 限 2KB，请用 PWA 上传）")
                 }
+                // v2.0.102：multipart body 含二进制（图片等）无法经 relay 文本通道——提前失败，不静默丢 body
+                guard String(data: body, encoding: .utf8) != nil else {
+                    throw APIError.badResponseDetail("二进制文件蜂窝下无法 relay 上传，请用 Wi-Fi")
+                }
                 (respData, code) = try await relay.relay(
                     method: "POST", path: path,
                     headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
@@ -362,20 +371,20 @@ final class AuthStore {
 
     // MARK: - 连通性测试
 
-    /// 测试连接：Wi-Fi → URLSession 直连；蜂窝 → CFStream 直连 GET（无参，iOS 27 唯一确定通的形态）
+    /// 测试连接：v2.0.102 改为直连传入的地址（原实现测的是已保存地址，误导排查）
     func testConnection(server: String) async -> String {
         var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
         if !s.hasPrefix("http") { s = "https://" + s }
-        guard let url = URL(string: s), url.host != nil else {
+        while s.hasSuffix("/") { s.removeLast() }
+        guard let url = URL(string: s + "/api/auth/status"), url.host != nil else {
             return "❌ 服务器地址无效"
         }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8
+        req.httpMethod = "GET"
         do {
-            let (_, code): (Data, Int)
-            if NetworkMonitor.shared.isCellular {
-                (_, code) = try await relay.directRequest(method: "GET", path: "/api/auth/status", timeout: 8)
-            } else {
-                (_, code) = try await directHTTP(method: "GET", path: "/api/auth/status", headers: [:], body: nil)
-            }
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             if code == 401 || code == 200 {
                 return "✅ 连接正常（服务器已响应）"
             }
