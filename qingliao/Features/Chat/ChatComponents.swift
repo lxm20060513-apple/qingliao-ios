@@ -432,9 +432,10 @@ struct ChatInputBar: View {
     // v2.0.101：转写停止按钮回调
     var onCancelTranscribe: () -> Void = {}
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
-    // v2.0.107：回调携带"长按前键盘是否已开"（键盘通知时间戳判断，可靠区分两场景）
+    // v2.0.109b：onChanged 记录按下瞬间键盘可见状态（down 时键盘未弹/已弹，比时间戳推断可靠）
     var onLongPressInput: (Bool) -> Void = { _ in }
     @Environment(KeyboardObserver.self) private var kbEnv
+    @State private var pressKeyboardUp = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -479,13 +480,14 @@ struct ChatInputBar: View {
                     // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
                     // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
                     //           → 改 simultaneousGesture 与系统手势共存触发
-                    // v2.0.107b：用键盘通知时间戳判断"长按前键盘是否已开"
-                    // v2.0.108b：窗口 0.6→2.0s（iOS27 键盘通知可能延迟 0.5s+，0.6s 太窄误判保持键盘）
+                    // v2.0.109b：onChanged（down 瞬间）记录键盘可见状态——键盘开=true 保持，关=false 收回
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.4)
+                            .onChanged { _ in
+                                pressKeyboardUp = kbEnv.isVisible
+                            }
                             .onEnded { _ in
-                                let justShown = kbEnv.lastShowTime.map { Date().timeIntervalSince($0) < 2.0 } ?? false
-                                onLongPressInput(kbEnv.isVisible && !justShown)
+                                onLongPressInput(pressKeyboardUp)
                             }
                     )
                     .overlay {

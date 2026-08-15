@@ -26,6 +26,46 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
         return true
     }
 
+    // v2.0.110：后台刷新（方案2推送）——iOS 定期唤醒 App，检查流式任务是否完成 →
+    // 完成则发本地通知（侧载无 entitlement 也能用；唤醒间隔由系统决定，非实时）
+    func application(_ application: UIApplication,
+                     performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let server = UserDefaults.standard.string(forKey: "qingliao_server") ?? ""
+        let token = UserDefaults.standard.string(forKey: "qingliao_token") ?? ""
+        guard let d = UserDefaults.standard.dictionary(forKey: "qingliao_stream_pending"),
+              let taskId = d["taskId"] as? String, !taskId.isEmpty,
+              !server.isEmpty, !token.isEmpty else {
+            completionHandler(.noData)
+            return
+        }
+        var base = server
+        if !base.hasPrefix("http") { base = "https://" + base }
+        guard let url = URL(string: base + "/api/stream/" + taskId) else {
+            completionHandler(.failed)
+            return
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 12
+        req.setValue(token, forHTTPHeaderField: "X-Auth-Token")
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            guard let data,
+                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completionHandler(.failed)
+                return
+            }
+            let status = j["status"] as? String ?? ""
+            if status == "done" || status == "error" {
+                // 回复完成 → 本地通知 + 清理持久化任务
+                let sid = d["sessionId"] as? String
+                NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看", sessionId: sid)
+                UserDefaults.standard.removeObject(forKey: "qingliao_stream_pending")
+                completionHandler(.newData)
+            } else {
+                completionHandler(.noData)   // 未完成，等下次系统唤醒再查
+            }
+        }.resume()
+    }
+
     // v2.0.63：用 completionHandler 版（async 版在 Swift 6 下 non-Sendable 参数报错）
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
@@ -263,7 +303,7 @@ struct ChatView: View {
                          onCamera: { showCameraPicker = true },
                         // v2.0.96：语音转文字（长按发送按钮）
                         voiceMode: voiceMode,
-                        onVoiceModeToggle: { toggleVoiceMode() },
+                        onVoiceModeToggle: { toggleVoiceMode(keyboardWasUp: kb.isVisible) },   // v2.0.109b：长按发送键保持键盘状态
                         transcribing: transcribing,   // v2.0.100：转换中动画
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) })   // v2.0.106/107：长按输入框进语音模式
