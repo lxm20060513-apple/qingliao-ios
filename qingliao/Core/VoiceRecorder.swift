@@ -5,7 +5,7 @@ import AVFoundation
 // 替代 v2.0.85 因 SideStore SIGTRAP 移除的 SFSpeechRecognizer。
 
 @MainActor
-final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRecorderDelegate {
     @Published var isRecording = false
 
     private var recorder: AVAudioRecorder?

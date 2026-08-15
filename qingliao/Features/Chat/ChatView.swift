@@ -742,7 +742,8 @@ struct ChatView: View {
 
     /// v2.0.96c：上传录音转写（服务器 faster-whisper）
     private func uploadAndTranscribe() {
-        guard let url = voiceRecorder.stop(), url.fileExists,
+        guard let url = voiceRecorder.stop(),
+              FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url), data.count > 100 else { return }
         Task {
             do {
