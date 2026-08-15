@@ -72,6 +72,8 @@ struct ChatView: View {
     @State private var pendingSend: (text: String, imageData: String?)?
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showAttachmentMenu = false
+    // v2.0.96：Hermes 捷径面板（官方斜杠命令）
+    @State private var showHermesShortcut = false
     // 大爆炸（BigBang）文本炸开
     @State private var bigBangPayload: BigBangPayload?
     @State private var showPhotoPicker = false
@@ -80,6 +82,10 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
+    // v2.0.96：语音转文字（长按发送按钮；SpeechRecognizer 实时转写）
+    @StateObject private var speech = SpeechRecognizer()
+    @State private var voiceMode = false
+    @State private var voiceAuthFailed = false
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
 
@@ -155,6 +161,14 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
+            // v2.0.96：语音转文字模式——点消息区空白退出（透明拦截层，不盖输入框）
+            if voiceMode {
+                Color.black.opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture { exitVoiceMode() }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            }
             // 图片预览条（选图后显示）
             if let img = pendingImage {
                 HStack(spacing: 10) {
@@ -187,6 +201,8 @@ struct ChatView: View {
                     attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
+                    // v2.0.96：Hermes 捷径（官方斜杠命令列表）
+                    attachButton("sparkles", "Hermes 捷径", Color.purple) { showHermesShortcut = true }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -236,7 +252,10 @@ struct ChatView: View {
                                  showAttachmentMenu.toggle()
                              }
                          },
-                         onCamera: { showCameraPicker = true })
+                         onCamera: { showCameraPicker = true },
+                        // v2.0.96：语音转文字（长按发送按钮）
+                        voiceMode: voiceMode,
+                        onVoiceModeToggle: { toggleVoiceMode() })
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             .padding(.bottom, kb.isVisible
@@ -244,6 +263,18 @@ struct ChatView: View {
                      : (hideDock ? 0 : 86))
         }
         .animation(.easeOut(duration: 0.22), value: kb.height)
+        // v2.0.96：语音识别实时回填输入框
+        .onChange(of: speech.text) { _, newText in
+            if voiceMode && !newText.isEmpty {
+                inputText = newText
+            }
+        }
+        // v2.0.96：语音授权失败提示（侧载缺 entitlement 等）
+        .alert("语音识别不可用", isPresented: $voiceAuthFailed) {
+            Button("好的", role: .cancel) {}
+        } message: {
+            Text("当前环境未授权语音识别（侧载可能缺少 speech-recognition 权限）。可在系统设置中允许「轻聊」使用麦克风与语音识别后重试。")
+        }
         // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
         .task {
             await stream.restoreIfNeeded(auth: auth) { success, err in
@@ -267,6 +298,14 @@ struct ChatView: View {
         .sheet(isPresented: $showQuickPrompts) {
             QuickPromptSheet { prompt in
                 inputText = prompt
+                showAttachmentMenu = false
+            }
+            .presentationDetents([.medium, .large])
+        }
+        // v2.0.96：Hermes 捷径面板（官方斜杠命令，点击填充输入框）
+        .sheet(isPresented: $showHermesShortcut) {
+            HermesShortcutSheet { cmd in
+                inputText = cmd
                 showAttachmentMenu = false
             }
             .presentationDetents([.medium, .large])
@@ -697,7 +736,31 @@ struct ChatView: View {
         sendCore(text: msg.content, imageData: msg.imageDataURL)
     }
 
-    /// v2.0.92：消息撤回（标记 withdrawn → 显示"已撤回"占位 + 服务器同步）
+    /// v2.0.96：退出语音转文字模式（按钮/空白点击共用）
+    private func exitVoiceMode() {
+        guard voiceMode else { return }
+        speech.stop()
+        withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
+    }
+
+    /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
+    private func toggleVoiceMode() {
+        if voiceMode {
+            exitVoiceMode()
+        } else {
+            Task {
+                let ok = await speech.requestAuth()
+                if ok {
+                    speech.start()
+                    withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
+                } else {
+                    voiceAuthFailed = true   // 侧载缺 entitlement / 未授权 → 提示不闪退
+                }
+            }
+        }
+    }
+
+    /// v2.0.96：消息撤回（标记 withdrawn → 显示"已撤回"占位 + 服务器同步）
     private func withdrawMessage(_ msg: ChatMessage) {
         if let idx = chat.messages.firstIndex(where: { $0.id == msg.id }) {
             chat.messages[idx].withdrawn = true

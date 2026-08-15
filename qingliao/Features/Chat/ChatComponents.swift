@@ -413,6 +413,9 @@ struct ChatInputBar: View {
     var isRecording: Bool = false
     var onVoiceStart: () -> Void = {}
     var onVoiceEnd: () -> Void = {}
+    // v2.0.96：语音转文字模式（长按发送按钮进入；Siri 彩色图标 + 输入框流光）
+    var voiceMode: Bool = false
+    var onVoiceModeToggle: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
@@ -478,27 +481,50 @@ struct ChatInputBar: View {
                 .buttonStyle(.plain)
             }
 
+            // v2.0.96：发送按钮——普通发送；语音模式下点击=退出；长按=进入语音转文字（Siri 彩色图标）
             Button {
-                onSend()
+                if voiceMode {
+                    onVoiceModeToggle()
+                } else {
+                    onSend()
+                }
             } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: Circle()
-                    )
+                if voiceMode {
+                    // Siri 彩色渐变麦克风图标（蓝紫粉）
+                    Image(systemName: "waveform")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            LinearGradient(colors: [.blue, .indigo, .pink],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: Circle()
+                        )
+                } else {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: Circle()
+                        )
+                }
             }
             .buttonStyle(.plain)
+            // v2.0.96：长按发送按钮进入语音转文字模式
+            .onLongPressGesture(minimumDuration: 0.4) {
+                onVoiceModeToggle()
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
         // v2.0.87s：等待回复特效（v2.0.87ay：改回 87 版效果——内部旋转流光，Siri 淡雅）
+        // v2.0.96：语音转文字模式同样开启 Siri 流光
         .overlay {
-            if streaming && UserDefaults.standard.bool(forKey: "qingliao_input_glow") {
+            if (streaming || voiceMode) && UserDefaults.standard.bool(forKey: "qingliao_input_glow") {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let angle = (t * 70).truncatingRemainder(dividingBy: 360)
@@ -519,6 +545,71 @@ struct ChatInputBar: View {
         }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
+    }
+}
+
+// MARK: - v2.0.96 Hermes 捷径面板（官方斜杠命令 + 功能注释，点击填充输入框）
+
+struct HermesShortcutSheet: View {
+    var onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    // 官方命令（hermes-agent 文档）：命令 + 中文功能注释
+    private let items: [(cmd: String, desc: String)] = [
+        ("/help", "查看全部可用命令"),
+        ("/new", "开启全新会话（清空上下文）"),
+        ("/model deepseek-v4-flash", "切换模型（如 deepseek-v4-flash）"),
+        ("/compress", "压缩当前上下文，节省 token"),
+        ("/memory", "查看与管理 AI 记忆"),
+        ("/skills", "浏览、搜索、安装技能"),
+        ("/skill <名称>", "加载指定技能到当前会话"),
+        ("/cron", "定时任务管理（查看/创建/暂停）"),
+        ("/voice on", "开启语音对话模式"),
+        ("/voice off", "关闭语音模式"),
+        ("/undo", "撤销上一轮对话"),
+        ("/title <名称>", "给当前会话命名"),
+        ("/usage", "查看 Token 用量统计"),
+        ("/status", "查看会话与系统状态"),
+        ("/personality <名称>", "切换 AI 人格"),
+        ("/reasoning high", "设置思考深度（none/low/medium/high）"),
+        ("/background <任务>", "后台运行长任务（不阻塞对话）"),
+        ("/queue <任务>", "排队等待下一轮处理"),
+        ("/fast", "切换优先快速处理"),
+        ("/resume <名称>", "恢复历史会话"),
+        ("/sethome", "把当前聊天设为默认投递位置"),
+        ("/update", "更新 Hermes 到最新版"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(items, id: \.cmd) { item in
+                    Button {
+                        onPick(item.cmd)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text(item.cmd)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.accentColor)
+                            Text(item.desc)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+            .navigationTitle("Hermes 捷径")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
+                }
+            }
+        }
     }
 }
 

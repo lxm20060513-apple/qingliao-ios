@@ -18,6 +18,10 @@ struct DashboardView: View {
     @State private var activeSheet: DashboardSheet?
     // v2.0.72：Docker 容器数量（看板卡片状态）
     @State private var dockerContainerCount = 0
+    // v2.0.96：场景（AI 生成动作组，一键执行）
+    @State private var scenes: [SceneItem] = []
+    @State private var sceneResult = ""
+    @State private var showSceneResult = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +40,41 @@ struct DashboardView: View {
                         DeviceCard(name: "猫眼", icon: "video.fill", value: haDoorbellBattery, sub: haDoorbellOnline ? "在线" : "离线", status: haDoorbellOnline ? .on : .off)
                         DeviceCard(name: "安防", icon: "shield.fill", value: haAlarm, sub: haAlarmArmed ? "已布防" : "未布防", status: haAlarmArmed ? .on : .warn)
                         DeviceCard(name: "温度", icon: "thermometer", value: haTemp, sub: "室内温度", status: .on)
+                    }
+
+                    // v2.0.96：场景（AI 对话生成动作组，点一下逐条执行）
+                    HStack {
+                        Text("⚡ 场景")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        Text("聊天说「帮我生成离家模式」")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 2)
+                    if scenes.isEmpty {
+                        Text("暂无场景——在聊天里说「帮我生成离家模式：关灯、关空调、布防」")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(scenes) { s in
+                                    sceneChip(s)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    .alert("场景执行结果", isPresented: $showSceneResult) {
+                        Button("好的", role: .cancel) {}
+                    } message: {
+                        Text(sceneResult)
                     }
 
                     sectionTitle("NAS 面板")
@@ -188,9 +227,59 @@ struct DashboardView: View {
         if let h = try? await auth.jsonArray("/api/ha/states") {
             haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
         }
+        // v2.0.96：场景列表
+        if let j = try? await auth.json("/api/scenes/list") {
+            scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
+        }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    /// v2.0.96：场景卡片（点击执行 / 长按删除）
+    private func sceneChip(_ s: SceneItem) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(LinearGradient(colors: [.blue, .indigo, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+            Text(s.name)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+            Text("\(s.actionCount) 个动作")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 78, height: 68)
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture { runScene(s) }
+        .contextMenu {
+            Button(role: .destructive) {
+                deleteScene(s)
+            } label: {
+                Label("删除场景", systemImage: "trash")
+            }
+        }
+    }
+
+    /// v2.0.96：执行场景
+    private func runScene(_ s: SceneItem) {
+        Task {
+            if let j = try? await auth.json("/api/scenes/run", method: "POST", body: ["name": s.name]) {
+                sceneResult = j["message"] as? String ?? "执行完成"
+            } else {
+                sceneResult = "执行失败（网络错误）"
+            }
+            showSceneResult = true
+        }
+    }
+
+    /// v2.0.96：删除场景
+    private func deleteScene(_ s: SceneItem) {
+        Task {
+            _ = try? await auth.json("/api/scenes/delete", method: "POST", body: ["name": s.name])
+            scenes.removeAll { $0.name == s.name }
+        }
     }
 
     // MARK: - v2.0.72 Docker 容器数量
@@ -693,6 +782,33 @@ struct HADeviceSheet: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            // v2.0.96：风速调节行（auto/低/中/高；关闭时禁用）
+            if isOn {
+                let fanModes = (attrs["fan_modes"] as? [String]) ?? []
+                if !fanModes.isEmpty {
+                    let curFan = (attrs["fan_mode"] as? String) ?? ""
+                    HStack(spacing: 8) {
+                        ForEach(fanModes, id: \.self) { f in
+                            Button {
+                                setFanMode(e, mode: f)
+                            } label: {
+                                let active = curFan.lowercased() == f.lowercased()
+                                Text(fanModeName(f))
+                                    .font(.system(size: 11, weight: active ? .bold : .medium))
+                                    .foregroundStyle(active ? Color.white : Color.primary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 7)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(active ? Color.indigo : Color(uiColor: .systemGray5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
         }
         .padding(14)
         .background(
@@ -719,6 +835,24 @@ struct HADeviceSheet: View {
         case "fan_only": "送风"
         default: m
         }
+    }
+
+    /// v2.0.96：风速显示名
+    private func fanModeName(_ f: String) -> String {
+        switch f.lowercased() {
+        case "auto": "自动"
+        case "low": "低"
+        case "medium", "mid": "中"
+        case "high": "高"
+        case "sleep": "睡眠"
+        default: f
+        }
+    }
+
+    /// v2.0.96：风速调节
+    private func setFanMode(_ e: HAEntity, mode: String) {
+        callService(domain: "climate", service: "set_fan_mode", entityID: e.entityID,
+                    extra: ["fan_mode": mode])
     }
 
     // MARK: - 服务调用（Task 内只捕获 Sendable 值）
@@ -832,6 +966,19 @@ struct DisksSheet: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
+    }
+}
+
+// MARK: - v2.0.96 场景项
+
+struct SceneItem: Identifiable {
+    let id: String
+    let name: String
+    let actionCount: Int
+    init(_ d: [String: Any]) {
+        name = d["name"] as? String ?? ""
+        id = name
+        actionCount = (d["actions"] as? [[String: Any]])?.count ?? 0
     }
 }
 
