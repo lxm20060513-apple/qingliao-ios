@@ -104,7 +104,9 @@ struct DashboardView: View {
                             ForEach(automations) { a in
                                 // TimelineView 每秒驱动倒计时刷新
                                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                                    let remain = max(a.remaining - Int(ctx.date.timeIntervalSince(a.runAt)), 0)
+                                    // v2.0.104b：runAt 在未来，timeIntervalSince(a.runAt) 是负值——
+                                    // 修正为 runAt.timeIntervalSince(now) 得剩余正秒数（原实现倒计时反向递增）
+                                    let remain = max(Int(a.runAt.timeIntervalSince(ctx.date)), 0)
                                     DeviceCard(name: a.name,
                                                icon: "timer",
                                                value: remainText(remain),
