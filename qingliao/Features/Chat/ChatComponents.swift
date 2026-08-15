@@ -479,12 +479,12 @@ struct ChatInputBar: View {
                     // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
                     // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
                     //           → 改 simultaneousGesture 与系统手势共存触发
-                    // v2.0.107b：用键盘通知时间戳判断"长按前键盘是否已开"——
-                    //           刚被触摸聚焦弹出(<0.6s)=原本未开；早就开着=保持
+                    // v2.0.107b：用键盘通知时间戳判断"长按前键盘是否已开"
+                    // v2.0.108b：窗口 0.6→2.0s（iOS27 键盘通知可能延迟 0.5s+，0.6s 太窄误判保持键盘）
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.4)
                             .onEnded { _ in
-                                let justShown = kbEnv.lastShowTime.map { Date().timeIntervalSince($0) < 0.6 } ?? false
+                                let justShown = kbEnv.lastShowTime.map { Date().timeIntervalSince($0) < 2.0 } ?? false
                                 onLongPressInput(kbEnv.isVisible && !justShown)
                             }
                     )
