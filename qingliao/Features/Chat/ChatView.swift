@@ -195,14 +195,15 @@ struct ChatView: View {
                 .padding(.vertical, 6)
             }
             // 内联附件面板（类微信 + 面板：点击回形针展开）
+            // v2.0.96b：发牌弹出效果（每个按钮依次从底部弹出 + 回弹）
             if showAttachmentMenu {
                 HStack(spacing: 26) {
-                    attachButton("photo.on.rectangle", "图片", Color.blue) { showPhotoPicker = true }
-                    attachButton("doc.fill", "文件", Color.indigo) { showFileImporter = true }
+                    menuButton("photo.on.rectangle", "图片", Color.blue, idx: 0) { showPhotoPicker = true }
+                    menuButton("doc.fill", "文件", Color.indigo, idx: 1) { showFileImporter = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
-                    attachButton("bolt.fill", "指令", Color.orange) { showQuickPrompts = true }
+                    menuButton("bolt.fill", "指令", Color.orange, idx: 2) { showQuickPrompts = true }
                     // v2.0.96：Hermes 捷径（官方斜杠命令列表）
-                    attachButton("sparkles", "Hermes 捷径", Color.purple) { showHermesShortcut = true }
+                    menuButton("sparkles", "Hermes 捷径", Color.purple, idx: 3) { showHermesShortcut = true }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -279,9 +280,9 @@ struct ChatView: View {
         .task {
             await stream.restoreIfNeeded(auth: auth) { success, err in
                 if success {
-                    chat.upsertAssistant(stream.content)
+                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
                 } else {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(err)" : stream.content + "\n\n⚠️ \(err)")
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(err)" : stream.content + "\n\n⚠️ \(err)", agent: stream.isAgent)
                 }
                 Task { await chat.saveToServer(auth: auth) }
             }
@@ -439,7 +440,7 @@ struct ChatView: View {
                                 .transition(.opacity)
                             } else {
                                 MessageBubble(
-                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil)
+                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent)
                                 )
                                 .id("streaming")
                             }
@@ -674,9 +675,9 @@ struct ChatView: View {
             ) { success, error in
                 if !success {
                     chat.markFailed(id: msg.id)   // v2.0.59 失败标记 → 重试按钮
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {
-                    chat.upsertAssistant(stream.content)
+                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
                     // v2.0.36：App 退后台时 AI 回复完成发本地通知（v2.0.60 携带会话 id）
                     if UIApplication.shared.applicationState != .active {
@@ -949,9 +950,9 @@ struct ChatView: View {
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
                 if !success {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {
-                    chat.upsertAssistant(stream.content)
+                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
                     // v2.0.36：App 退后台时 AI 回复完成发本地通知
                     if UIApplication.shared.applicationState != .active {
@@ -980,9 +981,9 @@ struct ChatView: View {
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
                 if !success {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)")
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {
-                    chat.upsertAssistant(stream.content)
+                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
                 }
                 Task { await chat.saveToServer(auth: auth) }
@@ -1018,6 +1019,18 @@ struct ChatView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// v2.0.96b：发牌弹出附件按钮（idx 控制延迟，依次从底部弹出 + 回弹）
+    private func menuButton(_ icon: String, _ name: String, _ color: Color, idx: Int,
+                            action: @escaping () -> Void) -> some View {
+        attachButton(icon, name, color) { action() }
+            .opacity(showAttachmentMenu ? 1 : 0)
+            .offset(y: showAttachmentMenu ? 0 : 34)
+            .rotationEffect(.degrees(showAttachmentMenu ? 0 : -10))
+            .scaleEffect(showAttachmentMenu ? 1 : 0.5)
+            .animation(.spring(duration: 0.45, bounce: 0.35).delay(Double(idx) * 0.07),
+                       value: showAttachmentMenu)
     }
 
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）

@@ -15,6 +15,7 @@ final class StreamClient {
     var isDone = false
     var status = ""
     var errorMessage = ""
+    var isAgent = false        // v2.0.96b：Agent 回复标记（工具调用）
 
     private var taskId = ""
     private var offset = 0
@@ -37,6 +38,7 @@ final class StreamClient {
         isDone = false
         status = ""
         errorMessage = ""
+        isAgent = false
         self.onFinished = onFinished
 
         // 记录当前流式会话（relay uid 推导用）
@@ -85,7 +87,8 @@ final class StreamClient {
 
     private func pollOnce(auth: AuthStore) async {
         do {
-            let (c, done, st, err) = try await auth.streamPoll(taskId: taskId, offset: offset)
+            let (c, done, st, err, agent) = try await auth.streamPoll(taskId: taskId, offset: offset)
+            if agent { isAgent = true }   // v2.0.96b：Agent 回复标记
             failCount = 0
             if !c.isEmpty {
                 offset += c.count

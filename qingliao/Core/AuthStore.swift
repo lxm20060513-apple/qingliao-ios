@@ -296,7 +296,7 @@ final class AuthStore {
     }
 
     /// 流式轮询：蜂窝 → 直连 GET /r/stream/poll/{uid}/{taskId}/{offset}（路径参数）；Wi-Fi → 直连 GET /api/stream/{taskId}?offset=N
-    func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String) {
+    func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String, Bool) {
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
             // 蜂窝：必须用路径参数形态（/r/stream/poll/... 无 query）——CFStream 带 query 会挂起 10s 超时，
@@ -315,7 +315,8 @@ final class AuthStore {
         let done = j["done"] as? Bool ?? false
         let status = j["status"] as? String ?? ""
         let error = j["error"] as? String ?? ""
-        return (content, done, status, error)
+        let agent = j["agent"] as? Bool ?? false   // v2.0.96b：Agent 回复标记
+        return (content, done, status, error, agent)
     }
 
     /// 流式停止：蜂窝 → CFStream 直连 POST（免弹窗），失败降级 relay；Wi-Fi → 直连

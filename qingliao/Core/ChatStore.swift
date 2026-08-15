@@ -80,11 +80,14 @@ final class ChatStore {
     }
 
     /// 流式结束后落库 assistant 消息（与最后一条相同则跳过，防重复）
-    func upsertAssistant(_ text: String) {
+    func upsertAssistant(_ text: String, agent: Bool = false) {
         if let last = messages.last, last.role == "assistant", last.content == text {
+            last.agent = agent || last.agent
             return
         }
-        messages.append(ChatMessage(role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+        var m = ChatMessage(role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000)
+        m.agent = agent   // v2.0.96b：Agent 回复标记
+        messages.append(m)
     }
 
     /// v2.0.59：按 id 标记消息发送失败（显示重试按钮）

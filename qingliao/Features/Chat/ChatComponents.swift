@@ -252,6 +252,17 @@ struct MessageBubble: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    // v2.0.96b：Agent 回复标记（工具调用回复小标签）
+                    if message.agent {
+                        Text("Agent 回复")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(LinearGradient(colors: [.blue, .indigo, .pink],
+                                                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.12), in: Capsule())
+                            .padding(.top, 1)
+                    }
                 }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
@@ -482,40 +493,27 @@ struct ChatInputBar: View {
             }
 
             // v2.0.96：发送按钮——普通发送；语音模式下点击=退出；长按=进入语音转文字（Siri 彩色图标）
-            Button {
-                if voiceMode {
+            // v2.0.96b：Button 内置手势会拦截 onLongPressGesture → 改自定义视图 + 显式 Tap/LongPress
+            Image(systemName: voiceMode ? "waveform" : "arrow.up")
+                .font(.system(size: voiceMode ? 15 : 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(
+                    LinearGradient(colors: voiceMode ? [.blue, .indigo, .pink] : [.blue, .indigo],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: Circle()
+                )
+                .contentShape(Circle())
+                .onTapGesture {
+                    if voiceMode {
+                        onVoiceModeToggle()
+                    } else {
+                        onSend()
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 0.4) {
                     onVoiceModeToggle()
-                } else {
-                    onSend()
                 }
-            } label: {
-                if voiceMode {
-                    // Siri 彩色渐变麦克风图标（蓝紫粉）
-                    Image(systemName: "waveform")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            LinearGradient(colors: [.blue, .indigo, .pink],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: Circle()
-                        )
-                } else {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: Circle()
-                        )
-                }
-            }
-            .buttonStyle(.plain)
-            // v2.0.96：长按发送按钮进入语音转文字模式
-            .onLongPressGesture(minimumDuration: 0.4) {
-                onVoiceModeToggle()
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)

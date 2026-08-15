@@ -43,15 +43,8 @@ struct DashboardView: View {
                     }
 
                     // v2.0.96：场景（AI 对话生成动作组，点一下逐条执行）
-                    HStack {
-                        Text("⚡ 场景")
-                            .font(.system(size: 13, weight: .semibold))
-                        Spacer()
-                        Text("聊天说「帮我生成离家模式」")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 2)
+                    // v2.0.96b：改「智慧场景」标题 + HomeKit 卡片风格（对齐 DeviceCard）
+                    sectionTitle("智慧场景")
                     if scenes.isEmpty {
                         Text("暂无场景——在聊天里说「帮我生成离家模式：关灯、关空调、布防」")
                             .font(.system(size: 12))
@@ -62,13 +55,22 @@ struct DashboardView: View {
                             .background(Color(uiColor: .secondarySystemGroupedBackground),
                                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(scenes) { s in
-                                    sceneChip(s)
-                                }
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(scenes) { s in
+                                DeviceCard(name: s.name,
+                                           icon: "bolt.fill",
+                                           value: "\(s.actionCount) 个动作",
+                                           sub: "点击执行 · 长按删除",
+                                           status: .on)
+                                    .onTapGesture { runScene(s) }
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            deleteScene(s)
+                                        } label: {
+                                            Label("删除场景", systemImage: "trash")
+                                        }
+                                    }
                             }
-                            .padding(.vertical, 2)
                         }
                     }
 
@@ -130,6 +132,10 @@ struct DashboardView: View {
             } message: {
                 Text(sceneResult)
             }
+        }
+        // v2.0.96b：切回看板立即刷新（对话里生成场景后看板即时联动；TabView 切回触发 onAppear）
+        .onAppear {
+            Task { await refresh() }
         }
         .task {
             if !loaded {
@@ -235,32 +241,6 @@ struct DashboardView: View {
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
-    }
-
-    /// v2.0.96：场景卡片（点击执行 / 长按删除）
-    private func sceneChip(_ s: SceneItem) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 15))
-                .foregroundStyle(LinearGradient(colors: [.blue, .indigo, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
-            Text(s.name)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-            Text("\(s.actionCount) 个动作")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 78, height: 68)
-        .background(Color(uiColor: .secondarySystemGroupedBackground),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .onTapGesture { runScene(s) }
-        .contextMenu {
-            Button(role: .destructive) {
-                deleteScene(s)
-            } label: {
-                Label("删除场景", systemImage: "trash")
-            }
-        }
     }
 
     /// v2.0.96：执行场景
