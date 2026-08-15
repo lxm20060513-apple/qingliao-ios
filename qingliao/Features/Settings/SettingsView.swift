@@ -32,6 +32,8 @@ struct SettingsView: View {
     @State private var showWeatherCity = false
     // v2.0.101：Agent 使用说明内联展开
     @State private var showAgentHelp = false
+    // v2.0.105：Agent 关键词管理弹窗
+    @State private var showAgentKeywords = false
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
@@ -169,6 +171,10 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 12)
                         }
+                        // v2.0.105：Agent 分流关键词管理（查看内置 + 添加/删除自定义）
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "text.badge.plus", iconColor: .orange, title: "Agent 关键词", value: "分流匹配词管理", chevron: true)
+                            .onTapGesture { showAgentKeywords = true }
                         // Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
                         HStack(spacing: 12) {
@@ -452,6 +458,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showHASettings) {
             HASettingsSheet()
                 .presentationDetents([.medium])
+        }
+        // v2.0.105：Agent 关键词管理
+        .sheet(isPresented: $showAgentKeywords) {
+            AgentKeywordsSheet()
         }
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }
