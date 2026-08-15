@@ -71,11 +71,6 @@ struct DashboardView: View {
                             .padding(.vertical, 2)
                         }
                     }
-                    .alert("场景执行结果", isPresented: $showSceneResult) {
-                        Button("好的", role: .cancel) {}
-                    } message: {
-                        Text(sceneResult)
-                    }
 
                     sectionTitle("NAS 面板")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -128,6 +123,12 @@ struct DashboardView: View {
                     DockerSheet()
                         .presentationDetents([.medium, .large])
                 }
+            }
+            // v2.0.96：场景执行结果提示
+            .alert("场景执行结果", isPresented: $showSceneResult) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(sceneResult)
             }
         }
         .task {
