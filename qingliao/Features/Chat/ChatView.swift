@@ -388,42 +388,45 @@ struct ChatView: View {
 
     // MARK: - 消息列表
 
+    // v2.0.111：欢迎页独立于 ScrollView——不再受滚动容器背景/裁剪影响，logo 永远完整显示
+    private var welcomeView: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [.blue, .indigo, .purple],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 72, height: 72)
+                    .shadow(color: .indigo.opacity(0.25), radius: 12, y: 4)
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.white)
+            }
+            Text("你好，我是轻聊")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(colors: [.blue, .purple],
+                                   startPoint: .leading, endPoint: .trailing)
+                )
+            Text("输入消息与 AI 对话")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                // v2.0.40：clearing 期间直接显示欢迎页（列表已卸载，数据稍后清空）
-                if (chat.messages.isEmpty || clearing) && !stream.isStreaming {
-                    // 首次进入欢迎占位（v2.0.39：.id 强制与消息列表分支区分身份，
-                    // 清空会话时列表↔欢迎页切换不再复用视图身份导致崩溃）
-                    // v2.0.87h：欢迎页扁平轻量色彩化（多彩渐变气泡 + 渐变标题）
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: [.blue, .indigo, .purple],
-                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 72, height: 72)
-                                .shadow(color: .indigo.opacity(0.25), radius: 12, y: 4)
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.white)
-                        }
-                        Text("你好，我是轻聊")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(
-                                LinearGradient(colors: [.blue, .purple],
-                                               startPoint: .leading, endPoint: .trailing)
-                            )
-                        Text("输入消息与 AI 对话")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 130)   // v2.0.111：90→130 图标远离顶部，不再被头部/消息区白底遮住
+        ZStack {
+            // v2.0.40：clearing 期间直接显示欢迎页（列表已卸载，数据稍后清空）
+            if (chat.messages.isEmpty || clearing) && !stream.isStreaming {
+                welcomeView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 120)
                     .id("welcome")
-                } else {
-                    // v2.0.40：LazyVStack → VStack（懒加载在批量移除时有复用状态残留，
-                    // 普通 VStack 全量渲染，移除只是简单数组变化，彻底绕开崩溃）
-                    VStack(spacing: 10) {
+            } else {
+            ScrollViewReader { proxy in
+            ScrollView {
+                // v2.0.40：LazyVStack → VStack（懒加载在批量移除时有复用状态残留，
+                // 普通 VStack 全量渲染，移除只是简单数组变化，彻底绕开崩溃）
+                VStack(spacing: 10) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
                             // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
                             if idx > 0,
@@ -558,6 +561,7 @@ struct ChatView: View {
             .onChange(of: stream.content) {
                 scrollBottom(proxy)
             }
+        }
         }
         .task {
             // 服务器连接状态检测（真实绿点）
