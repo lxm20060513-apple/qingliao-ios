@@ -300,20 +300,16 @@ final class AuthStore {
 
     /// 流式轮询：蜂窝 → 直连 GET /r/stream/poll/{uid}/{taskId}/{offset}（路径参数）；Wi-Fi → 直连 GET /api/stream/{taskId}?offset=N
     /// v2.0.96c：ASR 转写（raw 音频 body 上传 → 返回文字）
+    /// v2.0.98b：Wi-Fi/蜂窝统一走 CFStream 直连 relay 路径（/r/asr/transcribe/）——
+    ///           /api/asr 在部分服务器配置（443 IP 直连 307/无此路由）下失败，/r 路径稳定（nginx 16668/443 均已转发）
     func asrTranscribe(_ audioData: Data) async throws -> String {
         var headers: [String: String] = ["Content-Type": "application/octet-stream"]
         if !token.isEmpty {
             headers["X-Auth-Token"] = token
         }
-        let (data, code): (Data, Int)
-        if NetworkMonitor.shared.isCellular {
-            let uid = RelayIdentity.uid(for: currentStreamSessionId)
-            (data, code) = try await relay.directRequest(method: "POST", path: "/r/asr/transcribe/\\(uid)",
+        let uid = RelayIdentity.uid(for: currentStreamSessionId)
+        let (data, code) = try await relay.directRequest(method: "POST", path: "/r/asr/transcribe/\\(uid)",
                                                          headers: headers, body: audioData, timeout: 90)
-        } else {
-            (data, code) = try await directHTTP(method: "POST", path: "/api/asr/transcribe",
-                                                headers: headers, body: audioData)
-        }
         guard (200..<300).contains(code),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw APIError.badResponse
