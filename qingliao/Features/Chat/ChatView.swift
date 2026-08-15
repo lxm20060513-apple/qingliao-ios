@@ -510,7 +510,6 @@ struct ChatView: View {
                     .padding(.bottom, 8)
                     .id("messages")   // v2.0.39：与欢迎页分支区分身份
                 }
-            }
             // v2.0.50：.scrollPosition 在隐藏页内容清空时是已知崩溃点（新建会话=TabView
             // 隐藏页清空→scrollPos 更新异常→SIGTRAP）→ 换 GeometryReader + PreferenceKey 检测滚动
             // v2.0.111：消息区背景透明（ScrollView 默认白底遮住上方 logo/内容）
@@ -561,6 +560,7 @@ struct ChatView: View {
             .onChange(of: stream.content) {
                 scrollBottom(proxy)
             }
+        }
         }
         }
         .task {
