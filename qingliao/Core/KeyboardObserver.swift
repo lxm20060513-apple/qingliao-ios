@@ -11,6 +11,8 @@ final class KeyboardObserver: NSObject {
     var height: CGFloat = 0
     var topY: CGFloat = 0   // v2.0.37：键盘顶部 y（屏幕坐标，精确贴键盘用）
     var isVisible: Bool { height > 0 }
+    // v2.0.107：上次键盘弹出时间戳——长按输入框时区分"键盘早就开着"vs"刚被触摸聚焦弹出"
+    var lastShowTime: Date? = nil
 
     override init() {
         super.init()
@@ -22,6 +24,7 @@ final class KeyboardObserver: NSObject {
     }
 
     @objc private func kbWillShow(_ note: Notification) {
+        lastShowTime = Date()
         if let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
             height = rect.height
             topY = rect.minY

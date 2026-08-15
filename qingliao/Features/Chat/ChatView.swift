@@ -822,13 +822,16 @@ struct ChatView: View {
     /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
     /// v2.0.100：进入时震动反馈（UIImpactFeedbackGenerator medium）
     /// v2.0.106：长按输入框进入同款路径
-    /// v2.0.107：键盘两场景——按压时键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
+    /// v2.0.107：键盘两场景——长按前键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
+    /// v2.0.107b：震动改 heavy + prepare（原 medium 无 prepare，首次 impact 常被系统丢弃/偏弱）
     private func toggleVoiceMode(keyboardWasUp: Bool = false) {
         if voiceMode {
             exitVoiceMode()
         } else {
             if voiceRecorder.start() {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()   // 长按激活震动反馈
+                let gen = UIImpactFeedbackGenerator(style: .heavy)
+                gen.prepare()
+                gen.impactOccurred()   // 长按激活震动反馈
                 if !keyboardWasUp {
                     inputFocus = false   // 键盘原本未开 → 收回触摸聚焦弹起的键盘（语音模式不弹键盘）
                 }
