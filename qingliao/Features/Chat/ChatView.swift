@@ -551,9 +551,6 @@ struct ChatView: View {
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
-            .onTapGesture {
-                inputFocus = false
-            }
             .onChange(of: chat.messages.count) {
                 scrollBottom(proxy)
             }
@@ -562,6 +559,11 @@ struct ChatView: View {
             }
         }
         }
+        }
+        // v2.0.112b：点消息区空白收键盘——原 onTapGesture 只挂 ScrollView（有消息才显示），
+        // 欢迎页（无消息）状态点空白无法收键盘 → 移到 ZStack 根统一生效
+        .onTapGesture {
+            inputFocus = false
         }
         .task {
             // 服务器连接状态检测（真实绿点）
