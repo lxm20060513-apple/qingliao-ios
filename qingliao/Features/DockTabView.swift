@@ -62,6 +62,13 @@ struct DockTabView: View {
             .coordinateSpace(name: "scrollspace")
             // 页面切换滑动动画（点击 Dock 时整体横向滑动过渡）
             .animation(.easeInOut(duration: 0.38), value: selected)
+            // v2.0.102c：切回看板 → 通知看板刷新（iOS 27 TabView 切 tab 不触发子页 onAppear，
+            // 聊天里生成场景后切回看板卡片不出现——显式通知兜底）
+            .onChange(of: selected) { _, new in
+                if new == .dashboard {
+                    NotificationCenter.default.post(name: .qingliaoDashboardRefresh, object: nil)
+                }
+            }
             // v2.0.60：通知点击 → 直达对应会话
             .task {
                 guard let sid = UserDefaults.standard.string(forKey: "qingliao_open_session") else { return }

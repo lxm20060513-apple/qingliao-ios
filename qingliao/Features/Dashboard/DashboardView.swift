@@ -142,6 +142,14 @@ struct DashboardView: View {
         }
         // v2.0.96b：切回看板立即刷新（对话里生成场景后看板即时联动；TabView 切回触发 onAppear）
         // v2.0.102：单一刷新入口（onAppear 首刷+切回刷），.task 只跑 30s 轮询——修并发双刷/旧响应覆盖
+        // v2.0.102c：onReceive 通知刷新（iOS 27 切 tab 不触发 onAppear 的兜底，DockTabView 切回时发通知）
+        .onReceive(NotificationCenter.default.publisher(for: .qingliaoDashboardRefresh)) { _ in
+            Task {
+                await refresh()
+                await loadDockerCount()
+                await loadWeatherWithCity()
+            }
+        }
         .onAppear {
             Task {
                 await refresh()
