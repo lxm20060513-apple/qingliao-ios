@@ -42,7 +42,7 @@ jobs:
           cp -R build/App.xcarchive/Products/Applications/Qingliao.app build/ipa/Payload/
           # v2.0.114：Widget Extension——单独构建后手动嵌入 PlugIns
           # （无签名 archive 的 scheme 不会自动构建/嵌入 extension target）
-          xcodebuild -project 轻聊.xcodeproj -target QingliaoWidget -configuration Release \
+          xcodebuild -project 轻聊.xcodeproj -scheme QingliaoWidget -configuration Release \
             -destination generic/platform=iOS -derivedDataPath build/DD \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > /tmp/widget_build.log 2>&1 || echo "WIDGET_BUILD_EXIT=$?"
           echo "=== widget build log tail ==="
