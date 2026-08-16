@@ -524,7 +524,7 @@ struct SettingsView: View {
                         // v2.0.128：AI 输出行高（内联滑条，字体大小同款交互）
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "text.line.first.and.arrowtriangle.forward", iconColor: .indigo,
-                                   title: "AI 输出行高", value: "\(aiLineSpacing, specifier: "%.1f")", chevron: false)
+                                   title: "AI 输出行高", value: String(format: "%.1f", aiLineSpacing), chevron: false)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showLineSpacingOptions.toggle() } }
                         if showLineSpacingOptions {
                             HStack(spacing: 10) {
