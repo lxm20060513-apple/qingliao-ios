@@ -45,13 +45,7 @@ struct DockerSheet: View {
                     ContainerSection(containers: containers,
                                      onRefresh: { await load() },
                                      // v2.0.113：停止/重启加确认（防误触，删除已有确认）
-                                     onAction: { c, act in
-                                         if act == "stop" || act == "restart" {
-                                             confirmAction = (c.name, act)
-                                         } else {
-                                             Task { await action(c.name, act) }
-                                         }
-                                     },
+                                     onAction: handleContainerAction,
                                      onDelete: { confirmTarget = $0 },
                                      onUpgrade: { confirmUpgrade = $0 },
                                      updates: updates)
@@ -181,6 +175,15 @@ struct DockerSheet: View {
         let ok = (j["ok"] as? Bool) ?? false
         message = (ok, j["message"] as? String ?? "")
         await load()
+    }
+
+    /// v2.0.113：容器操作分发——停止/重启先确认（防误触），其余直接执行
+    private func handleContainerAction(_ c: DockerContainer, _ act: String) {
+        if act == "stop" || act == "restart" {
+            confirmAction = (c.name, act)
+        } else {
+            Task { await action(c.name, act) }
+        }
     }
 }
 
