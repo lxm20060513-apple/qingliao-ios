@@ -1,4 +1,5 @@
-import ActivityKit
+// v2.0.114：@preconcurrency 抑制 ActivityKit 的 Activity 非 Sendable 跨 Task 警告（Swift 6）
+@preconcurrency import ActivityKit
 import Foundation
 
 // MARK: - v2.0.114 AI 回复过程灵动岛（ActivityKit，无需 entitlement，侧载可用）
