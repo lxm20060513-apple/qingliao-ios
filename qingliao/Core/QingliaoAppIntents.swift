@@ -72,8 +72,7 @@ struct QingliaoAppShortcuts: AppShortcutsProvider {
                     shortTitle: "执行场景",
                     systemImageName: "sparkles")
         AppShortcut(intent: AskQingliaoIntent(),
-                    phrases: ["问\(.applicationName) \(\.$question)",
-                              "问\(.applicationName)"],
+                    phrases: ["问\(.applicationName)"],
                     shortTitle: "向轻聊提问",
                     systemImageName: "questionmark.bubble")
     }
