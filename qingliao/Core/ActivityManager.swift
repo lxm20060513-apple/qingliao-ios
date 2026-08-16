@@ -3,6 +3,7 @@ import Foundation
 
 // MARK: - v2.0.114 AI 回复过程灵动岛（ActivityKit，无需 entitlement，侧载可用）
 
+@MainActor
 enum ActivityManager {
     static var current: Activity<QingliaoActivityAttributes>?
     private static var glowTimer: Timer?
@@ -51,14 +52,16 @@ enum ActivityManager {
     private static func startGlow() {
         stopGlow()
         glowTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { _ in
-            guard let a = current else {
-                stopGlow()
-                return
+            Task { @MainActor in
+                guard let a = current else {
+                    stopGlow()
+                    return
+                }
+                let phase = (Date().timeIntervalSince1970 * 1.25)
+                    .truncatingRemainder(dividingBy: 1)
+                let state = QingliaoActivityAttributes.ContentState(status: "AI 回复中…", glowPhase: phase, theme: 0)
+                try? await a.update(using: state)
             }
-            let phase = (Date().timeIntervalSince1970 * 1.25)
-                .truncatingRemainder(dividingBy: 1)
-            let state = QingliaoActivityAttributes.ContentState(status: "AI 回复中…", glowPhase: phase, theme: 0)
-            Task { try? await a.update(using: state) }
         }
     }
 

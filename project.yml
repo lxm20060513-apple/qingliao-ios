@@ -65,6 +65,7 @@ targets:
     platform: iOS
     sources:
       - qingliaoWidget
+      - path: qingliao/Core/QingliaoActivityAttributes.swift   # 与 App 共享的 ActivityAttributes
     info:
       path: qingliaoWidget/Info.plist
       properties:

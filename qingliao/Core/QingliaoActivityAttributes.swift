@@ -1,6 +1,6 @@
 import ActivityKit
 
-// MARK: - v2.0.114 Live Activity 属性（AI 回复过程上岛，回复完成退岛）
+// MARK: - v2.0.114 Live Activity 属性（App 与 Widget Extension 共享编译）
 
 struct QingliaoActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
