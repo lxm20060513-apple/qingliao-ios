@@ -39,22 +39,27 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
+                    // v2.0.117：长条卡片型（图标方块+文本+右侧操作，与设备/自动化卡统一风格）
                     sectionTitle("智能建议")
-                    VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(LinearGradient(colors: [.blue, .purple, .pink],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         if smartLoading {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("正在分析家庭状态…")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if !smartSuggestion.isEmpty {
-                            Text(smartSuggestion)
+                            ProgressView().controlSize(.small)
+                            Text("正在分析家庭状态…")
                                 .font(.system(size: 13))
-                                .lineSpacing(3)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack {
-                                Spacer()
+                                .foregroundStyle(.secondary)
+                        } else if !smartSuggestion.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(smartSuggestion)
+                                    .font(.system(size: 13))
+                                    .lineSpacing(3)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 Button {
                                     Task { await loadSmartSuggestion() }
                                 } label: {
@@ -68,17 +73,13 @@ struct DashboardView: View {
                             Button {
                                 Task { await loadSmartSuggestion() }
                             } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 13))
-                                    Text("生成智能建议（天气/设备/NAS 状态分析）")
-                                        .font(.system(size: 12))
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Text("生成智能建议（天气/设备/NAS 分析）")
+                                    .font(.system(size: 13, weight: .medium))
                             }
                             .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
                         }
+                        Spacer()
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)

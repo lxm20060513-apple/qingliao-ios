@@ -698,12 +698,6 @@ struct ChatView: View {
         let img = pendingImageData
         // v2.0.88f：去掉 isStreaming 拦截——AI 回答中发送走 sendCore 排队路径
         guard !text.isEmpty || img != nil else { return }
-        // v2.0.116：Siri 提问预处理（「问轻聊 XX」→ 打开 App 自动发送）
-        if let q = UserDefaults.standard.string(forKey: "qingliao_siri_question"), !q.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "qingliao_siri_question")
-            sendCore(text: q, imageData: nil)
-            return
-        }
         // v2.0.36：引用回复（markdown 引用块注入，AI 可见上下文）
         if let q = quotedMessage, !text.isEmpty {
             let quoted = q.content.replacingOccurrences(of: "\n", with: "\n> ")

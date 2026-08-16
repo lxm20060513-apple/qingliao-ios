@@ -39,6 +39,11 @@ struct SettingsView: View {
     @State private var agentRuleCount = 0
     // v2.0.116：执行历史弹窗
     @State private var showHistory = false
+    // v2.0.117：本地模型（Ollama 断网兜底）
+    @AppStorage("qingliao_local_model") private var localModelOn = false
+    @State private var localStatusText = "未开启"
+    @State private var localUpdateText = "断网兜底用本地模型"
+    @State private var localChecking = false
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
@@ -223,6 +228,63 @@ struct SettingsView: View {
                         .padding(.vertical, 6)
                         // Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
+                        // v2.0.117：本地模型（Ollama 断网兜底）——开关控制容器 + 状态 + 检查更新
+                        HStack(spacing: 12) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.indigo, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("本地模型")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text(localStatusText)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $localModelOn)
+                                .labelsHidden()
+                                .scaleEffect(0.8)
+                                .onChange(of: localModelOn) { _, new in
+                                    Task {
+                                        _ = try? await auth.json("/api/local/toggle", method: "POST",
+                                                                 body: ["on": new])
+                                        await loadLocalStatus()
+                                    }
+                                }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        if localModelOn {
+                            Divider().padding(.leading, 52)
+                            Button {
+                                Task { await checkLocalUpdate() }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("检查模型更新")
+                                            .font(.system(size: 14, weight: .medium))
+                                        Text(localUpdateText)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    if localChecking {
+                                        ProgressView().controlSize(.small)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                        }
                         HStack(spacing: 12) {
                             Image(systemName: "faceid")
                                 .font(.system(size: 13, weight: .semibold))
@@ -520,6 +582,31 @@ struct SettingsView: View {
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }
         .task { await loadCounts() }
+    }
+
+    /// v2.0.117：加载本地模型状态（容器 + 已装模型）
+    private func loadLocalStatus() async {
+        if let j = try? await auth.json("/api/local/status") {
+            let up = (j["container"] as? String) == "up"
+            let models = (j["models"] as? [[String: Any]] ?? []).map { $0["name"] as? String ?? "" }
+            if up {
+                localStatusText = "运行中" + (models.isEmpty ? "" : " · " + models.prefix(2).joined(separator: " / "))
+            } else {
+                localStatusText = "已停止（点开关开启）"
+            }
+        }
+    }
+
+    /// v2.0.117：检查模型更新
+    private func checkLocalUpdate() async {
+        guard !localChecking else { return }
+        localChecking = true
+        defer { localChecking = false }
+        if let j = try? await auth.json("/api/local/check-update") {
+            localUpdateText = (j["message"] as? String) ?? "检查完成"
+        } else {
+            localUpdateText = "检查失败，请稍后重试"
+        }
     }
 
     /// v2.0.102：加载凭据/记忆计数（设置页行尾显示）
@@ -1018,6 +1105,11 @@ struct ModelSheet: View {
                     if !stepfunModels.isEmpty {
                         groupSection("stepfun", models: stepfunModels.map { ($0, $0, "stepfun") })
                     }
+                    // v2.0.117：本地模型（Ollama 断网兜底）
+                    groupSection("本地模型（断网兜底）", models: [
+                        ("qwen3:4b", "qwen3:4b · 本地 4B", "local"),
+                        ("qwen2.5:1.5b", "qwen2.5:1.5b · 本地 1.5B", "local")
+                    ])
                 }
                 .padding(.bottom, 8)
             }
