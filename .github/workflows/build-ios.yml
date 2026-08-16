@@ -40,6 +40,15 @@ jobs:
         run: |
           mkdir -p build/ipa/Payload
           cp -R build/App.xcarchive/Products/Applications/Qingliao.app build/ipa/Payload/
+          # v2.0.114：确保 Widget Extension 嵌入（无签名 archive 可能跳过 embed 阶段）
+          APPEX=$(find build/App.xcarchive -name "*.appex" -maxdepth 6 | head -1)
+          if [ -n "$APPEX" ] && [ ! -d build/ipa/Payload/Qingliao.app/PlugIns ]; then
+            mkdir -p build/ipa/Payload/Qingliao.app/PlugIns
+            cp -R "$APPEX" build/ipa/Payload/Qingliao.app/PlugIns/
+            echo "Embedded widget: $APPEX"
+          else
+            echo "PlugIns check: appex=$APPEX exists=$( [ -d build/ipa/Payload/Qingliao.app/PlugIns ] && echo yes || echo no )"
+          fi
           cd build/ipa && zip -qry ../qingliao-2.0-unsigned.ipa Payload/
           ls -la ../qingliao-2.0-unsigned.ipa
 
