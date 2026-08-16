@@ -74,7 +74,7 @@ struct MessageBlockView: View {
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
     // v2.0.125：AI 回复行距缩小（行与行之间不再太宽）
-    var lineSpacing: CGFloat = 2
+    var lineSpacing: CGFloat = 1
 
     /// 代码块/表格共用的 SwiftUI 长按菜单（与原气泡级菜单项一致）
     @ViewBuilder
@@ -330,7 +330,7 @@ struct MessageBubble: View {
                                         .foregroundColor: UIColor.label
                                     ]),
                                     fallbackColor: .label,
-                                    lineSpacing: 2,
+                                    lineSpacing: 1,
                                     onCopy: { UIPasteboard.general.string = message.content },
                                     onQuote: onQuote,
                                     onShare: onShare,
@@ -360,7 +360,7 @@ struct MessageBubble: View {
                                                         onDelete: onDelete,
                                                         onRegenerate: onRegenerate,
                                                         onWithdraw: nil,
-                                                        lineSpacing: 2)   // v2.0.125：AI 回复行距缩小
+                                                        lineSpacing: 1)   // v2.0.127：AI 回复行距再缩小(UITextView 渲染比 SwiftUI 宽)
                                     }
                                 }
                             }

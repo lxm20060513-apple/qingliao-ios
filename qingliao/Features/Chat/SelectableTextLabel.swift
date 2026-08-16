@@ -65,26 +65,30 @@ struct SelectableTextLabel: UIViewRepresentable {
         let parent: SelectableTextLabel
         init(parent: SelectableTextLabel) { self.parent = parent }
 
-        // iOS 26+ 新 API：iOS 27 上旧 API 不再调用，必须实现这个
-        //（ranges 为 [NSValue] 包装 UITextRange，取首个；不实现则自定义菜单全丢）
+        // iOS 26+ 新 API（部署目标 26.0，唯一生效路径；旧 API editMenuForTextIn 已弃用不再调用）
+        // 🚨 关键坑（v2.0.124/125 改坏根源）：iOS 26 全面转向 NSRange 体系（selectedRanges:
+        // [NSRange]、UITextField 新 API 直接 [NSRange]），ranges 的 [NSValue] 包装的是 **NSRange**，
+        // 必须用 rangeValue 取；124/125 用 nonretainedObjectValue as? UITextRange 转换必然失败
+        // → 返回 nil → 系统默认菜单（自定义项全丢）。
+        // ⚠️ 返回 nil = 显示系统默认菜单（Apple 文档原话），任何情况都要返回自定义菜单
         func textView(_ textView: UITextView,
                       editMenuForTextInRanges ranges: [NSValue],
                       suggestedActions: [UIMenuElement]) -> UIMenu? {
-            guard let first = ranges.first?.nonretainedObjectValue as? UITextRange else {
-                return nil
+            guard let first = ranges.first else { return nil }
+            // 兼容两种包装：优先 UITextRange（nonretainedObjectValue），失败回退 NSRange（rangeValue）
+            let nsRange: NSRange
+            if let tr = first.nonretainedObjectValue as? UITextRange {
+                let loc = textView.offset(from: textView.beginningOfDocument, to: tr.start)
+                let len = textView.offset(from: tr.start, to: tr.end)
+                nsRange = NSRange(location: loc, length: len)
+            } else {
+                nsRange = first.rangeValue
             }
-            return buildMenu(for: first, in: textView)
-        }
-
-        // iOS 16-25：旧 API（低版本兼容）
-        func textView(_ textView: UITextView,
-                      editMenuForTextIn range: UITextRange,
-                      suggestedActions: [UIMenuElement]) -> UIMenu? {
-            return buildMenu(for: range, in: textView)
+            return buildMenu(for: nsRange, in: textView)
         }
 
         /// 自定义编辑菜单：复制/引用/分享/大爆炸/选择文本/重新生成/撤回/删除
-        private func buildMenu(for range: UITextRange, in textView: UITextView) -> UIMenu {
+        private func buildMenu(for range: NSRange, in textView: UITextView) -> UIMenu {
             var children: [UIMenuElement] = []
 
             children.append(UIAction(title: "复制", image: UIImage(systemName: "doc.on.doc")) { _ in
@@ -100,17 +104,10 @@ struct SelectableTextLabel: UIViewRepresentable {
                 self.parent.onBigBang()
             })
 
-            // v2.0.125：核心 —— 选中手按位置的词 → 系统显示拖动手柄，可自由拖动选取范围
-            // ⚠️ 用标准 selectedTextRange（UITextRange 版，iOS 26 未弃用）；
-            //    v2.0.124 误以为弃用而换成 selectedRanges 的 NSRange 换算 —— 改坏根源
+            // v2.0.127：核心 —— 选中手按位置的文字 → 系统显示拖动手柄，可自由拖动选取范围
+            // iOS 26 新属性 selectedRanges: [NSRange]（长按菜单的 range 即手按位置的选区）
             children.append(UIAction(title: "选择文本", image: UIImage(systemName: "selection.pin.in.out")) { _ in
-                let pos = range.start
-                if let wordRange = textView.tokenizer.rangeEnclosingPosition(
-                    pos, with: .word, inDirection: .layout(.right)) {
-                    textView.selectedTextRange = wordRange
-                } else {
-                    textView.selectedTextRange = range
-                }
+                textView.selectedRanges = [range]
                 self.parent.onSelectText()
             })
 
