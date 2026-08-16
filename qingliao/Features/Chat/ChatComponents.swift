@@ -698,8 +698,57 @@ struct ChatInputBar: View {
     var onLongPressInput: (Bool) -> Void = { _ in }
     @Environment(KeyboardObserver.self) private var kbEnv
     @State private var pressKeyboardUp = false
+    // v2.0.129：Siri 圆球输入（设置开关，默认开）——默认状态是圆球，单击展开输入框，长按语音转文字
+    @AppStorage("qingliao_ball_input") private var ballInput = true
+    @State private var ballExpanded = false   // 球 → 输入框展开态（切会话由外层 .id() 重建复位）
 
     var body: some View {
+        Group {
+            if ballInput && !ballExpanded {
+                // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
+                // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
+                                 transcribing: transcribing,
+                                 onTap: {
+                                     // 转写中点击不响应（避免打断）
+                                     guard !transcribing else { return }
+                                     withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                                         ballExpanded = true
+                                     }
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                         focused = true   // 展开后自动弹键盘
+                                     }
+                                 },
+                                 onLongPress: {
+                                     // 长按 = 语音转文字（球保持特效，不展开输入框）
+                                     guard !transcribing else { return }
+                                     onLongPressInput(kbEnv.isVisible)
+                                 })
+                    Spacer(minLength: 0)
+                }
+                .padding(.bottom, 8)   // 球态视觉下沉一点
+                .transition(.opacity)
+            } else {
+                fullInputBar
+            }
+        }
+        // v2.0.129：球态下语音转写完成（transcribing true→false 且已有转写文字）→ 自动展开输入框 + 弹键盘
+        .onChange(of: transcribing) { _, newVal in
+            if ballInput, !ballExpanded, !newVal, !text.isEmpty {
+                withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                    ballExpanded = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    focused = true   // 转写完成弹键盘（用户细节③确认）
+                }
+            }
+        }
+    }
+
+    /// 完整输入栏（原 ChatInputBar 内容）
+    private var fullInputBar: some View {
         HStack(spacing: 8) {
             Button(action: onPickAttachment) {
                 Image(systemName: "paperclip")
@@ -871,6 +920,97 @@ struct ChatInputBar: View {
         }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
+    }
+}
+
+// MARK: - v2.0.129 Siri 圆球输入（默认状态）
+
+/// 多彩光晕圆球：TimelineView 驱动 AngularGradient 呼吸（复用 Siri 发光配色：蓝紫粉红淡雅）。
+/// 单击 → 展开输入框；长按 → 语音转文字（球保持特效）。
+/// ⚠️ 手势用 ExclusiveGesture(LongPress, Tap) 互斥（v2.0.98 SIGTRAP 教训：勿叠加 onTap+onLongPress）。
+struct SiriBallView: View {
+    var isRecording: Bool = false
+    var voiceMode: Bool = false
+    var transcribing: Bool = false   // v2.0.129：转写中显示转圈
+    var onTap: () -> Void = {}
+    var onLongPress: () -> Void = {}
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // 呼吸：0.35-0.95 幅度（Siri 淡雅，不过曝）
+            let breathe = 0.35 + 0.30 * (sin(t * 2.2) + 1) / 2
+            ZStack {
+                // 外发光（虚化光晕）
+                Circle()
+                    .fill(
+                        AngularGradient(
+                            colors: [.blue.opacity(0.55 * breathe), .indigo.opacity(0.5 * breathe),
+                                     .pink.opacity(0.5 * breathe), .purple.opacity(0.42 * breathe),
+                                     .blue.opacity(0.55 * breathe)],
+                            center: .center
+                        )
+                    )
+                    .blur(radius: 6)
+                    .frame(width: 52, height: 52)
+                // 主体球
+                Circle()
+                    .fill(
+                        AngularGradient(
+                            colors: [.blue.opacity(0.85 * breathe), .indigo.opacity(0.8 * breathe),
+                                     .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
+                                     .blue.opacity(0.85 * breathe)],
+                            center: .center
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                    )
+                    .shadow(color: .indigo.opacity(0.45 * breathe), radius: 10)
+                // 中心图标：转写中 = 转圈；录音中 = 红点+松开结束；语音模式 = waveform；默认 = mic
+                if transcribing {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(width: 18, height: 18)
+                } else if isRecording {
+                    VStack(spacing: 2) {
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                        Text("松开结束")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                } else {
+                    Image(systemName: voiceMode ? "waveform" : "mic.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                }
+            }
+        }
+        .frame(width: 56, height: 56)
+        .contentShape(Circle())
+        .gesture(
+            LongPressGesture(minimumDuration: 0.4)
+                .exclusively(before: TapGesture())
+                .onEnded { value in
+                    switch value {
+                    case .first:
+                        onLongPress()
+                    case .second:
+                        onTap()
+                    }
+                }
+        )
+        // 录音中：红圈脉冲提示
+        .overlay {
+            if isRecording {
+                Circle()
+                    .stroke(Color.red.opacity(0.6), lineWidth: 2)
+                    .frame(width: 56, height: 56)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
     }
 }
 

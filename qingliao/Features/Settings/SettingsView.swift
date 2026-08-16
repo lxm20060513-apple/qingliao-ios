@@ -67,6 +67,8 @@ struct SettingsView: View {
     // v2.0.128：AI 输出行高（0-6 步进 0.5，默认 1.0 = 紧凑；滑条控制）
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
     @State private var showLineSpacingOptions = false
+    // v2.0.129：Siri 圆球输入（默认开——输入框区显示多彩圆球，单击展开 / 长按语音转文字）
+    @AppStorage("qingliao_ball_input") private var ballInput = true
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
     // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
@@ -536,6 +538,29 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
+                        // v2.0.129：Siri 圆球输入开关（外观同款交互样式）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "circle.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    LinearGradient(colors: [.blue, .indigo, .pink],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                )
+                            Text("Siri 圆球输入")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Toggle("", isOn: $ballInput)
+                                .labelsHidden()
+                                .scaleEffect(0.8)
+                                .tint(.green)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0", chevron: true)
                             .onTapGesture { showAbout = true }

@@ -104,6 +104,14 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
     - 折叠消息（>800字）预览中图片语法替换为 `[图片]` 占位
     - 能力边界：Hermes/后端回复含 markdown 图片 URL 即显示；生图工具未接（NAS 无 GPU）
   - **设置页 AI 输出行高滑条**：`@AppStorage("qingliao_ai_line_spacing")` 0-6 步进 0.5 默认 1.0（字体大小滑条同款交互，indigo 图标），AI markdown/折叠消息实时生效
+- **v2.0.129**：
+  - **Siri 圆球输入**（用户深夜设计，默认开，设置开关 `qingliao_ball_input`）
+    - 默认状态聊天输入区 = Siri 多彩光晕圆球（TimelineView + AngularGradient 蓝紫粉呼吸，复用 Siri 发光配色）
+    - **单击球** → spring 动画展开成完整输入框（文字/附件/拍照/发送功能与原来一致）+ 自动弹键盘
+    - **长按球** → 语音转文字（球保持特效不展开输入框）；录音中红圈脉冲"松开结束"，转写中转圈，**转写完成自动展开输入框 + 弹键盘**（用户细节③）
+    - 展开态保留直到切换会话（`.id(chat.sessionId)` 重建复位回球，用户细节②）；转写中点击球不响应
+    - ⚠️ 手势 ExclusiveGesture(LongPress, Tap) 互斥（v2.0.98 SIGTRAP 教训，勿叠加 onTap+onLongPress）
+    - 球态居中，独立渲染（不继承输入栏胶囊背景）；`SiriBallView` 组件独立
 
 ## 🔀 分支与版本
 
