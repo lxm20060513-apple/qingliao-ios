@@ -39,8 +39,6 @@ struct SettingsView: View {
     @State private var agentRuleCount = 0
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
-    // v2.0.114：灵动岛回复状态开关（AI 回复过程上岛）
-    @AppStorage("qingliao_live_activity") private var liveActivityOn = true
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
@@ -213,30 +211,6 @@ struct SettingsView: View {
                                                                  body: ["pushWeixin": new])
                                     }
                                 }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        // v2.0.114：灵动岛开关（AI 回复过程上岛，多彩光晕+呼吸）
-                        Divider().padding(.leading, 52)
-                        HStack(spacing: 12) {
-                            Image(systemName: "sparkles.rectangle.stack")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(LinearGradient(colors: [.blue, .purple, .pink],
-                                                           startPoint: .topLeading, endPoint: .bottomTrailing),
-                                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("灵动岛回复状态")
-                                    .font(.system(size: 14, weight: .medium))
-                                Text("AI 回复过程中灵动岛显示多彩光晕")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $liveActivityOn)
-                                .labelsHidden()
-                                .scaleEffect(0.8)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)

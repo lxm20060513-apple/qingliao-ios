@@ -1089,15 +1089,8 @@ struct ChatView: View {
             }
             chat.append(.local(role: "user", content: content))
             let history = chat.historyPayload()
-            // v2.0.114：回复过程上岛（Live Activity）
-            ActivityManager.startReply(sessionTitle: nil)
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
-                if success {
-                    ActivityManager.endReply()
-                } else {
-                    ActivityManager.failReply()
-                }
                 if !success {
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {
@@ -1127,15 +1120,8 @@ struct ChatView: View {
         chat.messages.removeSubrange(idx...)
         let history = chat.historyPayload()
         Task {
-            // v2.0.114：重新生成同样上岛
-            ActivityManager.startReply(sessionTitle: nil)
             await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
                                provider: provider, messages: history) { success, error in
-                if success {
-                    ActivityManager.endReply()
-                } else {
-                    ActivityManager.failReply()
-                }
                 if !success {
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {

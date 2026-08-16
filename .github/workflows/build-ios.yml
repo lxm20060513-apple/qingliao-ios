@@ -40,12 +40,6 @@ jobs:
         run: |
           mkdir -p build/ipa/Payload
           cp -R build/App.xcarchive/Products/Applications/Qingliao.app build/ipa/Payload/
-          # v2.0.114d：验证 Xcode 正常嵌入的 PlugIns（scheme 已配置 widget archive 构建）
-          if [ -d build/ipa/Payload/Qingliao.app/PlugIns ] && ls build/ipa/Payload/Qingliao.app/PlugIns/*.appex >/dev/null 2>&1; then
-            echo "Xcode embedded appex: $(ls build/ipa/Payload/Qingliao.app/PlugIns/)"
-          else
-            echo "PLUGINS_MISSING_AFTER_ARCHIVE"
-          fi
           cd build/ipa && zip -qry ../qingliao-2.0-unsigned.ipa Payload/
           ls -la ../qingliao-2.0-unsigned.ipa
 
