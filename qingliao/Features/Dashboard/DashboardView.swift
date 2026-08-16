@@ -27,6 +27,9 @@ struct DashboardView: View {
     @State private var confirmSceneRun: SceneItem?
     @State private var sceneResult = ""
     @State private var showSceneResult = false
+    // v2.0.116：智能建议（天气/NAS/设备 → Agent 生成）
+    @State private var smartSuggestion = ""
+    @State private var smartLoading = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +38,53 @@ struct DashboardView: View {
                        trailing: AnyView(WeatherBadge(temp: weatherTemp, code: weatherCode, city: weatherCity)))
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
+                    sectionTitle("智能建议")
+                    VStack(alignment: .leading, spacing: 8) {
+                        if smartLoading {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("正在分析家庭状态…")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if !smartSuggestion.isEmpty {
+                            Text(smartSuggestion)
+                                .font(.system(size: 13))
+                                .lineSpacing(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack {
+                                Spacer()
+                                Button {
+                                    Task { await loadSmartSuggestion() }
+                                } label: {
+                                    Label("重新生成", systemImage: "arrow.clockwise")
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.accentColor)
+                            }
+                        } else {
+                            Button {
+                                Task { await loadSmartSuggestion() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 13))
+                                    Text("生成智能建议（天气/设备/NAS 状态分析）")
+                                        .font(.system(size: 12))
+                                }
+                                .foregroundStyle(Color.accentColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         DeviceCard(name: "开关", icon: "lightbulb.fill", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
@@ -317,9 +367,40 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/automations/list") {
             automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
         }
+        // v2.0.116：主动建议（后台引擎生成的最新建议，打开看板自动显示；手动生成过则不覆盖）
+        if smartSuggestion.isEmpty,
+           let j = try? await auth.json("/api/agent/last_suggestion"),
+           let sug = j["suggestion"] as? [String: Any],
+           let text = sug["text"] as? String, !text.isEmpty {
+            smartSuggestion = text
+        }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    /// v2.0.116：生成智能建议（天气 + NAS + 设备状态 → Agent）
+    private func loadSmartSuggestion() async {
+        guard !smartLoading else { return }
+        smartLoading = true
+        defer { smartLoading = false }
+        var parts: [String] = []
+        if let t = weatherTemp {
+            parts.append("天气：\(weatherCity.isEmpty ? "当前城市" : weatherCity) \(Int(t))°C 码\(weatherCode ?? 0)")
+        }
+        parts.append("NAS：CPU \(Int(nas.cpu))% 内存 \(Int(nas.memUsed))G/\(Int(nas.memTotal))G 磁盘 \(Int(nas.maxDiskPct))%")
+        if !haEntities.isEmpty {
+            let lightsOn = haEntities.filter { $0.entityId.hasPrefix("light.") && $0.state == "on" }.count
+            let acOn = haEntities.filter { $0.entityId.hasPrefix("climate.") && $0.state == "on" }.count
+            parts.append("设备：\(lightsOn) 盏灯开 / \(acOn) 台空调开")
+        }
+        if let j = try? await auth.json("/api/agent/suggest", method: "POST",
+                                        body: ["context": parts.joined(separator: "；")]),
+           let text = j["text"] as? String, !text.isEmpty {
+            smartSuggestion = text
+        } else {
+            smartSuggestion = "建议生成失败，请重试"
+        }
     }
 
     /// v2.0.104：剩余时间文案（倒计时显示）

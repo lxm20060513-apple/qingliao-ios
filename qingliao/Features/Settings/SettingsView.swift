@@ -37,6 +37,8 @@ struct SettingsView: View {
     // v2.0.113：Agent 记忆弹窗 + 计数
     @State private var showAgentMemory = false
     @State private var agentRuleCount = 0
+    // v2.0.116：执行历史弹窗
+    @State private var showHistory = false
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
@@ -186,6 +188,11 @@ struct SettingsView: View {
                                    value: agentRuleCount > 0 ? "\(agentRuleCount) 条规则" : "暂无",
                                    chevron: true)
                             .onTapGesture { showAgentMemory = true }
+                        // v2.0.116：执行历史（自动化 + 场景执行记录）
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "clock.arrow.circlepath", iconColor: .orange, title: "执行历史",
+                                   value: "自动化/场景执行记录", chevron: true)
+                            .onTapGesture { showHistory = true }
                         // v2.0.113：微信推送开关（自动化执行结果 → 微信消息）
                         Divider().padding(.leading, 52)
                         HStack(spacing: 12) {
@@ -505,6 +512,10 @@ struct SettingsView: View {
         // v2.0.113：Agent 记忆弹窗（同 AI 记忆样式）
         .sheet(isPresented: $showAgentMemory) {
             AgentMemorySheet()
+        }
+        // v2.0.116：执行历史弹窗
+        .sheet(isPresented: $showHistory) {
+            HistorySheet()
         }
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }

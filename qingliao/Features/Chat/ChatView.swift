@@ -182,6 +182,10 @@ struct ChatView: View {
                         Task { await chat.saveToServer(auth: auth) }
                     }
                 }
+                // v2.0.116：AI 总结会话（走正常流式，AI 回复要点总结）
+                Button("AI 总结会话") {
+                    summarizeSession()
+                }
                 Button("清空本会话消息", role: .destructive) {
                     // v2.0.40：两步走清空——先切欢迎页分支（列表立即卸载，数据未动），
                     // 下一帧再清数据。列表销毁与数据清空完全错开，杜绝同帧崩溃。
@@ -682,11 +686,24 @@ struct ChatView: View {
 
     // MARK: - 发送
 
+    /// v2.0.116：AI 总结会话（菜单按钮 → 自动发总结请求走正常流式）
+    private func summarizeSession() {
+        guard !chat.messages.isEmpty else { return }
+        guard !stream.isStreaming else { return }
+        sendCore(text: "请用简洁的要点总结我们这次对话（分点列出，突出结论和待办）", imageData: nil)
+    }
+
     private func send() {
         var text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let img = pendingImageData
         // v2.0.88f：去掉 isStreaming 拦截——AI 回答中发送走 sendCore 排队路径
         guard !text.isEmpty || img != nil else { return }
+        // v2.0.116：Siri 提问预处理（「问轻聊 XX」→ 打开 App 自动发送）
+        if let q = UserDefaults.standard.string(forKey: "qingliao_siri_question"), !q.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "qingliao_siri_question")
+            sendCore(text: q, imageData: nil)
+            return
+        }
         // v2.0.36：引用回复（markdown 引用块注入，AI 可见上下文）
         if let q = quotedMessage, !text.isEmpty {
             let quoted = q.content.replacingOccurrences(of: "\n", with: "\n> ")

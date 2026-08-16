@@ -188,11 +188,14 @@ final class AuthStore {
     }
 
     /// 文件下载：Wi-Fi → URLSession 直连（二进制）；蜂窝 → Safari relay（带 query 直连挂，relay 可传小文件）
+    /// v2.0.116 fix：带 X-Auth-Token（files_api 鉴权）
     func downloadFile(_ path: String) async throws -> (Data, Int) {
         if NetworkMonitor.shared.isCellular {
-            return try await relay.relay(method: "GET", path: path, headers: [:], body: nil, timeout: 30)
+            return try await relay.relay(method: "GET", path: path,
+                                         headers: ["X-Auth-Token": token], body: nil, timeout: 30)
         } else {
-            return try await directHTTP(method: "GET", path: path, headers: [:], body: nil)
+            return try await directHTTP(method: "GET", path: path,
+                                        headers: ["X-Auth-Token": token], body: nil)
         }
     }
 
@@ -277,26 +280,29 @@ final class AuthStore {
             "agentEnabled": agentOn
         ]
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
+        // v2.0.116 fix：流式请求必须带 X-Auth-Token（鉴权收紧后无 token 恒 401；
+        // 原只带 Content-Type——AUTO_LOGIN 时代被免鉴权掩盖）
+        let authHeaders = ["Content-Type": "application/json", "X-Auth-Token": token]
         let (data, code): (Data, Int)
         if NetworkMonitor.shared.isCellular {
             // 蜂窝：CFStream 直连 POST 标准端点（免弹窗），失败降级 relay 路径参数版
             do {
                 (data, code) = try await relay.directRequest(
                     method: "POST", path: "/api/stream/start",
-                    headers: ["Content-Type": "application/json"], body: bodyData, timeout: 25
+                    headers: authHeaders, body: bodyData, timeout: 25
                 )
             } catch {
                 let uid = RelayIdentity.uid(for: sessionId)
                 (data, code) = try await relay.relay(
                     method: "POST", path: "/r/stream/start/\(uid)",
-                    headers: ["Content-Type": "application/json"],
+                    headers: authHeaders,
                     body: bodyData, timeout: 30
                 )
             }
         } else {
             (data, code) = try await directHTTP(
                 method: "POST", path: "/api/stream/start",
-                headers: ["Content-Type": "application/json"], body: bodyData
+                headers: authHeaders, body: bodyData
             )
         }
         guard (200..<300).contains(code),
@@ -331,14 +337,16 @@ final class AuthStore {
 
     func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String, Bool) {
         let (data, code): (Data, Int)
+        // v2.0.116 fix：轮询也带 X-Auth-Token（后端 do_GET 统一鉴权）
         if NetworkMonitor.shared.isCellular {
             // 蜂窝：必须用路径参数形态（/r/stream/poll/... 无 query）——CFStream 带 query 会挂起 10s 超时，
             // 标准端点带 query 在蜂窝不可用（v2.0.5 实踩：流式输出失效）
             let uid = RelayIdentity.uid(for: currentStreamSessionId)
-            (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)", timeout: 10)
+            (data, code) = try await relay.directGET(path: "/r/stream/poll/\(uid)/\(taskId)/\(offset)",
+                                                     headers: ["X-Auth-Token": token], timeout: 10)
         } else {
             (data, code) = try await directHTTP(method: "GET", path: "/api/stream/\(taskId)?offset=\(offset)",
-                                                headers: [:], body: nil)
+                                                headers: ["X-Auth-Token": token], body: nil)
         }
         guard (200..<300).contains(code),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -356,13 +364,16 @@ final class AuthStore {
     func streamStop(taskId: String) async {
         if NetworkMonitor.shared.isCellular {
             do {
-                _ = try await relay.directRequest(method: "POST", path: "/api/stream/\(taskId)/stop", timeout: 8)
+                _ = try await relay.directRequest(method: "POST", path: "/api/stream/\(taskId)/stop",
+                                                  headers: ["X-Auth-Token": token], timeout: 8)
             } catch {
                 let uid = RelayIdentity.uid(for: currentStreamSessionId)
-                _ = try? await relay.relay(method: "POST", path: "/r/stream/stop/\(uid)/\(taskId)", timeout: 10)
+                _ = try? await relay.relay(method: "POST", path: "/r/stream/stop/\(uid)/\(taskId)",
+                                           headers: ["X-Auth-Token": token], timeout: 10)
             }
         } else {
-            _ = try? await directHTTP(method: "POST", path: "/api/stream/\(taskId)/stop", headers: [:], body: nil)
+            _ = try? await directHTTP(method: "POST", path: "/api/stream/\(taskId)/stop",
+                                      headers: ["X-Auth-Token": token], body: nil)
         }
     }
 

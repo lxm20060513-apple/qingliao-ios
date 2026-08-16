@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct QingliaoApp: App {
+struct QingliaoApp: App, QingliaoAppShortcuts {
     // v2.0.60：通知点击直达会话（AppDelegate 捕获）
     @UIApplicationDelegateAdaptor(QingliaoAppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase   // v2.0.61 流式持久化
