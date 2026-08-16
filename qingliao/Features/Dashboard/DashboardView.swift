@@ -39,52 +39,53 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
-                    // v2.0.117：长条卡片型（图标方块+文本+右侧操作，与设备/自动化卡统一风格）
+                    // v2.0.117：HomeKit 风格大卡（渐变背景 + 大圆角 + 居中内容，无图标）
                     sectionTitle("智能建议")
-                    HStack(spacing: 12) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 30, height: 30)
-                            .background(LinearGradient(colors: [.blue, .purple, .pink],
-                                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(spacing: 10) {
                         if smartLoading {
                             ProgressView().controlSize(.small)
                             Text("正在分析家庭状态…")
-                                .font(.system(size: 13))
+                                .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                         } else if !smartSuggestion.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(smartSuggestion)
-                                    .font(.system(size: 13))
-                                    .lineSpacing(3)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Button {
-                                    Task { await loadSmartSuggestion() }
-                                } label: {
-                                    Label("重新生成", systemImage: "arrow.clockwise")
-                                        .font(.system(size: 11))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(Color.accentColor)
+                            Text("今日建议")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text(smartSuggestion)
+                                .font(.system(size: 14))
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(3)
+                                .frame(maxWidth: .infinity)
+                            Button {
+                                Task { await loadSmartSuggestion() }
+                            } label: {
+                                Label("重新生成", systemImage: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 7)
+                                    .background(Color.accentColor.opacity(0.12), in: Capsule())
                             }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
                         } else {
                             Button {
                                 Task { await loadSmartSuggestion() }
                             } label: {
-                                Text("生成智能建议（天气/设备/NAS 分析）")
+                                Text("生成智能建议")
                                     .font(.system(size: 13, weight: .medium))
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 9)
+                                    .background(Color.accentColor.opacity(0.12), in: Capsule())
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(Color.accentColor)
                         }
-                        Spacer()
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity)
+                    .background(LinearGradient(colors: [Color.blue.opacity(0.07), Color.purple.opacity(0.07), Color.pink.opacity(0.07)],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                                in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     sectionTitle("智能家居")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
