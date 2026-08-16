@@ -54,6 +54,7 @@ struct MessageContentBlock: Identifiable {
         case markdown(String)
         case code(String)
         case table([[String]])   // v2.0.87d：markdown 表格（表头+数据行）
+        case image(String)       // v2.0.128：AI 回复中的图片（URL 或 data URL）
     }
     let kind: Kind
 }
@@ -65,6 +66,8 @@ struct MessageBlockView: View {
     let block: MessageContentBlock
     // v2.0.38：聊天字体大小（与 MessageBubble 同源）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
+    // v2.0.128：AI 输出行高（设置页滑条控制，0-6；默认 1.0 紧凑）
+    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
     // v2.0.125：长按菜单回调（markdown 段 → UITextView 原生编辑菜单；代码块/表格 → SwiftUI 菜单）
     var onCopy: () -> Void = {}
     var onQuote: () -> Void = {}
@@ -73,8 +76,8 @@ struct MessageBlockView: View {
     var onDelete: () -> Void = {}
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
-    // v2.0.125：AI 回复行距缩小（行与行之间不再太宽）
-    var lineSpacing: CGFloat = 1
+    // v2.0.128：AI 图片点击打开大图（传图片 URL/data URL）
+    var onImageTap: (String) -> Void = { _ in }
 
     /// 代码块/表格共用的 SwiftUI 长按菜单（与原气泡级菜单项一致）
     @ViewBuilder
@@ -127,7 +130,7 @@ struct MessageBlockView: View {
             SelectableTextLabel(
                 attributedText: NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize))),
                 fallbackColor: .label,
-                lineSpacing: lineSpacing,
+                lineSpacing: aiLineSpacing,
                 onCopy: onCopy,
                 onQuote: onQuote,
                 onShare: onShare,
@@ -137,6 +140,11 @@ struct MessageBlockView: View {
                 onWithdraw: onWithdraw
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+        case .image(let url):
+            // v2.0.128：AI 直接发图 —— URL 用 AsyncImage，data URL 本地解码；点击打开大图
+            AIImageView(url: url)
+                .onTapGesture { onImageTap(url) }
+                .contextMenu { bubbleMenu }
         case .code(let text):
             // v2.0.36：代码块加复制按钮（右上角）
             VStack(alignment: .leading, spacing: 6) {
@@ -187,8 +195,12 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
+    // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
+    var onAIImageTap: (String) -> Void = { _ in }
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
+    // v2.0.128：AI 输出行高（设置页滑条，实时生效）
+    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
     @State private var expanded = false
@@ -323,14 +335,16 @@ struct MessageBubble: View {
                             }
                         } else {
                             // v2.0.65：AI 超长消息折叠（>800 字收成展开全文）
+                            // v2.0.128：折叠预览中 markdown 图片语法替换为 [图片] 占位（纯文本无法渲染图）
                             if message.content.count > 800 && !expanded {
+                                let preview = Self.foldedPreview(message.content, limit: 800)
                                 SelectableTextLabel(
-                                    attributedText: NSAttributedString(string: String(message.content.prefix(800)) + "…", attributes: [
+                                    attributedText: NSAttributedString(string: preview, attributes: [
                                         .font: UIFont.systemFont(ofSize: CGFloat(fontSize)),
                                         .foregroundColor: UIColor.label
                                     ]),
                                     fallbackColor: .label,
-                                    lineSpacing: 1,
+                                    lineSpacing: aiLineSpacing,
                                     onCopy: { UIPasteboard.general.string = message.content },
                                     onQuote: onQuote,
                                     onShare: onShare,
@@ -360,7 +374,7 @@ struct MessageBubble: View {
                                                         onDelete: onDelete,
                                                         onRegenerate: onRegenerate,
                                                         onWithdraw: nil,
-                                                        lineSpacing: 1)   // v2.0.127：AI 回复行距再缩小(UITextView 渲染比 SwiftUI 宽)
+                                                        onImageTap: { url in onAIImageTap(url) })   // v2.0.128：AI 图片点击打开大图
                                     }
                                 }
                             }
@@ -477,6 +491,7 @@ struct MessageBubble: View {
     }
 
     /// v2.0.87d：markdown 表格检测拆分（连续 | 行 → 表格块，其余保持 markdown）
+    /// v2.0.128：非表格行内再拆出图片块（![alt](url)）——AI 直接发图
     private static func splitMarkdownTable(_ text: String) -> [MessageContentBlock.Kind] {
         let lines = text.components(separatedBy: "\n")
         var result: [MessageContentBlock.Kind] = []
@@ -486,7 +501,7 @@ struct MessageBubble: View {
                 if let rows = parseTable(table) {
                     result.append(.table(rows))
                 } else {
-                    result.append(.markdown(table.joined(separator: "\n")))
+                    result.append(contentsOf: splitMarkdownImages(table.joined(separator: "\n")))
                 }
                 table = []
             }
@@ -497,11 +512,56 @@ struct MessageBubble: View {
                 table.append(line)
             } else {
                 flush()
-                result.append(.markdown(line))
+                result.append(contentsOf: splitMarkdownImages(line))
             }
         }
         flush()
         return result
+    }
+
+    /// v2.0.128：行内拆出 markdown 图片语法 ![alt](url) → 图片块（URL 或 data URL），其余保持 markdown
+    private static func splitMarkdownImages(_ line: String) -> [MessageContentBlock.Kind] {
+        guard let re = try? NSRegularExpression(pattern: #"!\[[^\]]*\]\(([^)\s]+)\)"#) else {
+            return [.markdown(line)]
+        }
+        let ns = line as NSString
+        let matches = re.matches(in: line, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return [.markdown(line)] }
+        var result: [MessageContentBlock.Kind] = []
+        var pos = 0
+        for m in matches {
+            if m.range.location > pos {
+                let pre = ns.substring(with: NSRange(location: pos, length: m.range.location - pos))
+                if !pre.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    result.append(.markdown(pre))
+                }
+            }
+            let url = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            result.append(.image(url))
+            pos = m.range.location + m.range.length
+        }
+        if pos < ns.length {
+            let tail = ns.substring(from: pos)
+            if !tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                result.append(.markdown(tail))
+            }
+        }
+        return result.isEmpty ? [.markdown(line)] : result
+    }
+
+    /// v2.0.128：折叠预览文本——markdown 图片语法替换为 [图片] 占位，截断到 limit 字
+    private static func foldedPreview(_ content: String, limit: Int) -> String {
+        var preview = content
+        if let re = try? NSRegularExpression(pattern: #"!\[[^\]]*\]\([^)]+\)"#) {
+            let ns = preview as NSString
+            preview = re.stringByReplacingMatches(
+                in: preview, range: NSRange(location: 0, length: ns.length),
+                withTemplate: "[图片]")
+        }
+        if preview.count > limit {
+            preview = String(preview.prefix(limit)) + "…"
+        }
+        return preview
     }
 
     /// v2.0.87d：表格行解析（首行表头，第二行 |---| 分隔则跳过）
@@ -520,6 +580,96 @@ struct MessageBubble: View {
         return data.isEmpty ? [header] : [header] + data
     }
 
+}
+
+// MARK: - v2.0.128 AI 直接发图（消息内图片渲染）
+
+/// AI 回复中的图片：data URL 本地解码；http(s) URL 异步加载。
+/// ⚠️ 加载链路必须兼容自签证书服务器（用户 NAS 就是）：URLSession 对外部公开图正常，
+///    失败时降级 StreamHTTPClient（忽略证书链校验）——不能用纯 AsyncImage（自签证书必失败）。
+/// 尺寸：圆角 12、最大宽 240、最大高 240（与原用户图片消息一致），点击由外层 onTapGesture 处理。
+struct AIImageView: View {
+    let url: String
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        if url.hasPrefix("data:image/") {
+            // base64 data URL → 本地解码（复用 ImageCache）
+            if let img = dataURLImage(url) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: 240, maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                placeholder
+            }
+        } else if let img = image {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: 240, maxHeight: 240)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        } else if failed {
+            placeholder
+        } else {
+            ProgressView()
+                .frame(width: 240, height: 120)
+                .task { await loadRemote() }
+        }
+    }
+
+    /// 远程加载：URLSession 优先 → 失败降级 StreamHTTPClient（自签证书）
+    @MainActor
+    private func loadRemote() async {
+        guard let u = URL(string: url), url.hasPrefix("http") else {
+            failed = true
+            return
+        }
+        // 0) 缓存命中直接显示
+        if let cached = cachedRemoteImage(url) {
+            image = cached
+            return
+        }
+        // 1) URLSession（外部公开图，Ats 允许 https）
+        if let (data, _) = try? await URLSession.shared.data(from: u),
+           let img = UIImage(data: data) {
+            setRemoteImageCache(url, img, cost: data.count)
+            image = img
+            return
+        }
+        // 2) 降级 CFStream 直连（自签证书服务器：忽略证书链校验）
+        if let host = u.host, let scheme = u.scheme {
+            let port = UInt16(u.port ?? (scheme == "https" ? 443 : 80))
+            let path = u.path + (u.query.map { "?" + $0 } ?? "")
+            let client = StreamHTTPClient()
+            let result = await Task.detached(priority: .userInitiated) {
+                try? client.request(host: host, port: port, isTLS: scheme == "https",
+                                    method: "GET", path: path, headers: [:], body: nil, timeout: 15)
+            }.value
+            if let (data, code) = result, (200..<300).contains(code),
+               let img = UIImage(data: data) {
+                setRemoteImageCache(url, img, cost: data.count)
+                image = img
+                return
+            }
+        }
+        failed = true
+    }
+
+    private var placeholder: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "photo")
+                .font(.system(size: 22))
+                .foregroundStyle(.secondary)
+            Text("图片加载失败")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(width: 200, height: 100)
+        .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
 }
 
 // MARK: - 液态玻璃输入栏

@@ -470,6 +470,9 @@ struct ChatView: View {
                             } onWithdraw: {
                                 // v2.0.92：消息撤回（10 秒内）
                                 withdrawMessage(msg)
+                            } onAIImageTap: { url in
+                                // v2.0.128：AI 消息内图片 → 打开大图查看器（单张）
+                                openAIImage(url)
                             }
                             .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
@@ -503,7 +506,8 @@ struct ChatView: View {
                                 .transition(.opacity)
                             } else {
                                 MessageBubble(
-                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent)
+                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent),
+                                    onAIImageTap: { url in openAIImage(url) }   // v2.0.128：流式中 AI 图片可点
                                 )
                                 .id("streaming")
                             }
@@ -894,6 +898,51 @@ struct ChatView: View {
               let rawIdx = imgMsgs.firstIndex(where: { $0.element.id == msg.id }) else { return }
         let idx = min(rawIdx, images.count - 1)   // v2.0.102：坏图跳过导致偏移时钳制
         viewerPayload = ImageViewPayload(images: images, index: idx)
+    }
+
+    /// v2.0.128：AI 消息内图片点击 → 打开大图查看器（单张）
+    /// data URL 直接解码进查看器；http(s) URL 双通道下载（URLSession → 自签证书降级 CFStream）
+    private func openAIImage(_ url: String) {
+        if url.hasPrefix("data:image/") {
+            if let img = dataURLImage(url) {
+                viewerPayload = ImageViewPayload(images: [img], index: 0)
+            }
+            return
+        }
+        guard let u = URL(string: url), url.hasPrefix("http") else { return }
+        Task {
+            let img = await Self.downloadImage(url: url, u: u)
+            guard let img else { return }
+            await MainActor.run {
+                viewerPayload = ImageViewPayload(images: [img], index: 0)
+            }
+        }
+    }
+
+    /// 双通道下载：URLSession（外部图）→ 失败降级 StreamHTTPClient（自签证书服务器）
+    @MainActor
+    private static func downloadImage(url: String, u: URL) async -> UIImage? {
+        if let cached = cachedRemoteImage(url) { return cached }
+        if let (data, _) = try? await URLSession.shared.data(from: u),
+           let img = UIImage(data: data) {
+            setRemoteImageCache(url, img, cost: data.count)
+            return img
+        }
+        if let host = u.host, let scheme = u.scheme {
+            let port = UInt16(u.port ?? (scheme == "https" ? 443 : 80))
+            let path = u.path + (u.query.map { "?" + $0 } ?? "")
+            let client = StreamHTTPClient()
+            let result = await Task.detached(priority: .userInitiated) {
+                try? client.request(host: host, port: port, isTLS: scheme == "https",
+                                    method: "GET", path: path, headers: [:], body: nil, timeout: 15)
+            }.value
+            if let (data, code) = result, (200..<300).contains(code),
+               let img = UIImage(data: data) {
+                setRemoteImageCache(url, img, cost: data.count)
+                return img
+            }
+        }
+        return nil
     }
 
     /// v2.0.59：失败消息重试（移除失败标记后按原内容重发）

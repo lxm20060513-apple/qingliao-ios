@@ -27,3 +27,20 @@ func dataURLImage(_ urlStr: String) -> UIImage? {
     imageCache.setObject(img, forKey: urlStr as NSString, cost: data.count)
     return img
 }
+
+/// v2.0.128：已下载的远程图片缓存（AI 发图 / 大图查看器共用，滚动复用不重复下载）
+@MainActor
+private let remoteImageCache = NSCache<NSString, UIImage>()
+
+@MainActor
+func cachedRemoteImage(_ urlStr: String) -> UIImage? {
+    remoteImageCache.object(forKey: urlStr as NSString)
+}
+
+@MainActor
+func setRemoteImageCache(_ urlStr: String, _ img: UIImage, cost: Int) {
+    if remoteImageCache.totalCostLimit == 0 {
+        remoteImageCache.totalCostLimit = 40 * 1024 * 1024   // 40MB
+    }
+    remoteImageCache.setObject(img, forKey: urlStr as NSString, cost: cost)
+}

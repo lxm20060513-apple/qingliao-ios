@@ -64,6 +64,9 @@ struct SettingsView: View {
     @AppStorage("qingliao_app_lock") private var appLockOn = false
     @State private var appLockAuthFailed = false
     @State private var showFontOptions = false
+    // v2.0.128：AI 输出行高（0-6 步进 0.5，默认 1.0 = 紧凑；滑条控制）
+    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
+    @State private var showLineSpacingOptions = false
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
     // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
@@ -514,6 +517,21 @@ struct SettingsView: View {
                                 Slider(value: $fontSize, in: 12...20, step: 1)
                                     .tint(Color.accentColor)
                                 Text("大").font(.system(size: 16)).foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 10)
+                        }
+                        // v2.0.128：AI 输出行高（内联滑条，字体大小同款交互）
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "text.line.first.and.arrowtriangle.forward", iconColor: .indigo,
+                                   title: "AI 输出行高", value: "\(aiLineSpacing, specifier: "%.1f")", chevron: false)
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showLineSpacingOptions.toggle() } }
+                        if showLineSpacingOptions {
+                            HStack(spacing: 10) {
+                                Text("紧凑").font(.system(size: 12)).foregroundStyle(.secondary)
+                                Slider(value: $aiLineSpacing, in: 0...6, step: 0.5)
+                                    .tint(Color.accentColor)
+                                Text("宽松").font(.system(size: 16)).foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)

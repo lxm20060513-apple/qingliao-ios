@@ -97,6 +97,13 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **v2.0.127（修复 125 实测 bug）**：
   - **🚨🚨 长按菜单全丢根因（v2.0.124/125 都栽在这）**：iOS 26 全面转向 NSRange 体系（`selectedRanges: [NSRange]`、UITextField 新 API 直接 `[NSRange]`），`editMenuForTextInRanges` 的 `ranges: [NSValue]` 包装的是 **NSRange**——必须 `rangeValue` 取；124/125 用 `nonretainedObjectValue as? UITextRange` 转换必然失败 → 返回 nil → **Apple 文档：返回 nil = 显示系统默认菜单**（自定义项全丢、长按直接变文本选择）。修复：`rangeValue` 取 NSRange（兼容 UITextRange 双分支），"选择文本"用 iOS 26 新属性 `textView.selectedRanges = [range]`，旧 API `editMenuForTextIn` 直接删除（部署目标 26.0 永不调用）
   - AI 回复行距再缩小：lineSpacing 2→1（用户实测 UITextView 渲染视觉比 SwiftUI Text 宽，数值需更小）
+- **v2.0.128**：
+  - **AI 直接发图**：AI 回复中的 markdown 图片语法 `![alt](url)` 自动解析为图片块（`MessageContentBlock.image`），气泡内渲染圆角图（240 上限，与用户图片一致），点击打开大图查看器（含流式中可点）
+    - ⚠️ **自签证书双通道加载**（用户 NAS 就是自签）：URLSession 加载外部公开图，失败降级 `StreamHTTPClient`（忽略证书链校验）——纯 AsyncImage 会因自签证书必失败
+    - 远程图片 NSCache 缓存（`cachedRemoteImage`，40MB，滚动复用不重复下载）；data URL 复用 `dataURLImage`
+    - 折叠消息（>800字）预览中图片语法替换为 `[图片]` 占位
+    - 能力边界：Hermes/后端回复含 markdown 图片 URL 即显示；生图工具未接（NAS 无 GPU）
+  - **设置页 AI 输出行高滑条**：`@AppStorage("qingliao_ai_line_spacing")` 0-6 步进 0.5 默认 1.0（字体大小滑条同款交互，indigo 图标），AI markdown/折叠消息实时生效
 
 ## 🔀 分支与版本
 
