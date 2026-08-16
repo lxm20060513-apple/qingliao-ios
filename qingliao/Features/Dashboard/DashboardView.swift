@@ -306,8 +306,11 @@ struct DashboardView: View {
     }
 
     // v2.0.87u：天气加载（后端缓存 30 分钟）
+    // v2.0.118 fix：带城市参数（原无 city 走 IP 定位——NAS 出口无公网 IP 定位失败 → temp null 不显示温度）
     private func loadWeather() async {
-        if let j = try? await auth.json("/api/weather") {
+        let city = weatherCity.trimmingCharacters(in: .whitespaces)
+        let q = city.isEmpty ? "" : "?city=" + (city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
+        if let j = try? await auth.json("/api/weather\(q)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
         }
