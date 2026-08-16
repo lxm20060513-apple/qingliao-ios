@@ -10,8 +10,10 @@ enum ActivityManager {
     private static var glowTimer: Timer?
 
     /// 回复开始上岛（多彩光晕 + 呼吸）
+    /// v2.0.114b：设置页开关 qingliao_live_activity（默认开）
     static func startReply(sessionTitle: String?) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let enabled = UserDefaults.standard.object(forKey: "qingliao_live_activity") as? Bool ?? true
+        guard enabled, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let attrs = QingliaoActivityAttributes(startedAt: Date(), sessionTitle: sessionTitle)
         let state = QingliaoActivityAttributes.ContentState(status: "AI 回复中…", glowPhase: 0, theme: 0)
         do {
