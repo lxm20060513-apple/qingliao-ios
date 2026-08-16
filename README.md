@@ -83,6 +83,17 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.125，2026-08-16，回滚后重建）
+
+- **v2.0.125**：聊天文字长按菜单新增「选择文本」（v2.0.120 基础上重建；v2.0.122-124 被另一模型改坏已回滚，备份分支 `backup-v2.0.124-20260816`）
+  - 新文件 `SelectableTextLabel.swift`：文字渲染 Text → UITextView 包装（isSelectable），长按弹原生编辑菜单：复制/引用/分享/大爆炸/**选择文本**/重新生成/撤回/删除
+  - 点「选择文本」→ 选中手按位置的词（tokenizer.rangeEnclosingPosition）+ 原生拖动手柄，可自由拖动复制
+  - **⚠️ iOS 26+ 双 API 必须都实现**：新 `textView(_:editMenuForTextInRanges:)`（ranges 为 [NSValue] 包装 UITextRange，取首个转 UITextRange）+ 旧 `editMenuForTextIn`，共用 buildMenu；只实现旧 API 则 iOS 27 自定义菜单全丢（v2.0.123 坑）
+  - **⚠️ 选中文字用标准 `selectedTextRange`（UITextRange 版）**：iOS 26 弃用的是 UITextView.selectedRange（NSRange 版），selectedTextRange 未弃用；v2.0.124 误信"selectedTextRange 弃用"改 selectedRanges NSRange 换算 → 改坏根源
+  - **⚠️ 气泡级 contextMenu 必须移除**：抢占 UITextView 长按手势致编辑菜单弹不出（v2.0.122 实测）；菜单按区域分发——文字区 UITextView 菜单 / 图片与文件卡片 `cardMenu` / 代码块与表格 `MessageBlockView` 内 SwiftUI 菜单
+  - AI 回复行距缩小：markdown 段 lineSpacing 3→2（用户要求"行跟行中间太宽"，字号不变）
+  - 设置页 9 处开关统一绿底小号（`tint(.green)` + `scaleEffect(0.8)`）
+
 ## 🔀 分支与版本
 
 - `native-2.0`：唯一开发分支（默认分支）；旧 `master` 本地残留可忽略（勿 push）
