@@ -34,6 +34,8 @@ struct SettingsView: View {
     @State private var showAgentHelp = false
     // v2.0.105：Agent 关键词管理弹窗
     @State private var showAgentKeywords = false
+    // v2.0.113：微信推送开关（同步后端 push_settings.json）
+    @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
@@ -175,6 +177,34 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "text.badge.plus", iconColor: .orange, title: "Agent 关键词", value: "分流匹配词管理", chevron: true)
                             .onTapGesture { showAgentKeywords = true }
+                        // v2.0.113：微信推送开关（自动化执行结果 → 微信消息）
+                        Divider().padding(.leading, 52)
+                        HStack(spacing: 12) {
+                            Image(systemName: "message.badge.filled.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(Color.green, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("微信推送")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("自动化执行结果推送到微信")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $pushWeixin)
+                                .labelsHidden()
+                                .scaleEffect(0.8)
+                                .onChange(of: pushWeixin) { _, new in
+                                    Task {
+                                        _ = try? await auth.json("/api/push/settings", method: "POST",
+                                                                 body: ["pushWeixin": new])
+                                    }
+                                }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
                         // Face ID 登录（登录页快捷登录开关；关闭即删除已存凭据）
                         Divider().padding(.leading, 52)
                         HStack(spacing: 12) {
@@ -475,6 +505,11 @@ struct SettingsView: View {
         }
         if let j = try? await auth.json("/api/memory/list") {
             memoryCount = (j["entries"] as? [String] ?? []).count
+        }
+        // v2.0.113：同步微信推送开关（后端为准）
+        if let j = try? await auth.json("/api/push/settings"),
+           let v = j["pushWeixin"] as? Bool {
+            pushWeixin = v
         }
     }
 

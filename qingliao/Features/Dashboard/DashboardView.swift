@@ -23,6 +23,10 @@ struct DashboardView: View {
     @State private var scenes: [SceneItem] = []
     // v2.0.104：定时自动化（AI 生成"X分钟后执行Y"，到点自动执行后消失）
     @State private var automations: [AutomationItem] = []
+    // v2.0.113：Agent 记忆规则（"以后XX都用agent"声明，看板可视化+删除）
+    @State private var agentRules: [AgentRule] = []
+    // v2.0.113：场景执行确认（含危险动作时弹窗防误触）
+    @State private var confirmSceneRun: SceneItem?
     @State private var sceneResult = ""
     @State private var showSceneResult = false
 
@@ -125,6 +129,55 @@ struct DashboardView: View {
                         }
                     }
 
+                    // v2.0.113：Agent 记忆（"以后XX都用agent"规则，长按删除）
+                    sectionTitle("Agent 记忆")
+                    if agentRules.isEmpty {
+                        Button {
+                            Task { await refresh() }
+                        } label: {
+                            Text("暂无记忆规则——聊天时说「以后查内存都用agent」会自动记住")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(agentRules) { r in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Color.accentColor)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("以后「\(r.pattern)」都用 Agent")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .lineLimit(1)
+                                        Text("记住于 \(r.created)")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        Task { await deleteAgentRule(r) }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 15))
+                                            .foregroundStyle(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                        }
+                    }
+
                     sectionTitle("NAS 面板")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         MeterCard(name: "CPU", icon: "cpu.fill", value: String(format: "%.1f%%", nas.cpu), sub: nil, ratio: nas.cpu / 100.0, color: .blue)
@@ -182,6 +235,21 @@ struct DashboardView: View {
                 Button("好的", role: .cancel) {}
             } message: {
                 Text(sceneResult)
+            }
+            // v2.0.113：危险场景执行确认（布防/离家/断电类防误触）
+            .confirmationDialog("确认执行场景？",
+                                isPresented: Binding(get: { confirmSceneRun != nil },
+                                                     set: { if !$0 { confirmSceneRun = nil } }),
+                                titleVisibility: .visible) {
+                Button("执行") {
+                    if let s = confirmSceneRun {
+                        executeScene(s)
+                    }
+                    confirmSceneRun = nil
+                }
+                Button("取消", role: .cancel) { confirmSceneRun = nil }
+            } message: {
+                Text("场景「\(confirmSceneRun?.name ?? "")」包含安全相关动作（布防/离家/断电），执行后可能改变家庭安防状态。")
             }
         }
         // v2.0.96b：切回看板立即刷新（对话里生成场景后看板即时联动；TabView 切回触发 onAppear）
@@ -300,9 +368,21 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/automations/list") {
             automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
         }
+        // v2.0.113：Agent 记忆规则
+        if let j = try? await auth.json("/api/agent/rules") {
+            agentRules = (j["rules"] as? [[String: Any]] ?? []).map { AgentRule($0) }
+        }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    /// v2.0.113：删除 Agent 记忆规则
+    private func deleteAgentRule(_ r: AgentRule) async {
+        let enc = r.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? r.id
+        if let j = try? await auth.json("/api/agent/rules?id=\(enc)", method: "DELETE", body: nil) {
+            agentRules = (j["rules"] as? [[String: Any]] ?? []).map { AgentRule($0) }
+        }
     }
 
     /// v2.0.104：剩余时间文案（倒计时显示）
@@ -321,17 +401,39 @@ struct DashboardView: View {
     }
 
     /// v2.0.96：执行场景（v2.0.102：加防抖——连点不重复执行）
+    /// v2.0.113：含危险动作（布防/开关类非灯设备）时先弹确认防误触
     private func runScene(_ s: SceneItem) {
         guard !sceneRunning else { return }
+        if hasDangerousAction(s) {
+            confirmSceneRun = s
+        } else {
+            executeScene(s)
+        }
+    }
+
+    /// v2.0.113：危险动作判断（布防/离家/断电类场景名，误触代价高）
+    private func hasDangerousAction(_ s: SceneItem) -> Bool {
+        let name = s.name
+        return name.contains("布防") || name.contains("离家") || name.contains("断电")
+            || name.contains("关闭所有") || name.contains("总闸")
+    }
+
+    /// v2.0.113：实际执行（确认后或非危险场景）
+    private func executeScene(_ s: SceneItem) {
         sceneRunning = true
         Task {
             defer { sceneRunning = false }
             if let j = try? await auth.json("/api/scenes/run", method: "POST", body: ["name": s.name]) {
-                sceneResult = j["message"] as? String ?? "执行完成"
+                let ok = (j["ok"] as? Bool) ?? false
+                let msg = (j["message"] as? String) ?? (ok ? "执行成功" : "执行失败")
+                sceneResult = msg
+                showSceneResult = true
+                // v2.0.113：执行后刷新（结果推送微信后卡片状态同步）
+                Task { await refresh() }
             } else {
                 sceneResult = "执行失败（网络错误）"
+                showSceneResult = true
             }
-            showSceneResult = true
         }
     }
 
@@ -1067,6 +1169,19 @@ struct AutomationItem: Identifiable {
         name = d["name"] as? String ?? "自动化"
         remaining = (d["remaining"] as? Int) ?? 0
         runAt = Date(timeIntervalSince1970: ((d["run_at"] as? Double) ?? 0))
+    }
+}
+
+// MARK: - v2.0.113 Agent 记忆规则
+
+struct AgentRule: Identifiable {
+    let id: String
+    let pattern: String
+    let created: String
+    init(_ d: [String: Any]) {
+        id = d["id"] as? String ?? UUID().uuidString
+        pattern = d["pattern"] as? String ?? ""
+        created = d["created"] as? String ?? ""
     }
 }
 

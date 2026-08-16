@@ -12,6 +12,7 @@ struct DockerSheet: View {
     @State private var busy = false
     @FocusState private var focused: Bool
     @State private var confirmTarget: DockerContainer?
+    @State private var confirmAction: (name: String, act: String)?   // v2.0.113：停止/重启确认
     // v2.0.87：升级确认
     @State private var confirmUpgrade: DockerContainer?
     @State private var upgrading = false
@@ -43,7 +44,14 @@ struct DockerSheet: View {
                     // ===== 已部署容器卡（v2.0.86i：拆子视图减类型检查负载）=====
                     ContainerSection(containers: containers,
                                      onRefresh: { await load() },
-                                     onAction: { c, act in await action(c.name, act) },
+                                     // v2.0.113：停止/重启加确认（防误触，删除已有确认）
+                                     onAction: { c, act in
+                                         if act == "stop" || act == "restart" {
+                                             confirmAction = (c.name, act)
+                                         } else {
+                                             Task { await action(c.name, act) }
+                                         }
+                                     },
                                      onDelete: { confirmTarget = $0 },
                                      onUpgrade: { confirmUpgrade = $0 },
                                      updates: updates)
@@ -83,6 +91,21 @@ struct DockerSheet: View {
                 Text(c.isComposeProject
                      ? "将移除容器「\(c.name)」（配置目录保留，可重新部署）"
                      : "⚠️「\(c.name)」不是 Docker 管理项目创建的容器，删除后不可恢复，请确认！")
+            }
+            // v2.0.113：停止/重启确认（防误触）
+            .confirmationDialog(confirmAction?.act == "restart" ? "重启容器？" : "停止容器？",
+                                isPresented: .init(
+                                    get: { confirmAction != nil },
+                                    set: { if !$0 { confirmAction = nil } }
+                                ), presenting: confirmAction) { ca in
+                Button(ca.act == "restart" ? "重启" : "停止", role: .destructive) {
+                    let target = ca
+                    confirmAction = nil
+                    Task { await action(target.name, target.act) }
+                }
+                Button("取消", role: .cancel) { confirmAction = nil }
+            } message: { ca in
+                Text("将\(ca.act == "restart" ? "重启" : "停止")容器「\(ca.name)」，确认继续？")
             }
             // v2.0.86：镜像删除确认
             .confirmationDialog("删除镜像？", isPresented: .init(
