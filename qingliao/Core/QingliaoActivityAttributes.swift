@@ -1,4 +1,5 @@
 import ActivityKit
+import Foundation
 
 // MARK: - v2.0.114 Live Activity 属性（App 与 Widget Extension 共享编译）
 
