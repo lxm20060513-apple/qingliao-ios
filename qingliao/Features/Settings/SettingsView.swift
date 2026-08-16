@@ -34,6 +34,9 @@ struct SettingsView: View {
     @State private var showAgentHelp = false
     // v2.0.105：Agent 关键词管理弹窗
     @State private var showAgentKeywords = false
+    // v2.0.113：Agent 记忆弹窗 + 计数
+    @State private var showAgentMemory = false
+    @State private var agentRuleCount = 0
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
@@ -177,6 +180,12 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "text.badge.plus", iconColor: .orange, title: "Agent 关键词", value: "分流匹配词管理", chevron: true)
                             .onTapGesture { showAgentKeywords = true }
+                        // v2.0.113：Agent 记忆（"以后XX都用agent"规则，弹窗管理删除）
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "brain.head.profile", iconColor: .purple, title: "Agent 记忆",
+                                   value: agentRuleCount > 0 ? "\(agentRuleCount) 条规则" : "暂无",
+                                   chevron: true)
+                            .onTapGesture { showAgentMemory = true }
                         // v2.0.113：微信推送开关（自动化执行结果 → 微信消息）
                         Divider().padding(.leading, 52)
                         HStack(spacing: 12) {
@@ -493,6 +502,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showAgentKeywords) {
             AgentKeywordsSheet()
         }
+        // v2.0.113：Agent 记忆弹窗（同 AI 记忆样式）
+        .sheet(isPresented: $showAgentMemory) {
+            AgentMemorySheet()
+        }
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }
         .task { await loadCounts() }
@@ -510,6 +523,10 @@ struct SettingsView: View {
         if let j = try? await auth.json("/api/push/settings"),
            let v = j["pushWeixin"] as? Bool {
             pushWeixin = v
+        }
+        // v2.0.113：Agent 记忆条数（行尾数字）
+        if let j = try? await auth.json("/api/agent/rules") {
+            agentRuleCount = (j["rules"] as? [Any] ?? []).count
         }
     }
 

@@ -23,8 +23,6 @@ struct DashboardView: View {
     @State private var scenes: [SceneItem] = []
     // v2.0.104：定时自动化（AI 生成"X分钟后执行Y"，到点自动执行后消失）
     @State private var automations: [AutomationItem] = []
-    // v2.0.113：Agent 记忆规则（"以后XX都用agent"声明，看板可视化+删除）
-    @State private var agentRules: [AgentRule] = []
     // v2.0.113：场景执行确认（含危险动作时弹窗防误触）
     @State private var confirmSceneRun: SceneItem?
     @State private var sceneResult = ""
@@ -125,55 +123,6 @@ struct DashboardView: View {
                                         Label("取消自动化", systemImage: "xmark.circle")
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    // v2.0.113：Agent 记忆（"以后XX都用agent"规则，长按删除）
-                    sectionTitle("Agent 记忆")
-                    if agentRules.isEmpty {
-                        Button {
-                            Task { await refresh() }
-                        } label: {
-                            Text("暂无记忆规则——聊天时说「以后查内存都用agent」会自动记住")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        VStack(spacing: 8) {
-                            ForEach(agentRules) { r in
-                                HStack(spacing: 10) {
-                                    Image(systemName: "brain.head.profile")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Color.accentColor)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("以后「\(r.pattern)」都用 Agent")
-                                            .font(.system(size: 13, weight: .medium))
-                                            .lineLimit(1)
-                                        Text("记住于 \(r.created)")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    Spacer()
-                                    Button {
-                                        Task { await deleteAgentRule(r) }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 15))
-                                            .foregroundStyle(.red.opacity(0.8))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
                     }
@@ -368,21 +317,9 @@ struct DashboardView: View {
         if let j = try? await auth.json("/api/automations/list") {
             automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
         }
-        // v2.0.113：Agent 记忆规则
-        if let j = try? await auth.json("/api/agent/rules") {
-            agentRules = (j["rules"] as? [[String: Any]] ?? []).map { AgentRule($0) }
-        }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
-    }
-
-    /// v2.0.113：删除 Agent 记忆规则
-    private func deleteAgentRule(_ r: AgentRule) async {
-        let enc = r.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? r.id
-        if let j = try? await auth.json("/api/agent/rules?id=\(enc)", method: "DELETE", body: nil) {
-            agentRules = (j["rules"] as? [[String: Any]] ?? []).map { AgentRule($0) }
-        }
     }
 
     /// v2.0.104：剩余时间文案（倒计时显示）
@@ -1169,19 +1106,6 @@ struct AutomationItem: Identifiable {
         name = d["name"] as? String ?? "自动化"
         remaining = (d["remaining"] as? Int) ?? 0
         runAt = Date(timeIntervalSince1970: ((d["run_at"] as? Double) ?? 0))
-    }
-}
-
-// MARK: - v2.0.113 Agent 记忆规则
-
-struct AgentRule: Identifiable {
-    let id: String
-    let pattern: String
-    let created: String
-    init(_ d: [String: Any]) {
-        id = d["id"] as? String ?? UUID().uuidString
-        pattern = d["pattern"] as? String ?? ""
-        created = d["created"] as? String ?? ""
     }
 }
 
