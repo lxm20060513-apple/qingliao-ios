@@ -87,3 +87,12 @@ targets:
     dependencies:
       - target: Qingliao
         embed: true
+
+# v2.0.114d：Qingliao scheme 显式包含 widget 构建——archive 时正常嵌入 extension
+# （无此配置时 scheme 不构建 widget，PlugIns 缺失/手动嵌入导致 SideStore 签名校验失败 0xe8008017）
+schemes:
+  Qingliao:
+    build:
+      targets:
+        Qingliao: all
+        QingliaoWidget: [archive]
