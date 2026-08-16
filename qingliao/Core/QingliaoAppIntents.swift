@@ -4,10 +4,9 @@ import Foundation
 // MARK: - v2.0.116 Siri 快捷指令（AppIntents，App 内实现，无 extension，侧载可用）
 
 /// 打开轻聊
-@MainActor
 struct OpenQingliaoIntent: AppIntent {
-    static var title: LocalizedStringResource = "打开轻聊"
-    static var description = IntentDescription("打开轻聊 AI 对话")
+    static let title: LocalizedStringResource = "打开轻聊"
+    static let description = IntentDescription("打开轻聊 AI 对话")
 
     func perform() async throws -> some IntentResult {
         return .result()
@@ -15,10 +14,9 @@ struct OpenQingliaoIntent: AppIntent {
 }
 
 /// 执行场景（Siri：「用轻聊执行场景 离家模式」）
-@MainActor
 struct RunSceneIntent: AppIntent {
-    static var title: LocalizedStringResource = "执行场景"
-    static var description = IntentDescription("执行一个智能家居场景")
+    static let title: LocalizedStringResource = "执行场景"
+    static let description = IntentDescription("执行一个智能家居场景")
 
     @Parameter(title: "场景名")
     var sceneName: String
@@ -46,10 +44,9 @@ struct RunSceneIntent: AppIntent {
 }
 
 /// 向轻聊提问（Siri：「问轻聊 现在几点了」）——打开 App 并带问题
-@MainActor
 struct AskQingliaoIntent: AppIntent {
-    static var title: LocalizedStringResource = "向轻聊提问"
-    static var description = IntentDescription("向轻聊 AI 提问并打开对话")
+    static let title: LocalizedStringResource = "向轻聊提问"
+    static let description = IntentDescription("向轻聊 AI 提问并打开对话")
 
     @Parameter(title: "问题")
     var question: String
@@ -58,5 +55,26 @@ struct AskQingliaoIntent: AppIntent {
         // 存到 UserDefaults，App 前台读取后自动发送
         UserDefaults.standard.set(question, forKey: "qingliao_siri_question")
         return .result()
+    }
+}
+
+/// v2.0.116：Siri 快捷指令清单（独立类型，系统自动注册——App 结构不实现协议避免 Swift 6 actor 冲突）
+struct QingliaoAppShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent: OpenQingliaoIntent(),
+                    phrases: ["打开\(.applicationName)",
+                              "\(.applicationName)对话"],
+                    shortTitle: "打开轻聊",
+                    systemImageName: "bubble.left.and.bubble.right.fill")
+        AppShortcut(intent: RunSceneIntent(),
+                    phrases: ["用\(.applicationName)执行场景",
+                              "让\(.applicationName)执行场景"],
+                    shortTitle: "执行场景",
+                    systemImageName: "sparkles")
+        AppShortcut(intent: AskQingliaoIntent(),
+                    phrases: ["问\(.applicationName) \(\.$question)",
+                              "问\(.applicationName)"],
+                    shortTitle: "向轻聊提问",
+                    systemImageName: "questionmark.bubble")
     }
 }
