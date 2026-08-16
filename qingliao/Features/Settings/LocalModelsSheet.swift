@@ -10,6 +10,13 @@ struct LocalModelsSheet: View {
     @State private var pulling = false
     @State private var pullResult = ""
 
+    /// v2.0.118：当前选用的本地模型（provider=local 时显示勾选）
+    private var currentLocal: String? {
+        let p = UserDefaults.standard.string(forKey: "qingliao_provider")
+        let m = UserDefaults.standard.string(forKey: "qingliao_model")
+        return p == "local" ? m : nil
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -32,6 +39,12 @@ struct LocalModelsSheet: View {
                                         .foregroundStyle(.tertiary)
                                 }
                                 Spacer()
+                                // v2.0.118：当前选用的本地模型显示勾选
+                                if currentLocal == m.name {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(Color.green)
+                                }
                             }
                             .padding(.vertical, 2)
                             .contentShape(Rectangle())
