@@ -93,6 +93,7 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
   - **⚠️ 气泡级 contextMenu 必须移除**：抢占 UITextView 长按手势致编辑菜单弹不出（v2.0.122 实测）；菜单按区域分发——文字区 UITextView 菜单 / 图片与文件卡片 `cardMenu` / 代码块与表格 `MessageBlockView` 内 SwiftUI 菜单
   - AI 回复行距缩小：markdown 段 lineSpacing 3→2（用户要求"行跟行中间太宽"，字号不变）
   - 设置页 9 处开关统一绿底小号（`tint(.green)` + `scaleEffect(0.8)`）
+  - **蜂窝 relay 3.5KB 限制自动分段**（用户实测粘贴长文本被裁）：`sendCore` 发送前用 `relayPayloadLength`（模拟 base64url URL 长度）预判，超 3400 自动 `splitLongText` 二分拆段；第一段先发，后续段 queued 入队（流式/非流式顺序均正确，递归不再触发分段）；`startStream` 蜂窝下 `relaySafeHistory` 从后往前保留历史至 payload 达标——长文本不再被裁，AI 逐段收到完整内容
 
 ## 🔀 分支与版本
 

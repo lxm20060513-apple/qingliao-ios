@@ -721,6 +721,28 @@ struct ChatView: View {
     /// v2.0.102：sendingLock 同步置位——防极快双击时 isStreaming 尚未置位导致双流竞态
     private func sendCore(text: String, imageData: String?) {
         guard !text.isEmpty || imageData != nil else { return }
+        // v2.0.126：蜂窝 relay 3.5KB 限制自动分段（粘贴长文本不丢内容）
+        // relay payload = base64url(JSON{m,p,h,b}) 进 URL；限制 ~3.5KB；WiFi 直连无限制不走此分支
+        if imageData == nil, NetworkMonitor.shared.isCellular, text.count > 200 {
+            let hist = chat.historyPayload()
+            if relayPayloadLength(messages: hist + [["role": "user", "content": text]]) > 3400 {
+                let chunks = splitLongText(text)
+                if chunks.count > 1 {
+                    // 顺序：第一段先发（流式中走排队路径排最前），后续段再入队
+                    sendCore(text: chunks[0], imageData: nil)
+                    for c in chunks.dropFirst() {
+                        var m = ChatMessage.local(role: "user", content: c, imageDataURL: nil)
+                        m.queued = true
+                        withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
+                            chat.append(m)
+                        }
+                        pendingQueue.append(PendingSend(text: c, imageData: nil))
+                    }
+                    Task { await chat.saveToServer(auth: auth) }
+                    return
+                }
+            }
+        }
         if stream.isStreaming {
             // 排队路径：消息立即显示（标记排队中），回答结束后自动发送
             var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
@@ -748,7 +770,11 @@ struct ChatView: View {
     /// v2.0.88：启动流式回答（消息已在列表；失败标记/回复完成/队列联动统一在这里）
     /// v2.0.102：记录发起会话——回答期间切换会话则丢弃结果（防跨会话污染）；完成回调释放 sendingLock
     private func startStream(for msg: ChatMessage) {
-        let history = chat.historyPayload()
+        // v2.0.126：蜂窝 relay 3.5KB 限制——历史从后往前保留直到 payload 达标（只影响蜂窝兜底路径）
+        var history = chat.historyPayload()
+        if NetworkMonitor.shared.isCellular {
+            history = relaySafeHistory(history)
+        }
         let startSid = chat.sessionId
 
         Task {
@@ -782,6 +808,60 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    // MARK: - v2.0.126 蜂窝 relay 3.5KB 限制（粘贴长文本自动分段）
+
+    /// 模拟 SafariRelay.relay 的最终 URL 长度：payload={m,p,h,b} → base64url → /r?r=<b64>
+    /// 用于发送前预判是否超限（限制 ~3.5KB = 3584，保守取 3400）
+    private func relayPayloadLength(messages: [[String: Any]]) -> Int {
+        let body: [String: Any] = ["sessionId": chat.sessionId,
+                                   "model": modelName,
+                                   "provider": provider,
+                                   "messages": messages,
+                                   "pushEnabled": false,
+                                   "agentEnabled": true]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body),
+              let bodyStr = String(data: bodyData, encoding: .utf8) else { return Int.max }
+        let payload: [String: Any] = ["m": "POST", "p": "/api/stream/start", "b": bodyStr]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else { return Int.max }
+        let b64Len = Int(ceil(Double(jsonData.count) * 4 / 3))   // base64url ≈ 4/3 膨胀
+        return auth.serverURL.count + 8 + b64Len                 // https://host:port/r?r=
+    }
+
+    /// 蜂窝下历史从后往前保留，直到 payload ≤ 3400（AI 至少看到最近上下文 + 新消息）
+    private func relaySafeHistory(_ history: [[String: Any]]) -> [[String: Any]] {
+        let limit = 3400
+        if relayPayloadLength(messages: history) <= limit { return history }
+        var kept: [[String: Any]] = []
+        for m in history.reversed() {
+            let test = [m] + kept
+            if relayPayloadLength(messages: test) <= limit {
+                kept = test
+            } else { break }
+        }
+        return kept
+    }
+
+    /// 长文本拆段：每段使「历史 + 该段」payload ≤ 3400（二分最大前缀，至少 1 字符防死循环）
+    private func splitLongText(_ text: String) -> [String] {
+        let limit = 3400
+        let baseHistory = chat.historyPayload()
+        var chunks: [String] = []
+        var rest = text
+        while !rest.isEmpty {
+            var lo = 1, hi = rest.count
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2
+                let prefix = String(rest.prefix(mid))
+                let len = relayPayloadLength(messages: baseHistory + [["role": "user", "content": prefix]])
+                if len <= limit - 100 { lo = mid } else { hi = mid - 1 }
+            }
+            let take = max(1, lo)
+            chunks.append(String(rest.prefix(take)))
+            rest = String(rest.dropFirst(take))
+        }
+        return chunks
     }
 
     /// v2.0.88：发送排队消息（消息已上屏——去掉排队标记复用该消息启动流式，不重复插入）
