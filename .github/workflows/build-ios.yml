@@ -40,14 +40,18 @@ jobs:
         run: |
           mkdir -p build/ipa/Payload
           cp -R build/App.xcarchive/Products/Applications/Qingliao.app build/ipa/Payload/
-          # v2.0.114：确保 Widget Extension 嵌入（无签名 archive 可能跳过 embed 阶段）
-          APPEX=$(find build/App.xcarchive -name "*.appex" -maxdepth 6 | head -1)
-          if [ -n "$APPEX" ] && [ ! -d build/ipa/Payload/Qingliao.app/PlugIns ]; then
+          # v2.0.114：Widget Extension——单独构建后手动嵌入 PlugIns
+          # （无签名 archive 的 scheme 不会自动构建/嵌入 extension target）
+          xcodebuild -project 轻聊.xcodeproj -target QingliaoWidget -configuration Release \
+            -destination generic/platform=iOS -derivedDataPath build/DD \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build >/dev/null 2>&1
+          APPEX=$(find build/DD -name "*.appex" | head -1)
+          if [ -n "$APPEX" ]; then
             mkdir -p build/ipa/Payload/Qingliao.app/PlugIns
             cp -R "$APPEX" build/ipa/Payload/Qingliao.app/PlugIns/
-            echo "Embedded widget: $APPEX"
+            echo "Widget embedded: $APPEX"
           else
-            echo "PlugIns check: appex=$APPEX exists=$( [ -d build/ipa/Payload/Qingliao.app/PlugIns ] && echo yes || echo no )"
+            echo "WIDGET_BUILD_FAILED_OR_NOT_FOUND"
           fi
           cd build/ipa && zip -qry ../qingliao-2.0-unsigned.ipa Payload/
           ls -la ../qingliao-2.0-unsigned.ipa
