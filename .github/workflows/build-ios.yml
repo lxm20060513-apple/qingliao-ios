@@ -44,7 +44,11 @@ jobs:
           # （无签名 archive 的 scheme 不会自动构建/嵌入 extension target）
           xcodebuild -project 轻聊.xcodeproj -target QingliaoWidget -configuration Release \
             -destination generic/platform=iOS -derivedDataPath build/DD \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build >/dev/null 2>&1
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > /tmp/widget_build.log 2>&1
+          if [ $? -ne 0 ]; then
+            echo "WIDGET_BUILD_FAILED:"
+            grep -E "error:|warning: " /tmp/widget_build.log | head -10
+          fi
           APPEX=$(find build/DD -name "*.appex" | head -1)
           if [ -n "$APPEX" ]; then
             mkdir -p build/ipa/Payload/Qingliao.app/PlugIns
