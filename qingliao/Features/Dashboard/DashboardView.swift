@@ -390,8 +390,8 @@ struct DashboardView: View {
         }
         parts.append("NAS：CPU \(Int(nas.cpu))% 内存 \(Int(nas.memUsed))G/\(Int(nas.memTotal))G 磁盘 \(Int(nas.maxDiskPct))%")
         if !haEntities.isEmpty {
-            let lightsOn = haEntities.filter { $0.entityId.hasPrefix("light.") && $0.state == "on" }.count
-            let acOn = haEntities.filter { $0.entityId.hasPrefix("climate.") && $0.state == "on" }.count
+            let lightsOn = haEntities.filter { $0.entityID.hasPrefix("light.") && $0.state == "on" }.count
+            let acOn = haEntities.filter { $0.entityID.hasPrefix("climate.") && $0.state == "on" }.count
             parts.append("设备：\(lightsOn) 盏灯开 / \(acOn) 台空调开")
         }
         if let j = try? await auth.json("/api/agent/suggest", method: "POST",

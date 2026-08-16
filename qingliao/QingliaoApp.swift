@@ -1,7 +1,25 @@
 import SwiftUI
 
 @main
-struct QingliaoApp: App, QingliaoAppShortcuts {
+struct QingliaoApp: App, AppShortcutsProvider {
+    // v2.0.116：Siri 快捷指令清单（AppIntents，侧载可用）
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent: OpenQingliaoIntent(),
+                    phrases: ["打开\(.applicationName)",
+                              "\(.applicationName)对话"],
+                    shortTitle: "打开轻聊",
+                    systemImageName: "bubble.left.and.bubble.right.fill")
+        AppShortcut(intent: RunSceneIntent(),
+                    phrases: ["用\(.applicationName)执行场景",
+                              "让\(.applicationName)执行场景"],
+                    shortTitle: "执行场景",
+                    systemImageName: "sparkles")
+        AppShortcut(intent: AskQingliaoIntent(),
+                    phrases: ["问\(.applicationName) \(\.$question)",
+                              "问\(.applicationName)"],
+                    shortTitle: "向轻聊提问",
+                    systemImageName: "questionmark.bubble")
+    }
     // v2.0.60：通知点击直达会话（AppDelegate 捕获）
     @UIApplicationDelegateAdaptor(QingliaoAppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase   // v2.0.61 流式持久化
