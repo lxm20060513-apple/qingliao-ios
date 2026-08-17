@@ -993,9 +993,9 @@ struct FullScreenBurst: View {
                                with: .color(Color.indigo.opacity(alpha)),
                                lineWidth: 2.2 * (1 - p) + 0.4)
                 }
-                // 2) 粒子群：90 颗，向全屏飞散（v2.0.132 优化：速度提档 + 减速调小，粒子能飞到屏幕上方真正铺满全屏）
+                // 2) 粒子群：160 颗（v2.0.133 用户要求加密度 ~1.8 倍），几乎覆盖整个上半球，微重力下拉
                 let colors: [Color] = [.blue, .indigo, .pink, .purple]
-                for i in 0..<90 {
+                for i in 0..<160 {
                     let life = 0.45 + hash(i, 1) * 0.45
                     guard t < life else { continue }
                     let progress = t / life
@@ -1012,7 +1012,7 @@ struct FullScreenBurst: View {
                     let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
                     let colorIdx = Int(hash(i, 6) * 4)
                     let c = colors[colorIdx]
-                    let coreR = 1.6 + hash(i, 7) * 3.2
+                    let coreR = 2.0 + hash(i, 7) * 3.6   // v2.0.133：粒子尺寸略增（1.6→2.0 起），光球感更实
                     let alpha = 0.9 * (1 - progress)
                     // 光晕（大圆低透明）+ 核心（小圆高透明），两层模拟粒子发光
                     ctx.fill(Path(ellipseIn: CGRect(x: x - coreR * 3.5, y: y - coreR * 3.5,
