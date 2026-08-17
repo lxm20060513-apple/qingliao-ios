@@ -993,9 +993,9 @@ struct FullScreenBurst: View {
                                with: .color(Color.indigo.opacity(alpha)),
                                lineWidth: 2.2 * (1 - p) + 0.4)
                 }
-                // 2) 粒子群：160 颗（v2.0.133 用户要求加密度 ~1.8 倍）。v2.0.133b 放烟花参数：
+                // 2) 粒子群：160 颗。v2.0.133 放烟花参数：
                 //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
-                //    生命周期拉长（0.7-1.2s）且后半段以 sin 闪烁淡出 = 满天星辰停留闪烁
+                //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
                 let colors: [Color] = [.blue, .indigo, .pink, .purple]
                 for i in 0..<160 {
                     let life = 0.7 + hash(i, 1) * 0.5
@@ -1015,9 +1015,7 @@ struct FullScreenBurst: View {
                     let colorIdx = Int(hash(i, 6) * 4)
                     let c = colors[colorIdx]
                     let coreR = 2.0 + hash(i, 7) * 3.6
-                    // 末段闪烁（progress>0.4 起 sin 闪烁，像星星）：2-3 次明暗后完全淡出
-                    let twinkle = progress > 0.4 ? max(0.15, abs(sin(progress * .pi * 7)) ) : 1.0
-                    let alpha = 0.9 * (1 - progress) * twinkle
+                    let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
                     // 光晕（大圆低透明）+ 核心（小圆高透明），两层模拟粒子发光
                     ctx.fill(Path(ellipseIn: CGRect(x: x - coreR * 3.5, y: y - coreR * 3.5,
                                                     width: coreR * 7, height: coreR * 7)),
