@@ -775,7 +775,7 @@ struct ChatInputBar: View {
             } else {
                 fullInputBar
                     // v2.0.130：输入框从球心缩放展开（scale 0.5 + 模糊 → 正常），配合球爆发特效
-                    .transition(.scale(scale: 0.5, anchor: .center)
+                    .transition(.scale(0.5)
                         .combined(with: .opacity)
                         .combined(with: .blurReplace))
             }
