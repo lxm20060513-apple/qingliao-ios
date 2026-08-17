@@ -37,7 +37,9 @@ struct DashboardView: View {
             PageHeader(title: "看板", subtitle: "智能家居 · NAS 状态",
                        trailing: AnyView(WeatherBadge(temp: weatherTemp, code: weatherCode, city: weatherCity)))
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                // v2.0.133f：VStack → LazyVStack——TabView 切页动画期间看板全量卡片一次性布局是切页卡顿主因，
+                // 懒加载后只渲染可见卡片（与 v2.0.132 ChatView 消息列表同款方案；看板无批量移除路径，安全）
+                LazyVStack(alignment: .leading, spacing: 10) {
                     // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
                     // v2.0.118：门锁卡同风格（普通圆角卡背景）+ 标题左上 + 内容靠左 + 重新生成右上
                     sectionTitle("智能建议")
@@ -266,13 +268,20 @@ struct DashboardView: View {
         // v2.0.102：单一刷新入口（onAppear 首刷+切回刷），.task 只跑 30s 轮询——修并发双刷/旧响应覆盖
         // v2.0.102c：onReceive 通知刷新（iOS 27 切 tab 不触发 onAppear 的兜底，DockTabView 切回时发通知）
         .onReceive(NotificationCenter.default.publisher(for: .qingliaoDashboardRefresh)) { _ in
+            // v2.0.133f：回到看板 → 恢复轮询 + 立即刷新
+            isDashboardVisible = true
             Task {
                 await refresh()
                 await loadDockerCount()
                 await loadWeatherWithCity()
             }
         }
+        // v2.0.133f：离开看板 → 暂停 30s 轮询（隐藏页刷新抢帧，切页卡顿源之一）
+        .onReceive(NotificationCenter.default.publisher(for: .qingliaoDashboardLeave)) { _ in
+            isDashboardVisible = false
+        }
         .onAppear {
+            isDashboardVisible = true
             Task {
                 await refresh()
                 await loadDockerCount()      // v2.0.102：切回也刷 Docker 数（部署后返回看板即时更新）
@@ -283,8 +292,10 @@ struct DashboardView: View {
             // v2.0.86：硬件温度（CPU / NVMe）首屏加载
             await loadHw()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
+            // v2.0.133f：仅看板可见时刷——隐藏页轮询会抢 TabView 切页动画帧
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
+                guard isDashboardVisible else { continue }
                 await refresh()
                 await loadHw()
             }

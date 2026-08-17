@@ -61,10 +61,16 @@ struct DockTabView: View {
             .ignoresSafeArea(edges: .bottom)
             .coordinateSpace(name: "scrollspace")
             // 页面切换滑动动画（点击 Dock 时整体横向滑动过渡）
-            .animation(.easeInOut(duration: 0.38), value: selected)
+            // v2.0.133g：0.38s → 0.28s——动画越短页面参与合成的帧越少，全局滑动更跟手；
+            // 滑动距离感知不变（easeInOut 起承转合保留）
+            .animation(.easeInOut(duration: 0.28), value: selected)
             // v2.0.102c：切回看板 → 通知看板刷新（iOS 27 TabView 切 tab 不触发子页 onAppear，
             // 聊天里生成场景后切回看板卡片不出现——显式通知兜底）
             .onChange(of: selected) { _, new in
+                // v2.0.133f：离开看板 → 通知暂停轮询（隐藏页 30s 刷新抢帧，切页卡顿源之一）
+                if new != .dashboard {
+                    NotificationCenter.default.post(name: .qingliaoDashboardLeave, object: nil)
+                }
                 if new == .dashboard {
                     NotificationCenter.default.post(name: .qingliaoDashboardRefresh, object: nil)
                 }
@@ -83,6 +89,8 @@ struct DockTabView: View {
             }
 
             // 环境光晕：收敛到底部 Dock 区域、低透明度（页面主体保持纯黑，玻璃有内容可透即可）
+            // v2.0.133g：drawingGroup() 离屏缓存——blur 是大开销，光晕是静态内容，
+            // 缓存成纹理后 TabView 切页动画期间不再每帧重算模糊（全局滑动卡顿源之一）
             ZStack {
                 Circle().fill(Color.blue.opacity(0.14)).frame(width: 220, height: 220).blur(radius: 65)
                     .offset(y: 170)
@@ -93,6 +101,7 @@ struct DockTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
+            .drawingGroup()   // v2.0.133g：静态光晕缓存为单纹理，切页不再每帧重算 blur
 
             VStack {
                 Spacer()

@@ -13,6 +13,8 @@ extension Notification.Name {
     static let qingliaoSent = Notification.Name("qingliao_sent")
     // v2.0.102c：切回看板刷新通知（TabView 切 tab 在 iOS 27 不触发子页 onAppear 的兜底）
     static let qingliaoDashboardRefresh = Notification.Name("qingliao_dashboard_refresh")
+    // v2.0.133f：离开看板通知——看板 30s 轮询在隐藏页也跑，切页时抢帧；隐藏时暂停轮询
+    static let qingliaoDashboardLeave = Notification.Name("qingliao_dashboard_leave")
 }
 
 // MARK: - v2.0.60 通知点击直达会话（AppDelegate 捕获通知点击 → 存 sessionId）

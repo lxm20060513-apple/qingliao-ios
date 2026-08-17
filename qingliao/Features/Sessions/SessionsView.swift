@@ -179,7 +179,9 @@ struct SessionsView: View {
                                 .padding(.top, 20)
                             } else {
                                 // 每条会话独立卡片 + 间隔（会话条目间距）
-                                VStack(spacing: 8) {
+                                // v2.0.133g：VStack → LazyVStack——会话多时全量渲染拖慢 TabView 切页；
+                                // 删除已改后端驱动+load() 整体刷新（v2.0.56 根治），无就地 diff 崩溃路径，安全
+                                LazyVStack(spacing: 8) {
                                     ForEach(sortedSessions) { s in
                                         SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
                                                    showCheck: editing, checked: selectedIds.contains(s.id)) {
