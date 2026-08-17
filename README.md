@@ -83,6 +83,12 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.133，2026-08-17）
+
+- **智能球动效性能优化**：删局部 BurstEffect（与全屏特效重叠）+ 去掉 blurReplace 过渡（最吃 GPU 的离屏模糊）+ 展开动画 0.5s→0.35s + 键盘弹出顺延 0.28s——点球展开不再掉帧，键盘衔接更顺
+- **智能球呼吸降帧率**：常驻呼吸动画 60fps→30fps（肉眼无差，常驻开销减半）
+- **粒子放烟花效果**：160 颗粒子 + 速度放缓（先快后慢的爆开轨迹）+ 寿命延至 1.2s + 末段星辰闪烁淡出——点击智能球像烟花绽放、满天星辰
+
 ## 🆕 近期变更（v2.0.132，2026-08-17）
 
 - **模型管理同步补拉 opencode**：同步按钮拉取 Go 订阅全部 26 个模型（原硬编码 7 个），显示名映射 + 本地兜底 + UserDefaults 持久化
