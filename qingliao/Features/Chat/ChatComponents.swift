@@ -974,8 +974,8 @@ struct FullScreenBurst: View {
     }
 
     var body: some View {
-        // 全屏粒子爆发保持完整帧率（粒子轨迹要顺滑）
-        TimelineView(.animation) { context in
+        // 全屏粒子爆发：锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
             let t = context.date.timeIntervalSince(spawn)
             Canvas { ctx, size in
                 let w = size.width, h = size.height
@@ -996,7 +996,10 @@ struct FullScreenBurst: View {
                 // 2) 粒子群：160 颗。v2.0.133 放烟花参数：
                 //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
                 //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
+                //    v2.0.133d：单位圆 Path 复用 + translate/scale 变换绘制（原每帧 320 次
+                //    Path(ellipseIn:) 对象分配是掉帧主因，现仅 1 个 Path 实例复用）
                 let colors: [Color] = [.blue, .indigo, .pink, .purple]
+                let unitDot = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
                 for i in 0..<160 {
                     let life = 0.7 + hash(i, 1) * 0.5
                     guard t < life else { continue }
@@ -1016,33 +1019,15 @@ struct FullScreenBurst: View {
                     let c = colors[colorIdx]
                     let coreR = 2.0 + hash(i, 7) * 3.6
                     let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
-                    // 光晕（大圆低透明）+ 核心（小圆高透明），两层模拟粒子发光
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - coreR * 3.5, y: y - coreR * 3.5,
-                                                    width: coreR * 7, height: coreR * 7)),
-                             with: .color(c.opacity(alpha * 0.22)))
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
-                                                    width: coreR * 2, height: coreR * 2)),
-                             with: .color(c.opacity(alpha)))
-                }
-                // 3) 十字星芒：10 颗，中远距离散布，延迟出现 + 闪烁消失
-                for i in 0..<10 {
-                    let delay = 0.12 + hash(i, 8) * 0.25
-                    let dur = 0.3 + hash(i, 9) * 0.2
-                    guard t > delay, t < delay + dur else { continue }
-                    let p = (t - delay) / dur
-                    let spread = 0.32 + hash(i, 10) * 0.28
-                    let a = .pi * 2 * hash(i, 11)
-                    let cx = origin.x + CGFloat(cos(a)) * maxDim * CGFloat(spread)
-                    let cy = origin.y - CGFloat(sin(a)) * maxDim * CGFloat(spread) * 0.9
-                    let twinkle = sin(p * .pi)   // 0→1→0 闪烁
-                    let len = 7 + CGFloat(p) * 10
-                    var path = Path()
-                    path.move(to: CGPoint(x: cx - len, y: cy))
-                    path.addLine(to: CGPoint(x: cx + len, y: cy))
-                    path.move(to: CGPoint(x: cx, y: cy - len))
-                    path.addLine(to: CGPoint(x: cx, y: cy + len))
-                    ctx.stroke(path, with: .color(Color.white.opacity(twinkle * 0.85)),
-                               lineWidth: 1.1)
+                    // 光晕（大圆低透明）：缩放 3.5 倍单位圆
+                    ctx.saveGState()
+                    ctx.translateBy(x: x, y: y)
+                    ctx.scaleBy(x: coreR * 3.5, y: coreR * 3.5)
+                    ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
+                    // 核心（小圆高透明）：缩放 1 倍单位圆
+                    ctx.scaleBy(x: 1.0 / 3.5, y: 1.0 / 3.5)
+                    ctx.fill(unitDot, with: .color(c.opacity(alpha)))
+                    ctx.restoreGState()
                 }
             }
         }
