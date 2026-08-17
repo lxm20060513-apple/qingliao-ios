@@ -130,7 +130,7 @@ struct MessageBlockView: View {
             SelectableTextLabel(
                 attributedText: NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize))),
                 fallbackColor: .label,
-                lineSpacing: aiLineSpacing,
+                lineSpacingFromSettings: true,   // v2.0.130：AI 消息行距实时读设置
                 onCopy: onCopy,
                 onQuote: onQuote,
                 onShare: onShare,
@@ -344,7 +344,7 @@ struct MessageBubble: View {
                                         .foregroundColor: UIColor.label
                                     ]),
                                     fallbackColor: .label,
-                                    lineSpacing: aiLineSpacing,
+                                    lineSpacingFromSettings: true,   // v2.0.130：AI 折叠消息行距实时读设置
                                     onCopy: { UIPasteboard.general.string = message.content },
                                     onQuote: onQuote,
                                     onShare: onShare,
@@ -951,9 +951,9 @@ struct SiriBallView: View {
                             center: .center
                         )
                     )
-                    .blur(radius: 6)
-                    .frame(width: 52, height: 52)
-                // 主体球
+                    .blur(radius: 8)
+                    .frame(width: 88, height: 88)
+                // 主体球（v2.0.130：72pt = 与首页"你好，我是轻聊" Logo 同尺寸）
                 Circle()
                     .fill(
                         AngularGradient(
@@ -963,31 +963,46 @@ struct SiriBallView: View {
                             center: .center
                         )
                     )
-                    .frame(width: 44, height: 44)
+                    .frame(width: 72, height: 72)
                     .overlay(
-                        Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                        Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1.2)
                     )
-                    .shadow(color: .indigo.opacity(0.45 * breathe), radius: 10)
-                // 中心图标：转写中 = 转圈；录音中 = 红点+松开结束；语音模式 = waveform；默认 = mic
+                    .shadow(color: .indigo.opacity(0.45 * breathe), radius: 14)
+                // 中心：录音风格圆形波形 logo（声呐扩散波纹，v2.0.130 用户指定）+ 状态覆盖
+                // 默认 = 波纹扩散动画（像录音 app 的圆形 logo）；录音中 = 红点+松开结束；转写中 = 转圈
                 if transcribing {
                     ProgressView()
                         .tint(.white)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 24, height: 24)
                 } else if isRecording {
-                    VStack(spacing: 2) {
-                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                    VStack(spacing: 3) {
+                        Circle().fill(Color.red).frame(width: 10, height: 10)
                         Text("松开结束")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                 } else {
-                    Image(systemName: voiceMode ? "waveform" : "mic.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.95))
+                    // 声呐波纹：3 层圆环错相扩散（半径增大 + 淡出），录音 logo 风格
+                    ZStack {
+                        ForEach(0..<3, id: \.self) { i in
+                            let phase = t * 1.6 + Double(i) * 2.094   // 120° 相位差
+                            let progress = (sin(phase) + 1) / 2       // 0→1 循环
+                            Circle()
+                                .stroke(Color.white.opacity(0.85 * (1 - progress)), lineWidth: 2.2)
+                                .frame(width: 34 + CGFloat(progress) * 30,
+                                       height: 34 + CGFloat(progress) * 30)
+                        }
+                        // 中心实心圆点（录音 logo 核心）
+                        Circle()
+                            .fill(Color.white.opacity(0.95))
+                            .frame(width: 14, height: 14)
+                            .shadow(color: .white.opacity(0.6), radius: 4)
+                    }
+                    .allowsHitTesting(false)
                 }
             }
         }
-        .frame(width: 56, height: 56)
+        .frame(width: 92, height: 92)
         .contentShape(Circle())
         .gesture(
             LongPressGesture(minimumDuration: 0.4)
@@ -1005,8 +1020,8 @@ struct SiriBallView: View {
         .overlay {
             if isRecording {
                 Circle()
-                    .stroke(Color.red.opacity(0.6), lineWidth: 2)
-                    .frame(width: 56, height: 56)
+                    .stroke(Color.red.opacity(0.6), lineWidth: 2.5)
+                    .frame(width: 92, height: 92)
             }
         }
         .padding(.horizontal, 14)

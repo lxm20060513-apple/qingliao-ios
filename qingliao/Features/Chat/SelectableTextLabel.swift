@@ -17,6 +17,8 @@ struct SelectableTextLabel: UIViewRepresentable {
     let fallbackColor: UIColor          // 无颜色属性的文本用此色（用户消息白字 / AI 消息 label）
     // v2.0.125：行距可配（AI 回复行距缩小；用户消息保持原行距）
     var lineSpacing: CGFloat = 3
+    // v2.0.130：AI 消息行距从设置实时读（UserDefaults 直读，不依赖 SwiftUI 参数传递时机——修复"调了没生效"）
+    var lineSpacingFromSettings: Bool = false
     var onCopy: () -> Void = {}
     var onQuote: () -> Void = {}
     var onShare: () -> Void = {}
@@ -48,15 +50,30 @@ struct SelectableTextLabel: UIViewRepresentable {
         tv.attributedText = attributedText
         tv.textColor = fallbackColor
         tv.font = UIFont.systemFont(ofSize: 15)   // 无字体属性文本的默认（有属性则保留）
-        // 统一行距（与旧 Text 渲染一致；v2.0.125 AI 回复行距缩小）
+        // 行距：AI 消息从设置实时读（0-6），用户消息用固定值
+        let spacing = lineSpacingFromSettings
+            ? UserDefaults.standard.double(forKey: "qingliao_ai_line_spacing")
+            : lineSpacing
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = lineSpacing
+        style.lineSpacing = spacing
         let attr = NSMutableAttributedString(attributedString: attributedText)
         attr.addAttribute(.paragraphStyle, value: style,
                           range: NSRange(location: 0, length: attr.length))
         tv.attributedText = attr
         tv.layoutIfNeeded()
         tv.invalidateIntrinsicContentSize()
+    }
+
+    // v2.0.130：修复"AI 回复文字显示不完整断句"——
+    // SwiftUI 用 intrinsicContentSize 布局时宽度未定，UITextView 按单行宽度算高度 → 多行被裁。
+    // sizeThatFits 拿到提案宽度后精确计算换行高度；宽度始终占满容器（防换行错乱断句）。
+    // 🚨 防 .infinity 提案：宽度为无穷时 UITextView 按单行换行算高度 → 仍会裁切，须钳制到气泡最大宽。
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let maxWidth = UIScreen.main.bounds.width - 60   // 消息块水平 padding 后的可用宽
+        let w = proposal.width ?? maxWidth
+        let width = w.isFinite ? min(max(w, 1), maxWidth) : maxWidth
+        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: size.height)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
