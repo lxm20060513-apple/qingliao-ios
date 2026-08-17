@@ -432,7 +432,10 @@ struct ChatView: View {
             ScrollView {
                 // v2.0.40：LazyVStack → VStack（懒加载在批量移除时有复用状态残留，
                 // 普通 VStack 全量渲染，移除只是简单数组变化，彻底绕开崩溃）
-                VStack(spacing: 10) {
+                // v2.0.132：VStack → LazyVStack——清空/新建已走两步走（先切欢迎页卸载
+                // 列表再清数据），批量移除崩溃路径不复存在；长聊天记录仅渲染可见气泡，
+                // 修复长文本滑动/左右切页卡顿
+                LazyVStack(spacing: 10) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
                             // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
                             if idx > 0,

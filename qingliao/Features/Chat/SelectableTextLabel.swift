@@ -47,13 +47,20 @@ struct SelectableTextLabel: UIViewRepresentable {
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
-        tv.attributedText = attributedText
         tv.textColor = fallbackColor
         tv.font = UIFont.systemFont(ofSize: 15)   // 无字体属性文本的默认（有属性则保留）
         // 行距：AI 消息从设置实时读（0-6），用户消息用固定值
         let spacing = lineSpacingFromSettings
             ? UserDefaults.standard.double(forKey: "qingliao_ai_line_spacing")
             : lineSpacing
+        // v2.0.132：内容指纹——文本/行距/颜色未变化则跳过重建（LazyVStack 滚动
+        // 复用 cell 时 SwiftUI 反复调 updateUIView，重设 attributedText + layoutIfNeeded
+        // 是长记录滑动卡顿主因；同内容直接 return 保留现有布局）
+        let key = "\(attributedText.string.hashValue)|\(spacing)|\(fallbackColor.cgColor)"
+        if context.coordinator.lastKey == key {
+            return
+        }
+        context.coordinator.lastKey = key
         let style = NSMutableParagraphStyle()
         style.lineSpacing = spacing
         let attr = NSMutableAttributedString(attributedString: attributedText)
@@ -80,6 +87,8 @@ struct SelectableTextLabel: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         let parent: SelectableTextLabel
+        // v2.0.132：上次渲染的内容指纹（文本长度|行距|颜色），未变则跳过重建
+        var lastKey = ""
         init(parent: SelectableTextLabel) { self.parent = parent }
 
         // iOS 26+ 新 API（部署目标 26.0，唯一生效路径；旧 API editMenuForTextIn 已弃用不再调用）
