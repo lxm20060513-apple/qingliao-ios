@@ -728,9 +728,7 @@ struct ChatInputBar: View {
     // v2.0.129：Siri 圆球输入（设置开关，默认开）——默认状态是圆球，单击展开输入框，长按语音转文字
     @AppStorage("qingliao_ball_input") private var ballInput = true
     @State private var ballExpanded = false   // 球 → 输入框展开态（切会话由外层 .id() 重建复位）
-    // v2.0.130：展开瞬间的炫酷爆发特效（扩散波纹 + 星点飞散）
-    @State private var burst = false
-    // v2.0.132：点击球触发全屏粒子爆发（满屏散开）——由外层 ChatView 挂全屏特效层
+    // v2.0.132：点击球触发全屏粒子爆发（满屏散开）——由外层 ChatView 挂全屏特效层（局部 BurstEffect 已删，视觉重叠且双 TimelineView 掉帧）
     var onFullBurst: () -> Void = {}
 
     var body: some View {
@@ -743,22 +741,19 @@ struct ChatInputBar: View {
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
                                  onTap: {
-                                                                     // 转写中点击不响应（避免打断）
-                                                                     guard !transcribing else { return }
-                                                                     // v2.0.130：炫酷展开 —— 球心爆发（波纹+星点）→ 输入框从球心缩放展开
-                                                                     // v2.0.132：同时触发全屏粒子爆发（满屏散开）
-                                                                     burst = true
-                                                                     onFullBurst()
-                                                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                                                                         burst = false
-                                                                     }
-                                     withAnimation(.spring(duration: 0.5, bounce: 0.3)) {
-                                         ballExpanded = true
-                                     }
-                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                         focused = true   // 展开后自动弹键盘
-                                     }
-                                 },
+                                                                                                      // 转写中点击不响应（避免打断）
+                                                                                                      guard !transcribing else { return }
+                                                                                                      // v2.0.130：炫酷展开 —— 全屏粒子爆发（满屏散开）+ 输入框从球心缩放展开
+                                                                                                      // v2.0.132 优化：局部 BurstEffect 已删（与全屏特效重叠且双 TimelineView 掉帧），
+                                                                                                      // 动画改短 0.35s/bounce 0.15、弹键盘顺延 0.28s，避免四路动画叠加掉帧
+                                                                                                      onFullBurst()
+                                                                                                      withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                                                                                                          ballExpanded = true
+                                                                                                      }
+                                                                                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                                                                                                          focused = true   // 展开主体完成后弹键盘，衔接更顺
+                                                                                                      }
+                                                                                                  },
                                  onLongPress: {
                                      // 长按 = 语音转文字（球保持特效，不展开输入框）
                                      guard !transcribing else { return }
@@ -767,30 +762,21 @@ struct ChatInputBar: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.bottom, 26)   // v2.0.132：球态再下沉（用户反馈位置偏高）
-                // v2.0.130：球移除 = 缩放放大 + 模糊淡出（配合爆发特效）
-                .transition(.scale(1.35).combined(with: .opacity).combined(with: .blurReplace))
-                // v2.0.130：爆发特效层（展开瞬间波纹扩散 + 星点飞散）
-                .overlay {
-                    if burst {
-                        BurstEffect()
-                            .frame(width: 92, height: 92)
-                    }
-                }
+                // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出
+                .transition(.scale(1.35).combined(with: .opacity))
             } else {
                 fullInputBar
-                    // v2.0.130：输入框从球心缩放展开（scale 0.5 + 模糊 → 正常），配合球爆发特效
-                    .transition(.scale(0.5)
-                        .combined(with: .opacity)
-                        .combined(with: .blurReplace))
+                    // v2.0.130：输入框从球心缩放展开——v2.0.132 优化：同样去掉 blurReplace
+                    .transition(.scale(0.5).combined(with: .opacity))
             }
         }
         // v2.0.129：球态下语音转写完成（transcribing true→false 且已有转写文字）→ 自动展开输入框 + 弹键盘
         .onChange(of: transcribing) { _, newVal in
             if ballInput, !ballExpanded, !newVal, !text.isEmpty {
-                withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                     ballExpanded = true
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     focused = true   // 转写完成弹键盘（用户细节③确认）
                 }
             }
@@ -973,46 +959,6 @@ struct ChatInputBar: View {
     }
 }
 
-// MARK: - v2.0.130 爆发特效（球 → 输入框展开瞬间：扩散波纹 + 星点飞散）
-
-/// 点击圆球展开输入框时的炫酷特效：3 层波纹扩散渐隐 + 8 颗星点向四周飞散。
-/// 出现即播放（TimelineView 不依赖外部动画状态），0.75s 后由调用方移除。
-struct BurstEffect: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            // 波纹：0→1 扩散 + 淡出（相位错开 0.12s）
-            ZStack {
-                ForEach(0..<3, id: \.self) { i in
-                    let p = (t * 1.8 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
-                    Circle()
-                        .stroke(
-                            LinearGradient(colors: [.white, .indigo.opacity(0.6)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                                .opacity(0.9 * (1 - p)),
-                            lineWidth: 2.5
-                        )
-                        .frame(width: 40 + CGFloat(p) * 90,
-                               height: 40 + CGFloat(p) * 90)
-                        .scaleEffect(1 - p * 0.1)
-                }
-                // 星点：8 个方向飞散，途中渐隐
-                ForEach(0..<8, id: \.self) { i in
-                    let angle = Double(i) / 8.0 * 2.0 * .pi
-                    let dist = CGFloat(30 + 40 * ((t * 1.6 + Double(i) * 0.05).truncatingRemainder(dividingBy: 1.0)))
-                    let glow = (t * 1.6 + Double(i) * 0.05).truncatingRemainder(dividingBy: 1.0)
-                    Circle()
-                        .fill(Color.white.opacity(max(0, 0.95 * (1 - glow))))
-                        .frame(width: 3 + glow * 4, height: 3 + glow * 4)
-                        .shadow(color: .indigo.opacity(0.8 * (1 - glow)), radius: 3)
-                        .offset(x: cos(angle) * dist, y: sin(angle) * dist)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
 // MARK: - v2.0.132 全屏爆发特效（点击智能球：满屏粒子散开）
 
 /// 点击智能球展开输入框时的全屏级爆发：粒子从球心（底部中央）向全屏飞散，
@@ -1028,6 +974,7 @@ struct FullScreenBurst: View {
     }
 
     var body: some View {
+        // 全屏粒子爆发保持完整帧率（粒子轨迹要顺滑）
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSince(spawn)
             Canvas { ctx, size in
@@ -1046,21 +993,21 @@ struct FullScreenBurst: View {
                                with: .color(Color.indigo.opacity(alpha)),
                                lineWidth: 2.2 * (1 - p) + 0.4)
                 }
-                // 2) 粒子群：90 颗，向全屏飞散（80% 上半球 + 20% 全向），微重力下拉
+                // 2) 粒子群：90 颗，向全屏飞散（v2.0.132 优化：速度提档 + 减速调小，粒子能飞到屏幕上方真正铺满全屏）
                 let colors: [Color] = [.blue, .indigo, .pink, .purple]
                 for i in 0..<90 {
                     let life = 0.45 + hash(i, 1) * 0.45
                     guard t < life else { continue }
                     let progress = t / life
-                    let speed = 220 + hash(i, 2) * 520
-                    let upBias = hash(i, 3) < 0.8
+                    let speed = 420 + hash(i, 2) * 780
+                    let upBias = hash(i, 3) < 0.85
                     let angle: Double
                     if upBias {
-                        angle = .pi * (0.15 + hash(i, 4) * 0.7)   // 上半球（π 单位内 15%-85%）
+                        angle = .pi * (0.05 + hash(i, 4) * 0.9)   // 几乎覆盖整个上半球（5%-95%）
                     } else {
                         angle = .pi * 2 * hash(i, 5)
                     }
-                    let dist = speed * t * (1 - 0.45 * progress)
+                    let dist = speed * t * (1 - 0.25 * progress)   // 减速 0.45→0.25，粒子飞得更远更满
                     let x = origin.x + CGFloat(cos(angle)) * dist
                     let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
                     let colorIdx = Int(hash(i, 6) * 4)
@@ -1112,7 +1059,8 @@ struct SiriBallView: View {
     var onLongPress: () -> Void = {}
 
     var body: some View {
-        TimelineView(.animation) { context in
+        // v2.0.132 优化：球呼吸降到 30fps（TimelineView(.animation) 每帧重绘 AngularGradient+blur 常驻开销大；30fps 肉眼无差）
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // v2.0.132：语音激活（录音/转写中）→ 珊瑚红渐变 + 加速呼吸（一眼可辨）；
             // 默认 Siri 蓝紫粉淡雅
