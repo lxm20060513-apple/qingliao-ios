@@ -324,11 +324,12 @@ struct ChatView: View {
                         .id(chat.sessionId)
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
+            // v2.0.133e：动画时长/曲线跟随键盘系统动画（观察器已记录），完全同步无跳变
             .padding(.bottom, kb.isVisible
                      ? max(0, UIScreen.main.bounds.height - kb.topY)
                      : (hideDock ? 0 : 86))
         }
-        .animation(.easeOut(duration: 0.22), value: kb.height)
+        .animation(.easeOut(duration: kb.animationDuration), value: kb.height)
         // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
         .alert("语音转文字不可用", isPresented: $voiceAuthFailed) {
             Button("好的", role: .cancel) {}

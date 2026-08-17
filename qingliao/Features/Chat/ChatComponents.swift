@@ -745,13 +745,15 @@ struct ChatInputBar: View {
                                                                                                       guard !transcribing else { return }
                                                                                                       // v2.0.130：炫酷展开 —— 全屏粒子爆发（满屏散开）+ 输入框从球心缩放展开
                                                                                                       // v2.0.132 优化：局部 BurstEffect 已删（与全屏特效重叠且双 TimelineView 掉帧），
-                                                                                                      // 动画改短 0.35s/bounce 0.15、弹键盘顺延 0.28s，避免四路动画叠加掉帧
+                                                                                                      // 动画改短 0.35s、避免四路动画叠加掉帧
+                                                                                                      // v2.0.133e：弹键盘再顺延到 0.4s——等 spring 展开完全结束才弹，
+                                                                                                      // 与键盘动画完全串行（原 0.28s 时展开动画还在回弹，两段动画抢帧 → 衔接生硬）
                                                                                                       onFullBurst()
                                                                                                       withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                                                                                                           ballExpanded = true
                                                                                                       }
-                                                                                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                                                                                                          focused = true   // 展开主体完成后弹键盘，衔接更顺
+                                                                                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                                                                                          focused = true   // 键盘动画与展开动画串行，衔接平滑
                                                                                                       }
                                                                                                   },
                                  onLongPress: {
@@ -776,7 +778,8 @@ struct ChatInputBar: View {
                 withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                     ballExpanded = true
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // v2.0.133e：与点击路径统一——等展开动画结束再弹键盘（0.35s+0.05 余量），串行不抢帧
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     focused = true   // 转写完成弹键盘（用户细节③确认）
                 }
             }
