@@ -382,15 +382,34 @@ struct DashboardView: View {
             automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
         }
         // v2.0.116：主动建议（后台引擎生成的最新建议，打开看板自动显示；手动生成过则不覆盖）
-        if smartSuggestion.isEmpty,
-           let j = try? await auth.json("/api/agent/last_suggestion"),
-           let sug = j["suggestion"] as? [String: Any],
-           let text = sug["text"] as? String, !text.isEmpty {
-            smartSuggestion = text
+        // v2.0.132：后端引擎平时不出建议（30 分钟才巡检）→ 缓存兜底 + 缓存过期则自动生成
+        if smartSuggestion.isEmpty {
+            if let j = try? await auth.json("/api/agent/last_suggestion"),
+               let sug = j["suggestion"] as? [String: Any],
+               let text = sug["text"] as? String, !text.isEmpty {
+                smartSuggestion = text
+            } else if let cached = cachedSuggestion {
+                smartSuggestion = cached   // 30 分钟内的缓存直接显示，不重复生成
+            } else if shouldAutoGenerate {
+                // 无后端建议且缓存过期 → 自动生成（无需手动点按钮）
+                Task { await loadSmartSuggestion() }
+            }
         }
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+    }
+
+    // v2.0.132：智能建议缓存（30 分钟有效，避免每次进看板/轮询重复生成费 token）
+    private var cachedSuggestion: String? {
+        guard let raw = UserDefaults.standard.string(forKey: "qingliao_suggestion_cache"),
+              let ts = UserDefaults.standard.object(forKey: "qingliao_suggestion_cache_ts") as? Date,
+              Date().timeIntervalSince(ts) < 1800 else { return nil }
+        return raw
+    }
+
+    private var shouldAutoGenerate: Bool {
+        cachedSuggestion == nil   // 无有效缓存 → 需要自动生成
     }
 
     /// v2.0.116：生成智能建议（天气 + NAS + 设备状态 → Agent）
@@ -412,6 +431,9 @@ struct DashboardView: View {
                                         body: ["context": parts.joined(separator: "；")]),
            let text = j["text"] as? String, !text.isEmpty {
             smartSuggestion = text
+            // v2.0.132：生成成功写缓存（30 分钟有效，轮询不重复生成）
+            UserDefaults.standard.set(text, forKey: "qingliao_suggestion_cache")
+            UserDefaults.standard.set(Date(), forKey: "qingliao_suggestion_cache_ts")
         } else {
             smartSuggestion = "建议生成失败，请重试"
         }
