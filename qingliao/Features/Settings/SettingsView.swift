@@ -482,6 +482,44 @@ struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .padding(.bottom, 6)
                             }
+                            // v2.0.130：AI 输出行高（内联滑条，移入外观二级菜单）
+                            Divider().padding(.leading, 52)
+                            SettingRow(icon: "text.line.first.and.arrowtriangle.forward", iconColor: .indigo,
+                                       title: "AI 输出行高", value: String(format: "%.1f", aiLineSpacing), chevron: false)
+                                .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showLineSpacingOptions.toggle() } }
+                            if showLineSpacingOptions {
+                                HStack(spacing: 10) {
+                                    Text("紧凑").font(.system(size: 12)).foregroundStyle(.secondary)
+                                    Slider(value: $aiLineSpacing, in: 0...6, step: 0.5)
+                                        .tint(Color.accentColor)
+                                    Text("宽松").font(.system(size: 16)).foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.bottom, 10)
+                            }
+                            // v2.0.130：Siri 圆球输入开关（移入外观二级菜单）
+                            Divider().padding(.leading, 52)
+                            HStack(spacing: 12) {
+                                Image(systemName: "circle.circle.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(
+                                        LinearGradient(colors: [.blue, .indigo, .pink],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    )
+                                Text("Siri 圆球输入")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Toggle("", isOn: $ballInput)
+                                    .labelsHidden()
+                                    .scaleEffect(0.8)
+                                    .tint(.green)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                         }
                         // v2.0.87am：天气城市（手动输入，看板右上角天气）
                         SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
@@ -523,44 +561,6 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
-                        // v2.0.128：AI 输出行高（内联滑条，字体大小同款交互）
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "text.line.first.and.arrowtriangle.forward", iconColor: .indigo,
-                                   title: "AI 输出行高", value: String(format: "%.1f", aiLineSpacing), chevron: false)
-                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showLineSpacingOptions.toggle() } }
-                        if showLineSpacingOptions {
-                            HStack(spacing: 10) {
-                                Text("紧凑").font(.system(size: 12)).foregroundStyle(.secondary)
-                                Slider(value: $aiLineSpacing, in: 0...6, step: 0.5)
-                                    .tint(Color.accentColor)
-                                Text("宽松").font(.system(size: 16)).foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 10)
-                        }
-                        // v2.0.129：Siri 圆球输入开关（外观同款交互样式）
-                        Divider().padding(.leading, 52)
-                        HStack(spacing: 12) {
-                            Image(systemName: "circle.circle.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(
-                                    LinearGradient(colors: [.blue, .indigo, .pink],
-                                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                )
-                            Text("Siri 圆球输入")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Toggle("", isOn: $ballInput)
-                                .labelsHidden()
-                                .scaleEffect(0.8)
-                                .tint(.green)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0", chevron: true)
                             .onTapGesture { showAbout = true }

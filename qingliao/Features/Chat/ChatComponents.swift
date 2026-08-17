@@ -701,6 +701,8 @@ struct ChatInputBar: View {
     // v2.0.129：Siri 圆球输入（设置开关，默认开）——默认状态是圆球，单击展开输入框，长按语音转文字
     @AppStorage("qingliao_ball_input") private var ballInput = true
     @State private var ballExpanded = false   // 球 → 输入框展开态（切会话由外层 .id() 重建复位）
+    // v2.0.130：展开瞬间的炫酷爆发特效（扩散波纹 + 星点飞散）
+    @State private var burst = false
 
     var body: some View {
         Group {
@@ -714,7 +716,12 @@ struct ChatInputBar: View {
                                  onTap: {
                                      // 转写中点击不响应（避免打断）
                                      guard !transcribing else { return }
-                                     withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                                     // v2.0.130：炫酷展开 —— 球心爆发（波纹+星点）→ 输入框从球心缩放展开
+                                     burst = true
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                                         burst = false
+                                     }
+                                     withAnimation(.spring(duration: 0.5, bounce: 0.3)) {
                                          ballExpanded = true
                                      }
                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -729,9 +736,21 @@ struct ChatInputBar: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.bottom, 8)   // 球态视觉下沉一点
-                .transition(.opacity)
+                // v2.0.130：球移除 = 缩放放大 + 模糊淡出（配合爆发特效）
+                .transition(.scale(scale: 1.35).combined(with: .opacity).combined(with: .blurReplace))
+                // v2.0.130：爆发特效层（展开瞬间波纹扩散 + 星点飞散）
+                .overlay {
+                    if burst {
+                        BurstEffect()
+                            .frame(width: 92, height: 92)
+                    }
+                }
             } else {
                 fullInputBar
+                    // v2.0.130：输入框从球心缩放展开（scale 0.5 + 模糊 → 正常），配合球爆发特效
+                    .transition(.scale(scale: 0.5, anchor: .center)
+                        .combined(with: .opacity)
+                        .combined(with: .blurReplace))
             }
         }
         // v2.0.129：球态下语音转写完成（transcribing true→false 且已有转写文字）→ 自动展开输入框 + 弹键盘
@@ -920,6 +939,46 @@ struct ChatInputBar: View {
         }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
+    }
+}
+
+// MARK: - v2.0.130 爆发特效（球 → 输入框展开瞬间：扩散波纹 + 星点飞散）
+
+/// 点击圆球展开输入框时的炫酷特效：3 层波纹扩散渐隐 + 8 颗星点向四周飞散。
+/// 出现即播放（TimelineView 不依赖外部动画状态），0.75s 后由调用方移除。
+struct BurstEffect: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // 波纹：0→1 扩散 + 淡出（相位错开 0.12s）
+            ZStack {
+                ForEach(0..<3, id: \.self) { i in
+                    let p = (t * 1.8 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
+                    Circle()
+                        .stroke(
+                            LinearGradient(colors: [.white, .indigo.opacity(0.6)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                                .opacity(0.9 * (1 - p)),
+                            lineWidth: 2.5
+                        )
+                        .frame(width: 40 + CGFloat(p) * 90,
+                               height: 40 + CGFloat(p) * 90)
+                        .scaleEffect(1 - p * 0.1)
+                }
+                // 星点：8 个方向飞散，途中渐隐
+                ForEach(0..<8, id: \.self) { i in
+                    let angle = Double(i) / 8.0 * 2.0 * .pi
+                    let dist = CGFloat(30 + 40 * ((t * 1.6 + Double(i) * 0.05).truncatingRemainder(dividingBy: 1.0)))
+                    let glow = (t * 1.6 + Double(i) * 0.05).truncatingRemainder(dividingBy: 1.0)
+                    Circle()
+                        .fill(Color.white.opacity(max(0, 0.95 * (1 - glow))))
+                        .frame(width: 3 + glow * 4, height: 3 + glow * 4)
+                        .shadow(color: .indigo.opacity(0.8 * (1 - glow)), radius: 3)
+                        .offset(x: cos(angle) * dist, y: sin(angle) * dist)
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
