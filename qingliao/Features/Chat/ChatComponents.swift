@@ -203,6 +203,8 @@ struct MessageBubble: View {
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
+    // v2.0.130：AI 发图 MEDIA 路径 → 服务器图片 URL（读 App 配置的服务器地址）
+    @AppStorage("qingliao_server") private var serverURL = ""
     @State private var expanded = false
     // v2.0.81：AI 回复朗读状态（全局单例）
     @ObservedObject private var speech = SpeechManager.shared
@@ -472,7 +474,7 @@ struct MessageBubble: View {
 
     /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
     private var contentBlocks: [MessageContentBlock] {
-        let parts = message.content.components(separatedBy: "```")
+        let parts = Self.expandMediaMarks(message.content, serverURL: serverURL).components(separatedBy: "```")
         var blocks: [MessageContentBlock] = []
         for (i, p) in parts.enumerated() {
             if i % 2 == 1 {
@@ -488,6 +490,31 @@ struct MessageBubble: View {
             }
         }
         return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
+    }
+
+    /// v2.0.130：AI 发图 —— Hermes 回复的 MEDIA:/路径 协议 → markdown 图片语法
+    /// 转成 `![图片](<服务器>/api/stream/media?p=<base64url 容器路径>)`，
+    /// 由 splitMarkdownImages 拆成图片块；服务器端该端点免鉴权只读图片。
+    private static func expandMediaMarks(_ text: String, serverURL: String) -> String {
+        guard text.contains("MEDIA:") else { return text }
+        guard let re = try? NSRegularExpression(pattern: #"MEDIA:\s*([^\s\n]+)"#) else { return text }
+        let ns = text as NSString
+        var result = text
+        var offset = 0
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let rawPath = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            guard !rawPath.isEmpty else { continue }
+            // 容器路径 → base64url（服务器端映射 /opt/data → 宿主 hermes-data）
+            let b64 = Data(rawPath.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            let imgMarkdown = "![图片](\(serverURL)/api/stream/media?p=\(b64))"
+            let fullRange = NSRange(location: m.range.location + offset, length: m.range.length)
+            result = (result as NSString).replacingCharacters(in: fullRange, with: imgMarkdown)
+            offset += imgMarkdown.count - m.range.length
+        }
+        return result
     }
 
     /// v2.0.87d：markdown 表格检测拆分（连续 | 行 → 表格块，其余保持 markdown）
