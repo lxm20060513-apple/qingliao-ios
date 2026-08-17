@@ -993,13 +993,15 @@ struct FullScreenBurst: View {
                                with: .color(Color.indigo.opacity(alpha)),
                                lineWidth: 2.2 * (1 - p) + 0.4)
                 }
-                // 2) 粒子群：160 颗（v2.0.133 用户要求加密度 ~1.8 倍），几乎覆盖整个上半球，微重力下拉
+                // 2) 粒子群：160 颗（v2.0.133 用户要求加密度 ~1.8 倍）。v2.0.133b 放烟花参数：
+                //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
+                //    生命周期拉长（0.7-1.2s）且后半段以 sin 闪烁淡出 = 满天星辰停留闪烁
                 let colors: [Color] = [.blue, .indigo, .pink, .purple]
                 for i in 0..<160 {
-                    let life = 0.45 + hash(i, 1) * 0.45
+                    let life = 0.7 + hash(i, 1) * 0.5
                     guard t < life else { continue }
                     let progress = t / life
-                    let speed = 420 + hash(i, 2) * 780
+                    let speed = 250 + hash(i, 2) * 400
                     let upBias = hash(i, 3) < 0.85
                     let angle: Double
                     if upBias {
@@ -1007,13 +1009,15 @@ struct FullScreenBurst: View {
                     } else {
                         angle = .pi * 2 * hash(i, 5)
                     }
-                    let dist = speed * t * (1 - 0.25 * progress)   // 减速 0.45→0.25，粒子飞得更远更满
+                    let dist = speed * t * (1 - 0.55 * progress)   // 减速 0.25→0.55：爆开初速快、末端近乎悬停
                     let x = origin.x + CGFloat(cos(angle)) * dist
                     let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
                     let colorIdx = Int(hash(i, 6) * 4)
                     let c = colors[colorIdx]
-                    let coreR = 2.0 + hash(i, 7) * 3.6   // v2.0.133：粒子尺寸略增（1.6→2.0 起），光球感更实
-                    let alpha = 0.9 * (1 - progress)
+                    let coreR = 2.0 + hash(i, 7) * 3.6
+                    // 末段闪烁（progress>0.4 起 sin 闪烁，像星星）：2-3 次明暗后完全淡出
+                    let twinkle = progress > 0.4 ? max(0.15, abs(sin(progress * .pi * 7)) ) : 1.0
+                    let alpha = 0.9 * (1 - progress) * twinkle
                     // 光晕（大圆低透明）+ 核心（小圆高透明），两层模拟粒子发光
                     ctx.fill(Path(ellipseIn: CGRect(x: x - coreR * 3.5, y: y - coreR * 3.5,
                                                     width: coreR * 7, height: coreR * 7)),
