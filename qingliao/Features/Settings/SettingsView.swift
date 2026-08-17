@@ -497,7 +497,7 @@ struct SettingsView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 10)
                             }
-                            // v2.0.130：Siri 圆球输入开关（移入外观二级菜单）
+                            // v2.0.130：智能球输入开关（移入外观二级菜单）
                             Divider().padding(.leading, 52)
                             HStack(spacing: 12) {
                                 Image(systemName: "circle.circle.fill")
@@ -509,7 +509,7 @@ struct SettingsView: View {
                                                        startPoint: .topLeading, endPoint: .bottomTrailing),
                                         in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     )
-                                Text("Siri 圆球输入")
+                                Text("智能球")   // v2.0.132：Siri 圆球输入 → 智能球（与 ChatComponents 命名统一）
                                     .font(.system(size: 15))
                                     .foregroundStyle(.primary)
                                 Spacer()
