@@ -1110,12 +1110,15 @@ struct ModelSheet: View {
     // 服务器同步的模型（分组展示）
     @State private var stepfunModels: [String] = []
     @State private var deepseekModels: [String] = []
+    // v2.0.131：opencode Go 订阅模型（同步拉取，本地预置作兜底——修复"刷新不全"）
+    @State private var opencodeModels: [String] = []
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
     // v2.0.118：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
     @State private var localInstalled: [String] = []
 
-    /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）
+    /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）——v2.0.131 起改为同步优先
+    /// 注：官方端点已可用（Go 订阅 26 个模型），本地列表仅作同步失败时的兜底
     private let localModels: [(String, String)] = [
         ("deepseek-v4-flash", "DeepSeek V4 Flash"),
         ("deepseek-v4-flash-free", "DeepSeek V4 Flash Free"),
@@ -1125,6 +1128,42 @@ struct ModelSheet: View {
         ("kimi-k2.6", "Kimi K2.6"),
         ("kimi-k2.5", "Kimi K2.5"),
     ]
+
+    /// v2.0.131：opencode 同步模型显示名映射（无映射的用 id 本身）
+    private let opencodeNames: [String: String] = [
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "deepseek-v4-pro": "DeepSeek V4 Pro",
+        "kimi-k3": "Kimi K3",
+        "kimi-k2.7-code": "Kimi K2.7 Code",
+        "kimi-k2.6": "Kimi K2.6",
+        "kimi-k2.5": "Kimi K2.5",
+        "glm-5.3": "GLM 5.3",
+        "glm-5.2": "GLM 5.2",
+        "glm-5.1": "GLM 5.1",
+        "glm-5": "GLM 5",
+        "qwen3.8-max": "Qwen3.8 Max",
+        "qwen3.7-max": "Qwen3.7 Max",
+        "qwen3.7-plus": "Qwen3.7 Plus",
+        "qwen3.6-plus": "Qwen3.6 Plus",
+        "qwen3.5-plus": "Qwen3.5 Plus",
+        "minimax-m3": "MiniMax M3",
+        "minimax-m2.7": "MiniMax M2.7",
+        "minimax-m2.5": "MiniMax M2.5",
+        "mimo-v2.5-pro": "MiMo V2.5 Pro",
+        "mimo-v2.5": "MiMo V2.5",
+        "mimo-v2-pro": "MiMo V2 Pro",
+        "mimo-v2-omni": "MiMo V2 Omni",
+        "gpt-5.6-luna": "GPT-5.6 Luna",
+        "grok-4.5": "Grok 4.5",
+    ]
+
+    /// v2.0.131：opencode 分组显示列表——同步结果优先，空则用本地预置兜底
+    private var opencodeDisplay: [(String, String)] {
+        if !opencodeModels.isEmpty {
+            return opencodeModels.map { ($0, opencodeNames[$0] ?? $0) }
+        }
+        return localModels
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1167,7 +1206,7 @@ struct ModelSheet: View {
 
             ScrollView {
                 VStack(spacing: 12) {
-                    groupSection("opencode", models: localModels.map { ($0.0, $0.1, "opencode") })
+                    groupSection("opencode", models: opencodeDisplay.map { ($0.0, $0.1, "opencode") })
                     if !deepseekModels.isEmpty {
                         // v2.0.83：官方 API 分组标注（与 opencode 的 deepseek 区分）
                         groupSection("deepseek（官方）", models: deepseekModels.map { ($0, $0, "deepseek") })
@@ -1198,6 +1237,10 @@ struct ModelSheet: View {
             }
             if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] {
                 deepseekModels = d
+            }
+            // v2.0.131：恢复 opencode 同步结果（修复"刷新不全"——之前从不拉取 opencode）
+            if let o = UserDefaults.standard.array(forKey: "qingliao_models_opencode") as? [String] {
+                opencodeModels = o
             }
         }
     }
@@ -1271,6 +1314,8 @@ struct ModelSheet: View {
         Task {
             let s = await fetchModels("stepfun")
             let d = await fetchModels("deepseek")
+            // v2.0.132：同步 opencode Go 订阅模型（修复"刷新不全"——之前从不拉取）
+            let o = await fetchModels("opencode")
             if let s {
                 stepfunModels = s
                 UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
@@ -1279,7 +1324,11 @@ struct ModelSheet: View {
                 deepseekModels = d
                 UserDefaults.standard.set(d, forKey: "qingliao_models_deepseek")
             }
-            syncResult = "✅ 已同步（stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
+            if let o {
+                opencodeModels = o
+                UserDefaults.standard.set(o, forKey: "qingliao_models_opencode")
+            }
+            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
             syncing = false
         }
     }
