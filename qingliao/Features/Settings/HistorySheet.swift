@@ -1,12 +1,16 @@
 import SwiftUI
 
 // MARK: - v2.0.116 执行历史（自动化 + 场景，设置页入口）
+// v2.0.132：加管理功能——滑动单条删除 + 编辑模式多选删除 + 全部清除
 
 struct HistorySheet: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
     @State private var items: [HistoryItem] = []
     @State private var loaded = false
+    @State private var editMode = EditMode.inactive
+    @State private var selected = Set<String>()   // 多选删除（按 id）
+    @State private var showClearConfirm = false   // 全部清除确认
 
     var body: some View {
         NavigationStack {
@@ -26,50 +30,105 @@ struct HistorySheet: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(items) { h in
-                        HStack(spacing: 12) {
-                            Image(systemName: h.type == "自动化" ? "timer" : "sparkles")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(h.type == "自动化" ? Color.orange : Color.purple,
-                                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(h.type)「\(h.name)」")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .lineLimit(1)
-                                if !h.detail.isEmpty {
-                                    Text(h.detail)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.tertiary)
+                    List(selection: $selected) {
+                        ForEach(items) { h in
+                            HStack(spacing: 12) {
+                                Image(systemName: h.type == "自动化" ? "timer" : "sparkles")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(h.type == "自动化" ? Color.orange : Color.purple,
+                                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(h.type)「\(h.name)」")
+                                        .font(.system(size: 14, weight: .medium))
                                         .lineLimit(1)
+                                    if !h.detail.isEmpty {
+                                        Text(h.detail)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.tertiary)
+                                            .lineLimit(1)
+                                    }
+                                    Text(h.ts)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.quaternary)
                                 }
-                                Text(h.ts)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.quaternary)
+                                Spacer()
+                                Image(systemName: h.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(h.ok ? .green : .red)
                             }
-                            Spacer()
-                            Image(systemName: h.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .font(.system(size: 15))
-                                .foregroundStyle(h.ok ? .green : .red)
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        // 编辑模式下不显示滑动删除（避免手势冲突）；非编辑模式每行左滑删除
+                        .onDelete { offsets in
+                            deleteRows(offsets)
+                        }
                     }
+                    .environment(\.editMode, $editMode)
                 }
             }
             .navigationTitle("执行历史")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("完成") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await load() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+                    Button(editMode == .active ? "完成" : "编辑") {
+                        withAnimation {
+                            if editMode == .active {
+                                selected.removeAll()
+                                editMode = .inactive
+                            } else {
+                                editMode = .active
+                            }
+                        }
                     }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    if editMode == .active {
+                        // 编辑模式：全选 / 删除所选 / 全部清除
+                        Menu {
+                            Button {
+                                selected = Set(items.map { $0.id })
+                            } label: {
+                                Label("全选", systemImage: "checkmark.circle")
+                            }
+                            Button(role: .destructive) {
+                                deleteSelected()
+                            } label: {
+                                Label("删除所选（\(selected.count)）", systemImage: "trash")
+                            }
+                            .disabled(selected.isEmpty)
+                            Button(role: .destructive) {
+                                showClearConfirm = true
+                            } label: {
+                                Label("全部清除", systemImage: "trash.slash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                    } else {
+                        Button {
+                            Task { await load() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                }
+            }
+            .confirmationDialog("全部清除执行历史？", isPresented: $showClearConfirm, titleVisibility: .visible) {
+                Button("全部清除", role: .destructive) {
+                    Task {
+                        if let j = try? await auth.json("/api/history", method: "DELETE"),
+                           let list = j["history"] as? [[String: Any]] {
+                            items = list.map { HistoryItem($0) }
+                        }
+                        selected.removeAll()
+                        editMode = .inactive
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("此操作不可恢复，确定删除全部执行记录？")
             }
             .task { await load() }
         }
@@ -82,16 +141,37 @@ struct HistorySheet: View {
         }
         loaded = true
     }
+
+    /// 滑动单条删除（非编辑模式）
+    private func deleteRows(_ offsets: IndexSet) {
+        let ids = offsets.map { items[$0].id }
+        items.remove(atOffsets: offsets)
+        Task {
+            _ = try? await auth.json("/api/history?ids=\(ids.joined(separator: ","))", method: "DELETE")
+        }
+    }
+
+    /// 编辑模式批量删除所选
+    private func deleteSelected() {
+        let ids = Array(selected)
+        items.removeAll { ids.contains($0.id) }
+        selected.removeAll()
+        Task {
+            _ = try? await auth.json("/api/history?ids=\(ids.joined(separator: ","))", method: "DELETE")
+        }
+        if items.isEmpty { editMode = .inactive }
+    }
 }
 
 struct HistoryItem: Identifiable {
-    let id = UUID()
+    let id: String
     let ts: String
     let type: String
     let name: String
     let ok: Bool
     let detail: String
     init(_ d: [String: Any]) {
+        id = d["id"] as? String ?? UUID().uuidString
         ts = d["ts"] as? String ?? ""
         type = d["type"] as? String ?? ""
         name = d["name"] as? String ?? ""
