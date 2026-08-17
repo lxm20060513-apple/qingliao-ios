@@ -1040,14 +1040,15 @@ struct BurstCanvas: View {
                 let coreR = 2.0 + hash(i, 7) * 3.6
                 let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
                 // 光晕（大圆低透明）：缩放 3.5 倍单位圆（CGFloat 显式转换——GraphicsContext 参数是 CGFloat，Double 直传会类型错误）
-                ctx.saveGState()
+                // 注：GraphicsContext 无 saveGState/restoreGState（那是 CGContext API），保存/恢复 transform 等效
+                let savedTransform = ctx.transform
                 ctx.translateBy(x: x, y: y)
                 ctx.scaleBy(x: CGFloat(coreR * 3.5), y: CGFloat(coreR * 3.5))
                 ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
                 // 核心（小圆高透明）：缩放 1 倍单位圆
                 ctx.scaleBy(x: 1.0 / 3.5, y: 1.0 / 3.5)
                 ctx.fill(unitDot, with: .color(c.opacity(alpha)))
-                ctx.restoreGState()
+                ctx.transform = savedTransform
             }
         }
     }
