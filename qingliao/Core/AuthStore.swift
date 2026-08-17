@@ -283,23 +283,22 @@ final class AuthStore {
         // v2.0.116 fix：流式请求必须带 X-Auth-Token（鉴权收紧后无 token 恒 401；
         // 原只带 Content-Type——AUTO_LOGIN 时代被免鉴权掩盖）
         let authHeaders = ["Content-Type": "application/json", "X-Auth-Token": token]
-        let (data, code): (Data, Int)
+        var data: Data = Data()
+        var code: Int = 0
         if NetworkMonitor.shared.isCellular {
             // 蜂窝：CFStream 直连 POST 标准端点（免弹窗），失败降级 relay 路径参数版
-            // v2.0.130 fix：iOS 27 蜂窝下 CFStream body 可能丢失 → 后端收到空 body 返回 400
+            // v2.0.131 fix：iOS 27 蜂窝下 CFStream body 可能丢失 → 后端收到空 body 返回 400
             // （messages required）。原实现只在抛异常时降级，400 响应不降级 → 报"启动失败"。
             // 改为：直连非 2xx（含 400）同样降级 relay（relay 走 Safari 进程，body 编码进 URL 不丢）
-            var directOK = false
             do {
                 (data, code) = try await relay.directRequest(
                     method: "POST", path: "/api/stream/start",
                     headers: authHeaders, body: bodyData, timeout: 25
                 )
-                directOK = (200..<300).contains(code)
             } catch {
-                directOK = false
+                code = 0
             }
-            if !directOK {
+            if !(200..<300).contains(code) {
                 let uid = RelayIdentity.uid(for: sessionId)
                 (data, code) = try await relay.relay(
                     method: "POST", path: "/r/stream/start/\(uid)",
