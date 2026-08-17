@@ -112,6 +112,11 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
     - 展开态保留直到切换会话（`.id(chat.sessionId)` 重建复位回球，用户细节②）；转写中点击球不响应
     - ⚠️ 手势 ExclusiveGesture(LongPress, Tap) 互斥（v2.0.98 SIGTRAP 教训，勿叠加 onTap+onLongPress）
     - 球态居中，独立渲染（不继承输入栏胶囊背景）；`SiriBallView` 组件独立
+- **v2.0.130**：
+  - **修复 AI 长消息文字截断断句**（用户截图实测：气泡底部最后一行只显示一半）：根因 = SwiftUI 用 intrinsicContentSize 布局时宽度未定，UITextView 按单行算高度 → 多行被裁；`SelectableTextLabel` 实现 `sizeThatFits(_:uiView:context:)` 用提案宽度精确计算换行高度，宽度钳制到气泡最大宽（屏幕-60）防 `.infinity` 提案再次单行
+  - **修复行高滑条不生效**：AI 消息行距改为 UserDefaults 直读（`lineSpacingFromSettings`，不依赖 SwiftUI 参数传递时机），主显示 + 折叠消息两处同步
+  - **圆球放大**：主体 44→**72pt**（= 首页"你好，我是轻聊"Logo 同尺寸），外光晕 52→88，整体 56→92，录音红圈同步 92
+  - **球中心样式**（用户指定）：默认态 mic 图标 → **录音圆形 logo 声呐波纹**（3 层圆环 120° 相位差扩散 + 中心白点白光晕，动效+光晕）；录音中红点+松开结束 11pt；转写中转圈 24pt
 
 ## 🔀 分支与版本
 
