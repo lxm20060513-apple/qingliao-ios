@@ -1114,16 +1114,30 @@ struct SiriBallView: View {
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            // 呼吸：0.35-0.95 幅度（Siri 淡雅，不过曝）
-            let breathe = 0.35 + 0.30 * (sin(t * 2.2) + 1) / 2
+            // v2.0.132：语音激活（录音/转写中）→ 珊瑚红渐变 + 加速呼吸（一眼可辨）；
+            // 默认 Siri 蓝紫粉淡雅
+            let active = isRecording || transcribing
+            let breathe = active
+                ? 0.5 + 0.35 * (sin(t * 4.5) + 1) / 2    // 语音中呼吸加速
+                : 0.35 + 0.30 * (sin(t * 2.2) + 1) / 2
+            let glowColors: [Color] = active
+                ? [.red.opacity(0.65 * breathe), .orange.opacity(0.55 * breathe),
+                   .pink.opacity(0.55 * breathe), .red.opacity(0.65 * breathe)]
+                : [.blue.opacity(0.55 * breathe), .indigo.opacity(0.5 * breathe),
+                   .pink.opacity(0.5 * breathe), .purple.opacity(0.42 * breathe),
+                   .blue.opacity(0.55 * breathe)]
+            let bodyColors: [Color] = active
+                ? [.red.opacity(0.92 * breathe), .orange.opacity(0.85 * breathe),
+                   .pink.opacity(0.85 * breathe), .red.opacity(0.92 * breathe)]
+                : [.blue.opacity(0.85 * breathe), .indigo.opacity(0.8 * breathe),
+                   .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
+                   .blue.opacity(0.85 * breathe)]
             ZStack {
                 // 外发光（虚化光晕）
                 Circle()
                     .fill(
                         AngularGradient(
-                            colors: [.blue.opacity(0.55 * breathe), .indigo.opacity(0.5 * breathe),
-                                     .pink.opacity(0.5 * breathe), .purple.opacity(0.42 * breathe),
-                                     .blue.opacity(0.55 * breathe)],
+                            colors: glowColors,
                             center: .center
                         )
                     )
@@ -1133,9 +1147,7 @@ struct SiriBallView: View {
                 Circle()
                     .fill(
                         AngularGradient(
-                            colors: [.blue.opacity(0.85 * breathe), .indigo.opacity(0.8 * breathe),
-                                     .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
-                                     .blue.opacity(0.85 * breathe)],
+                            colors: bodyColors,
                             center: .center
                         )
                     )
@@ -1143,18 +1155,21 @@ struct SiriBallView: View {
                     .overlay(
                         Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1.2)
                     )
-                    .shadow(color: .indigo.opacity(0.45 * breathe), radius: 14)
+                    .shadow(color: (active ? Color.red : Color.indigo).opacity(0.45 * breathe), radius: 14)
                 // 中心：录音风格圆形波形 logo（声呐扩散波纹，v2.0.130 用户指定）+ 状态覆盖
-                // 默认 = 波纹扩散动画（像录音 app 的圆形 logo）；录音中 = 红点+松开结束；转写中 = 转圈
+                // 默认 = 波纹扩散动画（像录音 app 的圆形 logo）；录音中 = 波形+松开结束；转写中 = 转圈
                 if transcribing {
                     ProgressView()
                         .tint(.white)
                         .frame(width: 24, height: 24)
                 } else if isRecording {
                     VStack(spacing: 3) {
-                        Circle().fill(Color.red).frame(width: 10, height: 10)
+                        Image(systemName: "waveform")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .white.opacity(0.5), radius: 3)
                         Text("松开结束")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                 } else {
