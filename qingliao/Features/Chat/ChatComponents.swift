@@ -978,7 +978,10 @@ struct FullScreenBurst: View {
 
     var body: some View {
         // 全屏粒子爆发：锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+        // v2.0.133g 修复 CI：TimelineView(.animation(minimumInterval:)) 内联字面量泛型推断失败
+        // （generic parameter 'Content' could not be inferred，check_swift.sh 查不出）——schedule 提为显式类型变量
+        let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 60.0)
+        TimelineView(schedule) { context in
             let t = context.date.timeIntervalSince(spawn)
             Canvas { ctx, size in
                 let w = size.width, h = size.height
@@ -1050,7 +1053,9 @@ struct SiriBallView: View {
 
     var body: some View {
         // v2.0.132 优化：球呼吸降到 30fps（TimelineView(.animation) 每帧重绘 AngularGradient+blur 常驻开销大；30fps 肉眼无差）
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+        // v2.0.133g：schedule 提为显式类型变量（同 FullScreenBurst，防 CI 泛型推断失败）
+        let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 30.0)
+        TimelineView(schedule) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // v2.0.132：语音激活（录音/转写中）→ 珊瑚红渐变 + 加速呼吸（一眼可辨）；
             // 默认 Siri 蓝紫粉淡雅
