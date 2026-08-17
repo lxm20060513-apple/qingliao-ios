@@ -83,6 +83,16 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.132，2026-08-17）
+
+- **模型管理同步补拉 opencode**：同步按钮拉取 Go 订阅全部 26 个模型（原硬编码 7 个），显示名映射 + 本地兜底 + UserDefaults 持久化
+- **智能球满屏粒子爆发（v2.0.132）**：点击球瞬间 Canvas 90 粒全屏散开 + 超大波纹 + 十字星芒（0.95s 自动消失，Siri 蓝紫粉配色）
+- **智能球语音激活反馈**：长按进语音 → 球变珊瑚红渐变 + 呼吸加速 + waveform 波形图标（替代原小红点）——视觉一眼可辨进入语音输入
+- **长聊天记录流畅性**：消息列表 VStack → LazyVStack（仅渲染可见气泡，长文本滑动/左右切页不再卡）；SELECTABLETEXTLABEL 内容指纹跳过重复 layoutIfNeeded
+- **智能建议主动生成**：进看板无建议时自动生成一次 + 30 分钟本地缓存（轮询/重启不重复生成），不用再手动点
+- **执行历史管理**：滑动单条删除 + 编辑模式多选/全选删除 + 全部清除（后端新增 DELETE /api/history，含存量数据 id 兼容）
+- **设置页文案**：「Siri 圆球输入」改名「智能球」
+
 ## 🆕 近期变更（v2.0.125，2026-08-16，回滚后重建）
 
 - **v2.0.125**：聊天文字长按菜单新增「选择文本」（v2.0.120 基础上重建；v2.0.122-124 被另一模型改坏已回滚，备份分支 `backup-v2.0.124-20260816`）
