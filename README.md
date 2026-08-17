@@ -83,6 +83,12 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.134，2026-08-17）
+
+- **粒子纯烟花效果**：去掉末段闪烁与十字星芒，只保留满天烟花粒子（160 颗，先快后慢 + 1.2s 平滑淡出）
+- **粒子 Canvas 性能再优化**：单位圆 Path 复用（原每帧 320 次对象分配 → 1 次）+ 特效层锁 60fps——粒子动画不再拖慢点球展开
+- **键盘衔接优化**：弹键盘顺延到展开动画完成之后（0.4s，完全串行不抢帧）+ 输入框贴键盘动画跟随系统键盘时长/曲线——点球到打字全程平滑无跳变
+
 ## 🆕 近期变更（v2.0.133，2026-08-17）
 
 - **智能球动效性能优化**：删局部 BurstEffect（与全屏特效重叠）+ 去掉 blurReplace 过渡（最吃 GPU 的离屏模糊）+ 展开动画 0.5s→0.35s + 键盘弹出顺延 0.28s——点球展开不再掉帧，键盘衔接更顺
