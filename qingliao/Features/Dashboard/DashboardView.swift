@@ -304,6 +304,8 @@ struct DashboardView: View {
 
     // MARK: - 数据
 
+    // v2.0.133g：看板是否可见（离开看板暂停 30s 轮询——隐藏页刷新抢 TabView 切页动画帧）
+    @State private var isDashboardVisible = true
     // v2.0.86：硬件温度状态
     @State private var hwCpu: Double?
     @State private var hwSsd: Double?

@@ -970,6 +970,25 @@ struct ChatInputBar: View {
 struct FullScreenBurst: View {
     @State private var spawn = Date()
 
+    var body: some View {
+        // 全屏粒子爆发：锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
+        // v2.0.134 修复 CI：TimelineView content 只返回简单类型 BurstCanvas——原内联 Canvas 多语句闭包
+        // 类型错误会让编译器报外层 generic parameter 'Content' could not be inferred（check_swift.sh 查不出）
+        let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 60.0)
+        TimelineView(schedule) { context in
+            BurstCanvas(date: context.date, spawn: spawn)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// 全屏爆发粒子 Canvas 绘制层（v2.0.134 从 FullScreenBurst 提出，独立编译定位类型错误）。
+/// 确定性伪随机粒子：160 颗从球心（底部中央）向全屏飞散，先快后慢爆开感 + 平滑淡出。
+/// 性能：单位圆 Path 循环外建一次，循环内 translate/scale 变换复用（原每帧 320 次 Path 分配是掉帧主因）。
+struct BurstCanvas: View {
+    let date: Date
+    let spawn: Date
+
     /// 确定性伪随机（0-1），粒子参数稳定不闪烁
     private func hash(_ i: Int, _ salt: Int) -> Double {
         let v = sin(Double(i * 127 + salt * 311)) * 43758.5453
@@ -977,67 +996,60 @@ struct FullScreenBurst: View {
     }
 
     var body: some View {
-        // 全屏粒子爆发：锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
-        // v2.0.133g 修复 CI：TimelineView(.animation(minimumInterval:)) 内联字面量泛型推断失败
-        // （generic parameter 'Content' could not be inferred，check_swift.sh 查不出）——schedule 提为显式类型变量
-        let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 60.0)
-        TimelineView(schedule) { context in
-            let t = context.date.timeIntervalSince(spawn)
-            Canvas { ctx, size in
-                let w = size.width, h = size.height
-                let maxDim = max(w, h)
-                // 发射原点：底部中央（智能球位置，Dock 上方）
-                let origin = CGPoint(x: w / 2, y: h - 150)
-                // 1) 超大扩散波纹：3 层错相，扩散到屏尺寸的 0.9 倍后淡出
-                for i in 0..<3 {
-                    let p = (t * 2.2 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
-                    let radius = 24 + CGFloat(p) * maxDim * 0.9
-                    let alpha = 0.75 * pow(1 - p, 1.5)
-                    let ring = CGRect(x: origin.x - radius, y: origin.y - radius,
-                                      width: radius * 2, height: radius * 2)
-                    ctx.stroke(Path(ellipseIn: ring),
-                               with: .color(Color.indigo.opacity(alpha)),
-                               lineWidth: 2.2 * (1 - p) + 0.4)
+        let t = date.timeIntervalSince(spawn)
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
+            let maxDim = max(w, h)
+            // 发射原点：底部中央（智能球位置，Dock 上方）
+            let origin = CGPoint(x: w / 2, y: h - 150)
+            // 1) 超大扩散波纹：3 层错相，扩散到屏尺寸的 0.9 倍后淡出
+            for i in 0..<3 {
+                let p = (t * 2.2 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
+                let radius = 24 + CGFloat(p) * maxDim * 0.9
+                let alpha = 0.75 * pow(1 - p, 1.5)
+                let ring = CGRect(x: origin.x - radius, y: origin.y - radius,
+                                  width: radius * 2, height: radius * 2)
+                ctx.stroke(Path(ellipseIn: ring),
+                           with: .color(Color.indigo.opacity(alpha)),
+                           lineWidth: CGFloat(2.2 * (1 - p) + 0.4))
+            }
+            // 2) 粒子群：160 颗。v2.0.133 放烟花参数：
+            //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
+            //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
+            //    v2.0.133d：单位圆 Path 复用 + translate/scale 变换绘制（原每帧 320 次
+            //    Path(ellipseIn:) 对象分配是掉帧主因，现仅 1 个 Path 实例复用）
+            let colors: [Color] = [.blue, .indigo, .pink, .purple]
+            let unitDot = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
+            for i in 0..<160 {
+                let life = 0.7 + hash(i, 1) * 0.5
+                guard t < life else { continue }
+                let progress = t / life
+                let speed = 250 + hash(i, 2) * 400
+                let upBias = hash(i, 3) < 0.85
+                let angle: Double
+                if upBias {
+                    angle = .pi * (0.05 + hash(i, 4) * 0.9)   // 几乎覆盖整个上半球（5%-95%）
+                } else {
+                    angle = .pi * 2 * hash(i, 5)
                 }
-                // 2) 粒子群：160 颗。v2.0.133 放烟花参数：
-                //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
-                //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
-                //    v2.0.133d：单位圆 Path 复用 + translate/scale 变换绘制（原每帧 320 次
-                //    Path(ellipseIn:) 对象分配是掉帧主因，现仅 1 个 Path 实例复用）
-                let colors: [Color] = [.blue, .indigo, .pink, .purple]
-                let unitDot = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
-                for i in 0..<160 {
-                    let life = 0.7 + hash(i, 1) * 0.5
-                    guard t < life else { continue }
-                    let progress = t / life
-                    let speed = 250 + hash(i, 2) * 400
-                    let upBias = hash(i, 3) < 0.85
-                    let angle: Double
-                    if upBias {
-                        angle = .pi * (0.05 + hash(i, 4) * 0.9)   // 几乎覆盖整个上半球（5%-95%）
-                    } else {
-                        angle = .pi * 2 * hash(i, 5)
-                    }
-                    let dist = speed * t * (1 - 0.55 * progress)   // 减速 0.25→0.55：爆开初速快、末端近乎悬停
-                    let x = origin.x + CGFloat(cos(angle)) * dist
-                    let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
-                    let colorIdx = Int(hash(i, 6) * 4)
-                    let c = colors[colorIdx]
-                    let coreR = 2.0 + hash(i, 7) * 3.6
-                    let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
-                    // 光晕（大圆低透明）：缩放 3.5 倍单位圆
-                    ctx.saveGState()
-                    ctx.translateBy(x: x, y: y)
-                    ctx.scaleBy(x: coreR * 3.5, y: coreR * 3.5)
-                    ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
-                    // 核心（小圆高透明）：缩放 1 倍单位圆
-                    ctx.scaleBy(x: 1.0 / 3.5, y: 1.0 / 3.5)
-                    ctx.fill(unitDot, with: .color(c.opacity(alpha)))
-                    ctx.restoreGState()
-                }
+                let dist = speed * t * (1 - 0.55 * progress)   // 减速 0.25→0.55：爆开初速快、末端近乎悬停
+                let x = origin.x + CGFloat(cos(angle)) * dist
+                let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
+                let colorIdx = Int(hash(i, 6) * 4)
+                let c = colors[colorIdx]
+                let coreR = 2.0 + hash(i, 7) * 3.6
+                let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
+                // 光晕（大圆低透明）：缩放 3.5 倍单位圆（CGFloat 显式转换——GraphicsContext 参数是 CGFloat，Double 直传会类型错误）
+                ctx.saveGState()
+                ctx.translateBy(x: x, y: y)
+                ctx.scaleBy(x: CGFloat(coreR * 3.5), y: CGFloat(coreR * 3.5))
+                ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
+                // 核心（小圆高透明）：缩放 1 倍单位圆
+                ctx.scaleBy(x: 1.0 / 3.5, y: 1.0 / 3.5)
+                ctx.fill(unitDot, with: .color(c.opacity(alpha)))
+                ctx.restoreGState()
             }
         }
-        .allowsHitTesting(false)
     }
 }
 
