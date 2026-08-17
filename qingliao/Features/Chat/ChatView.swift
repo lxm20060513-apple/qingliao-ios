@@ -135,6 +135,8 @@ struct ChatView: View {
     @State private var voiceTooShort = false   // v2.0.102：录音太短提示
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
+    // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
+    @State private var showFullBurst = false
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -310,7 +312,14 @@ struct ChatView: View {
                         onVoiceModeToggle: { toggleVoiceMode(keyboardWasUp: kb.isVisible) },   // v2.0.109b：长按发送键保持键盘状态
                         transcribing: transcribing,   // v2.0.100：转换中动画
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
-                        onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) })   // v2.0.106/107：长按输入框进语音模式
+                        onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
+                        // v2.0.132：点击智能球 → 全屏粒子爆发（0.95s 后自动消失）
+                        onFullBurst: {
+                            showFullBurst = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+                                showFullBurst = false
+                            }
+                        })   // v2.0.106/107：长按输入框进语音模式
                         // v2.0.129：球态输入框 —— 绑定会话 id，切会话重建复位（展开态在切会话后回球态）
                         .id(chat.sessionId)
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
@@ -390,6 +399,16 @@ struct ChatView: View {
                 photoItem = nil
             }
         }
+        // v2.0.132：智能球点击 → 全屏粒子爆发（满屏散开，纯视觉不挡交互）
+        .overlay {
+            if showFullBurst {
+                FullScreenBurst()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: showFullBurst)
     }
 
     // MARK: - 消息列表

@@ -730,6 +730,8 @@ struct ChatInputBar: View {
     @State private var ballExpanded = false   // 球 → 输入框展开态（切会话由外层 .id() 重建复位）
     // v2.0.130：展开瞬间的炫酷爆发特效（扩散波纹 + 星点飞散）
     @State private var burst = false
+    // v2.0.132：点击球触发全屏粒子爆发（满屏散开）——由外层 ChatView 挂全屏特效层
+    var onFullBurst: () -> Void = {}
 
     var body: some View {
         Group {
@@ -741,13 +743,15 @@ struct ChatInputBar: View {
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
                                  onTap: {
-                                     // 转写中点击不响应（避免打断）
-                                     guard !transcribing else { return }
-                                     // v2.0.130：炫酷展开 —— 球心爆发（波纹+星点）→ 输入框从球心缩放展开
-                                     burst = true
-                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                                         burst = false
-                                     }
+                                                                     // 转写中点击不响应（避免打断）
+                                                                     guard !transcribing else { return }
+                                                                     // v2.0.130：炫酷展开 —— 球心爆发（波纹+星点）→ 输入框从球心缩放展开
+                                                                     // v2.0.132：同时触发全屏粒子爆发（满屏散开）
+                                                                     burst = true
+                                                                     onFullBurst()
+                                                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                                                                         burst = false
+                                                                     }
                                      withAnimation(.spring(duration: 0.5, bounce: 0.3)) {
                                          ballExpanded = true
                                      }
@@ -762,7 +766,7 @@ struct ChatInputBar: View {
                                  })
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 8)   // 球态视觉下沉一点
+                .padding(.bottom, 26)   // v2.0.132：球态再下沉（用户反馈位置偏高）
                 // v2.0.130：球移除 = 缩放放大 + 模糊淡出（配合爆发特效）
                 .transition(.scale(1.35).combined(with: .opacity).combined(with: .blurReplace))
                 // v2.0.130：爆发特效层（展开瞬间波纹扩散 + 星点飞散）
@@ -1009,7 +1013,93 @@ struct BurstEffect: View {
     }
 }
 
-// MARK: - v2.0.129 Siri 圆球输入（默认状态）
+// MARK: - v2.0.132 全屏爆发特效（点击智能球：满屏粒子散开）
+
+/// 点击智能球展开输入框时的全屏级爆发：粒子从球心（底部中央）向全屏飞散，
+/// 叠加超大扩散波纹 + 远处十字星芒闪烁。Canvas 逐帧绘制（90 粒子开销低），
+/// 无需外部状态驱动，触发方在 ~0.95s 后移除本层。
+struct FullScreenBurst: View {
+    @State private var spawn = Date()
+
+    /// 确定性伪随机（0-1），粒子参数稳定不闪烁
+    private func hash(_ i: Int, _ salt: Int) -> Double {
+        let v = sin(Double(i * 127 + salt * 311)) * 43758.5453
+        return v - v.rounded(.down)
+    }
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSince(spawn)
+            Canvas { ctx, size in
+                let w = size.width, h = size.height
+                let maxDim = max(w, h)
+                // 发射原点：底部中央（智能球位置，Dock 上方）
+                let origin = CGPoint(x: w / 2, y: h - 150)
+                // 1) 超大扩散波纹：3 层错相，扩散到屏尺寸的 0.9 倍后淡出
+                for i in 0..<3 {
+                    let p = (t * 2.2 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
+                    let radius = 24 + CGFloat(p) * maxDim * 0.9
+                    let alpha = 0.75 * pow(1 - p, 1.5)
+                    let ring = CGRect(x: origin.x - radius, y: origin.y - radius,
+                                      width: radius * 2, height: radius * 2)
+                    ctx.stroke(Path(ellipseIn: ring),
+                               with: .color(Color.indigo.opacity(alpha)),
+                               lineWidth: 2.2 * (1 - p) + 0.4)
+                }
+                // 2) 粒子群：90 颗，向全屏飞散（80% 上半球 + 20% 全向），微重力下拉
+                let colors: [Color] = [.blue, .indigo, .pink, .purple]
+                for i in 0..<90 {
+                    let life = 0.45 + hash(i, 1) * 0.45
+                    guard t < life else { continue }
+                    let progress = t / life
+                    let speed = 220 + hash(i, 2) * 520
+                    let upBias = hash(i, 3) < 0.8
+                    let angle: Double
+                    if upBias {
+                        angle = .pi * (0.15 + hash(i, 4) * 0.7)   // 上半球（π 单位内 15%-85%）
+                    } else {
+                        angle = .pi * 2 * hash(i, 5)
+                    }
+                    let dist = speed * t * (1 - 0.45 * progress)
+                    let x = origin.x + CGFloat(cos(angle)) * dist
+                    let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
+                    let colorIdx = Int(hash(i, 6) * 4)
+                    let c = colors[colorIdx]
+                    let coreR = 1.6 + hash(i, 7) * 3.2
+                    let alpha = 0.9 * (1 - progress)
+                    // 光晕（大圆低透明）+ 核心（小圆高透明），两层模拟粒子发光
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - coreR * 3.5, y: y - coreR * 3.5,
+                                                    width: coreR * 7, height: coreR * 7)),
+                             with: .color(c.opacity(alpha * 0.22)))
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
+                                                    width: coreR * 2, height: coreR * 2)),
+                             with: .color(c.opacity(alpha)))
+                }
+                // 3) 十字星芒：10 颗，中远距离散布，延迟出现 + 闪烁消失
+                for i in 0..<10 {
+                    let delay = 0.12 + hash(i, 8) * 0.25
+                    let dur = 0.3 + hash(i, 9) * 0.2
+                    guard t > delay, t < delay + dur else { continue }
+                    let p = (t - delay) / dur
+                    let spread = 0.32 + hash(i, 10) * 0.28
+                    let a = .pi * 2 * hash(i, 11)
+                    let cx = origin.x + CGFloat(cos(a)) * maxDim * CGFloat(spread)
+                    let cy = origin.y - CGFloat(sin(a)) * maxDim * CGFloat(spread) * 0.9
+                    let twinkle = sin(p * .pi)   // 0→1→0 闪烁
+                    let len = 7 + CGFloat(p) * 10
+                    var path = Path()
+                    path.move(to: CGPoint(x: cx - len, y: cy))
+                    path.addLine(to: CGPoint(x: cx + len, y: cy))
+                    path.move(to: CGPoint(x: cx, y: cy - len))
+                    path.addLine(to: CGPoint(x: cx, y: cy + len))
+                    ctx.stroke(path, with: .color(Color.white.opacity(twinkle * 0.85)),
+                               lineWidth: 1.1)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
 
 /// 多彩光晕圆球：TimelineView 驱动 AngularGradient 呼吸（复用 Siri 发光配色：蓝紫粉红淡雅）。
 /// 单击 → 展开输入框；长按 → 语音转文字（球保持特效）。
