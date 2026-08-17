@@ -764,7 +764,7 @@ struct ChatInputBar: View {
                 }
                 .padding(.bottom, 8)   // 球态视觉下沉一点
                 // v2.0.130：球移除 = 缩放放大 + 模糊淡出（配合爆发特效）
-                .transition(.scale(scale: 1.35).combined(with: .opacity).combined(with: .blurReplace))
+                .transition(.scale(1.35).combined(with: .opacity).combined(with: .blurReplace))
                 // v2.0.130：爆发特效层（展开瞬间波纹扩散 + 星点飞散）
                 .overlay {
                     if burst {
