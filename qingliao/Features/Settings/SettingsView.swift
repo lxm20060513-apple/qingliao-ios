@@ -1389,21 +1389,19 @@ struct AboutView: View {
 
             Divider().padding(.horizontal, 30)
 
-            VStack(alignment: .leading, spacing: 8) {
-                if isCloud {
-                    // v3.0.1：云端模式——直连大模型 API，无需本地服务器
-                    aboutRow("简介", "无需本地服务器的 AI 聊天助手——直连主流大模型 API，配置即用，数据全部保存在手机本地。")
-                    aboutRow("模型", "DeepSeek / Kimi / GLM / MiniMax / OpenAI 等 OpenAI 兼容服务多厂商接入")
-                    aboutRow("功能", "流式对话 · 语音输入 · 会话本地保存 · 天气查询")
-                    aboutRow("网络", "直连云端 API（Wi-Fi / 蜂窝均可）")
-                    aboutRow("架构", "SwiftUI 原生 · 轻聊 3.0 云端模式")
-                } else {
-                    aboutRow("简介", "连接自家 NAS 上 Hermes Agent 的 AI 智能助手——对话、读图、语音、知识库问答、Docker 部署与智能家居全掌控。")
-                    aboutRow("模型", "DeepSeek V4 / Kimi / StepFun 多模型聚合（OpenCode Go + 官方 API）")
-                    aboutRow("功能", "流式对话 · 语音对话（语音输入 + AI 朗读）· 图片理解 · 知识库检索 · 会话同步 · NAS 面板 · Docker 管理 · 智能家居 · 定时任务")
-                    aboutRow("网络", "iOS 27 蜂窝直连优化 + Safari Relay 兜底 · 公网 IPv6")
-                    aboutRow("架构", "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端（轻聊）")
-                }
+            VStack(alignment: .leading, spacing: 10) {
+                // v3.0.3：统一介绍框架——顶部 App 概述（两端一致），下方「当前模式」针对云端/本地分别说明
+                aboutRow("产品", "轻聊 —— 面向家庭的 AI 智能助手，SwiftUI 原生客户端，支持「本地 AI」与「云端 AI」两种形态，数据按模式本地保存。")
+                appModeRow(isCloud)
+                aboutRow("功能", isCloud
+                          ? "流式对话 · 语音输入 · 会话本地保存 · 天气查询"
+                          : "流式对话 · 语音对话 · 图片理解 · 知识库检索 · 会话同步 · NAS 面板 · Docker 管理 · 智能家居 · 定时任务")
+                aboutRow("模型", isCloud
+                          ? "DeepSeek / Kimi / GLM / MiniMax / OpenAI 等 OpenAI 兼容服务多厂商接入"
+                          : "DeepSeek V4 / Kimi / StepFun 多模型聚合（OpenCode Go + 官方 API）")
+                aboutRow("架构", isCloud
+                          ? "SwiftUI 原生 · 轻聊 3.0 云端模式 · 直连云端 API（Wi-Fi / 蜂窝均可）"
+                          : "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端（连接自家 NAS）")
             }
             .font(.system(size: 13))
             .padding(.horizontal, 24)
@@ -1415,6 +1413,16 @@ struct AboutView: View {
                 .padding(.bottom, 12)
         }
         .padding(.top, 22)
+    }
+
+    /// v3.0.3：当前模式行（云端/本地分别说明，含差异化介绍）
+    @ViewBuilder
+    private func appModeRow(_ cloud: Bool) -> some View {
+        if cloud {
+            aboutRow("当前模式", "云端 AI —— 无需本地服务器，直连主流大模型 API，配置即用，数据全部保存在手机本地。")
+        } else {
+            aboutRow("当前模式", "本地 AI —— 连接自家 NAS 上的 Hermes Agent，对话/读图/语音/知识库/智能家居全掌控。")
+        }
     }
 
     private func aboutRow(_ title: String, _ content: String) -> some View {
