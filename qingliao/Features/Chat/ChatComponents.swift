@@ -763,7 +763,7 @@ struct ChatInputBar: View {
                                  })
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 40)   // v2.0.132：球态下沉；v2.0.136：再下沉贴近 Dock（球底距 Dock 顶约 12pt）
+                .padding(.bottom, 12)   // v2.0.132：球态下沉；v2.0.137：下沉贴 Dock；v2.0.140：再下移贴近（球底距 Dock 顶约 12pt）
                 // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出
                 .transition(.scale(1.35).combined(with: .opacity))
             } else {
@@ -1008,8 +1008,8 @@ struct BurstCanvas: View {
             let w = size.width, h = size.height
             // v2.0.135：扩散波纹移出 Canvas（改隐式动画），v2.0.138：波纹层整体移除（仍卡顿），
             // 仅保留粒子绘制——160 颗小圆，绘制面积小
-            // 发射原点：底部中央（智能球位置，Dock 上方；v2.0.136 随球下沉同步 h-164）
-            let origin = CGPoint(x: w / 2, y: h - 164)
+            // 发射原点：底部中央（智能球位置，Dock 上方；v2.0.137 随球下沉同步 h-164；v2.0.140 球再下移同步 h-136）
+            let origin = CGPoint(x: w / 2, y: h - 136)
             // 粒子群：160 颗。v2.0.133 放烟花参数：
             //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
             //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
