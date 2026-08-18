@@ -96,17 +96,6 @@ struct RootView: View {
                 }
             }
 
-            // v3.0.2 fix：ModeSwitchBar 点「本地/云端」改 mode 后，同步登录 TabView 页码 + 复位会话语境
-            // （原 modeIndex 绑定 get/set 互相冲突 → 顶部 Tab 不跟随滑动）
-            .onChange(of: config.mode) { _, new in
-                if !auth.isLoggedIn {
-                    // 同步登录 TabView 当前页（云端=1 本地=0）
-                    loginPage = (new == .cloud) ? 1 : 0
-                }
-                // 会话串位根治：切模式清空 ChatStore 内存，从新模式 key 重读
-                chat.switchToMode()
-            }
-
             // v2.0.92：App 锁遮罩（已登录 + 开关开 + 未解锁时覆盖，splash 之下）
             if auth.isLoggedIn && appLockOn && !appUnlocked {
                 AppLockView {
@@ -133,6 +122,14 @@ struct RootView: View {
         }
         // v3.0.1：模式切换驱动登录页过渡动画（ModeSwitchBar 点击 → mode 变化 → 平滑滑动淡入）
         .animation(.spring(duration: 0.35, bounce: 0.18), value: config.mode)
+        // v3.0.3 fix：ModeSwitchBar 点「本地/云端」改 mode 后，同步登录 TabView 页码 + 复位会话语境
+        // （原挂在 if/else 上导致 onChange 无法解析 → 移到 View 链末尾）
+        .onChange(of: config.mode) { _, new in
+            if !auth.isLoggedIn {
+                loginPage = (new == .cloud) ? 1 : 0   // 同步登录 TabView 当前页
+            }
+            chat.switchToMode()   // 会话串位根治：切模式清空内存，从新模式 key 重读
+        }
         .task {
             // v2.0.43：登录态下上报上次崩溃（不阻塞启动）
             if auth.isLoggedIn {
