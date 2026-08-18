@@ -907,9 +907,14 @@ struct HADeviceSheet: View {
             .padding(12)
             .frame(minHeight: 92)
             // v2.0.87h：弹窗液态玻璃下卡片扁平化（去白圆角底，仅极轻底区分）
+            // v3.0.6 fix：卡片补描边（用户要求每个开关卡都描框）
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(isOn ? Color.accentColor.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(isOn ? 0.28 : 0.10), lineWidth: 0.8)
             )
         }
         .buttonStyle(.plain)

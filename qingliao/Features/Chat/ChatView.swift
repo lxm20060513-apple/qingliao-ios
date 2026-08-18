@@ -260,7 +260,10 @@ struct ChatView: View {
                     menuButton("doc.fill", "文件", Color.indigo, idx: 1) { showFileImporter = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     menuButton("bolt.fill", "指令", Color.orange, idx: 2) { showQuickPrompts = true }
-                    // v3.0.4：本地附件弹窗去掉「Hermes 捷径」（用户要求）
+                    // v3.0.6 fix：Hermes 捷径仅本地 AI 显示（云端无，遵循「本地有/云端无」）
+                    if !CloudConfig.shared.isCloudMode {
+                        menuButton("sparkles", "Hermes 捷径", Color.purple, idx: 3) { showHermesShortcut = true }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -384,7 +387,7 @@ struct ChatView: View {
         }
         // v2.0.43：快捷指令面板（点击填充输入框）
         .sheet(isPresented: $showQuickPrompts) {
-            QuickPromptSheet { prompt in
+            QuickPromptSheet(includeKB: !CloudConfig.shared.isCloudMode) { prompt in   // v3.0.6：知识库仅本地
                 inputText = prompt
                 showAttachmentMenu = false
             }
