@@ -15,6 +15,12 @@ struct CloudSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "设置")
+            // v3.0.3：模式切换（云端 ↔ 本地）——切换时退出登录回对应模式的登录页
+            ModeSwitchBar()
+                .padding(.bottom, 4)
+                .onChange(of: config.mode) { _, _ in
+                    auth.logout()   // 切模式 → 回登录页重新登录对应模式
+                }
             ScrollView {
                 VStack(spacing: 0) {
                     // 账号与安全（对齐本地分组）
