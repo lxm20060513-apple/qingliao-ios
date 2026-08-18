@@ -894,7 +894,10 @@ struct ChatView: View {
                         return
                     }
                     accumulated += chunk.contentDelta
-                    if !chunk.contentDelta.isEmpty {
+                    // v3.0.2 性能：节流更新——每积累 ~40 字符才刷新一次气泡（cloudUpsertDelta 替换
+                    // messages 数组元素会触发 LazyVStack 整列 diff，英文每字刷新 = 高速抖动卡顿主因），
+                    // 流结束（done）时必定强制刷新。
+                    if !chunk.contentDelta.isEmpty && (accumulated.count % 40 < chunk.contentDelta.count || chunk.done) {
                         cloudUpsertDelta(accumulated)   // 流式增量：更新最后一条 assistant（非追加）
                     }
                     if chunk.done {
@@ -902,6 +905,10 @@ struct ChatView: View {
                     }
                 }
                 guard chat.sessionId == startSid else { return }
+                // v3.0.2 性能：flow 结束（finish_reason break 可能漏掉最后节流段）→ 强制刷新完整内容
+                if !accumulated.isEmpty {
+                    cloudUpsertDelta(accumulated)
+                }
                 if accumulated.isEmpty {
                     chat.markFailed(id: msg.id)
                     chat.upsertAssistant("⚠️ 云端未返回内容")
