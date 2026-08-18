@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - v3.0 云端模式设置页：只保留云端相关（模型厂商/外观/关于），数据存 App 本地
+// v3.0.1：整体 UI 对齐本地 AI 设置页（SectionHeader + glassListCard + SettingRow 分组风格）
 
 struct CloudSettingsView: View {
     @Environment(AuthStore.self) private var auth
@@ -15,7 +16,15 @@ struct CloudSettingsView: View {
             PageHeader(title: "设置")
             ScrollView {
                 VStack(spacing: 0) {
-                    // 云端模型
+                    // 账号与安全（对齐本地分组）
+                    SectionHeader("账号与安全")
+                    VStack(spacing: 0) {
+                        SettingRow(icon: "person.crop.circle.fill", iconColor: .blue,
+                                   title: activeProviderName, value: "云端已连接")
+                    }
+                    .glassListCard()
+
+                    // 云端模型（对齐本地「连接与模型」卡片风格）
                     SectionHeader("云端模型")
                     VStack(spacing: 0) {
                         ForEach(config.providers) { p in
@@ -28,7 +37,7 @@ struct CloudSettingsView: View {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(p.name)
                                         .font(.system(size: 14, weight: .medium))
-                                    Text("\(p.model) · \(p.baseURL)")
+                                    Text("\(p.model) · \(shortURL(p.baseURL))")
                                         .font(.system(size: 10.5))
                                         .foregroundStyle(.tertiary)
                                         .lineLimit(1)
@@ -63,10 +72,10 @@ struct CloudSettingsView: View {
                     }
                     .glassListCard()
 
-                    // 外观
-                    SectionHeader("外观")
+                    // 外观与显示（对齐本地分组名）
+                    SectionHeader("外观与显示")
                     VStack(spacing: 0) {
-                        SettingRow(icon: "paintbrush.fill", iconColor: .pink, title: "外观设置", value: nil, chevron: true)
+                        SettingRow(icon: "paintbrush.fill", iconColor: .pink, title: "外观", value: appearanceSummary, chevron: true)
                             .onTapGesture { showAppearance = true }
                     }
                     .glassListCard()
@@ -79,7 +88,7 @@ struct CloudSettingsView: View {
                     }
                     .glassListCard()
 
-                    // 退出登录（切换模式/账号）
+                    // 退出登录（对齐本地红色退出按钮风格）
                     SectionHeader("")
                     Button {
                         confirmLogout = true
@@ -116,8 +125,26 @@ struct CloudSettingsView: View {
             AppearanceSheet()
         }
         .sheet(isPresented: $showAbout) {
-            AboutView()
+            AboutView(isCloud: true)   // v3.0.1：云端文案
         }
+    }
+
+    /// 当前生效厂商名（账号行显示）
+    private var activeProviderName: String {
+        config.providers.first(where: { $0.providerID == config.activeProviderID })?.name ?? "云端 AI"
+    }
+
+    /// 外观摘要（对齐本地 SettingRow 的 value 显示）
+    private var appearanceSummary: String {
+        let siri = UserDefaults.standard.bool(forKey: "qingliao_siri_glow") ? "发光开" : "发光关"
+        let ball = UserDefaults.standard.bool(forKey: "qingliao_ball_input") ? "智能球" : "输入框"
+        return "\(siri) · \(ball)"
+    }
+
+    private func shortURL(_ s: String) -> String {
+        s.replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "/v1", with: "")
     }
 }
 
