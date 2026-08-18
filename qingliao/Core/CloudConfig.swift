@@ -46,12 +46,14 @@ struct CloudProviderPreset: Identifiable {
 }
 
 /// 云端配置（单个厂商连接信息）
-struct CloudProviderConfig: Codable {
+struct CloudProviderConfig: Codable, Identifiable {
     var providerID: String      // 对应 preset id 或 "custom"
     var name: String
     var baseURL: String
     var apiKey: String
     var model: String
+
+    var id: String { providerID }   // v3.0: ForEach 需要 Identifiable
 }
 
 /// 云端配置存储（UserDefaults + Keychain）
