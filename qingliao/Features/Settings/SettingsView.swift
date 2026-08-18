@@ -6,8 +6,6 @@ import LocalAuthentication
 struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
     @AppStorage("qingliao_appearance") private var appearance = "system"   // dark/light/system（默认跟随系统）
-    // v3.0.3：模式切换（本地 ↔ 云端）——用 @State 持有 CloudConfig 观察 mode 变化
-    @State private var config = CloudConfig.shared
 
     // v2.0.83c：连接设置二级页（服务器地址/测试连接/会话存储位置收进二级）
     @State private var showConnSettings = false

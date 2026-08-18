@@ -858,14 +858,18 @@ struct ChatInputBar: View {
                     // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
                     //           → 改 simultaneousGesture 与系统手势共存触发
                     // v2.0.109b：onChanged（down 瞬间）记录键盘可见状态——键盘开=true 保持，关=false 收回
-                    // v3.0.4：云端无语音 → 输入框长按不触发语音转文字（保留系统默认长按）
-                    .simultaneousGesture(voiceEnabled ? AnyGesture(LongPressGesture(minimumDuration: 0.4)
-                        .onChanged { _ in
-                            pressKeyboardUp = kbEnv.isVisible
-                        }
-                        .onEnded { _ in
-                            onLongPressInput(pressKeyboardUp)
-                        }) : AnyGesture(SimultaneousGesture(LongPressGesture(minimumDuration: 9999), LongPressGesture(minimumDuration: 9999))))
+                    // v3.0.4 fix：云端无语音 → 输入框长按不触发语音转文字（保留系统默认长按）
+                    //           （用 .simultaneousGesture 里 if/else 各自挂同类型 LongPressGesture，规避泛型不一致）
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: voiceEnabled ? 0.4 : 3600)
+                            .onChanged { _ in
+                                pressKeyboardUp = kbEnv.isVisible
+                            }
+                            .onEnded { _ in
+                                guard voiceEnabled else { return }
+                                onLongPressInput(pressKeyboardUp)
+                            }
+                    )
                     .overlay {
                         if text.isEmpty {
                             if transcribing {
