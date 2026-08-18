@@ -40,6 +40,13 @@ struct CloudProviderPreset: Identifiable {
                             defaultModel: "gpt-4o-mini",
                             apiKeyHint: "sk-...",
                             supportsVision: true),   // v3.0.4：gpt-4o 系列支持视觉
+        // v3.0.4：商汤日日新 SenseNova（Token Plan 免费，OpenAI 兼容）
+        // 模型列表（fetchModels 动态拉）：sensenova-6.7-flash-lite / deepseek-v4-flash /
+        // glm-5.2 / sensenova-u1-fast / sensenova-6.8-flash-lite
+        CloudProviderPreset(id: "sensenova", name: "SenseNova(商汤)",
+                            baseURL: "https://token.sensenova.cn/v1",
+                            defaultModel: "deepseek-v4-flash",
+                            apiKeyHint: "sensenova.cn 控制台获取"),
         CloudProviderPreset(id: "custom", name: "自定义 (OpenAI 兼容)",
                             baseURL: "",
                             defaultModel: "",
