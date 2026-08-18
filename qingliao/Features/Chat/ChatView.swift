@@ -874,6 +874,9 @@ struct ChatView: View {
     private func startCloudStream(for msg: ChatMessage) {
         let startSid = chat.sessionId
         Task {
+            // v3.0.1 fix：defer 保证任何完成/失败/队列路径都释放发送锁
+            // （原实现漏释放 → 第二次发送被 sendingLock 拦截，无法发送）
+            defer { sendingLock = false }
             do {
                 let history = chat.historyPayload()
                 var accumulated = ""
