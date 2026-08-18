@@ -83,6 +83,10 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.138，2026-08-18）
+
+- **移除圆环波纹特效**：点智能球的"圈圈放大扩散"波纹在 60fps 下持续全屏放大插值仍卡顿（v2.0.135 改 Core Animation 隐式动画后依旧），按用户要求直接移除波纹层，只保留彩色粒子爆发——特效更轻，不再有卡顿感
+
 ## 🆕 近期变更（v2.0.137，2026-08-18）
 
 - **粒子爆发冲灵动岛**：点智能球的烟花粒子不再只在下半屏——粒子提速（480-950）提寿命（0.9-1.45s）+ 重力下拉减到 25pt，最大飞行距离约 826pt 能直冲屏幕顶部灵动岛；向上粒子占比 92%、扇形收窄更集中朝上
