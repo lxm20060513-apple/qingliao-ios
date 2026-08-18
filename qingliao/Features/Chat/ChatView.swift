@@ -260,8 +260,7 @@ struct ChatView: View {
                     menuButton("doc.fill", "文件", Color.indigo, idx: 1) { showFileImporter = true }
                     // v2.0.43：快捷指令（常用 prompt 模板）
                     menuButton("bolt.fill", "指令", Color.orange, idx: 2) { showQuickPrompts = true }
-                    // v2.0.96：Hermes 捷径（官方斜杠命令列表）
-                    menuButton("sparkles", "Hermes 捷径", Color.purple, idx: 3) { showHermesShortcut = true }
+                    // v3.0.4：本地附件弹窗去掉「Hermes 捷径」（用户要求）
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
