@@ -155,6 +155,9 @@ struct ChatView: View {
     }
 
     var body: some View {
+        // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确计算 bottom padding，
+        // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注）。
+        // 只保留手动控制，输入框精确贴键盘。
         VStack(spacing: 0) {
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
@@ -335,6 +338,10 @@ struct ChatView: View {
                      ? max(0, UIScreen.main.bounds.height - kb.topY)
                      : (hideDock ? 0 : 86))
         }
+        // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确算 bottom padding，
+        // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注：让红线长度=0）
+        // iOS 26+ 用 .keyboardAvoidance(.disabled)（.ignoresSafeArea(.keyboard) 在 iOS 26 已不生效）
+        .keyboardAvoidance(.disabled)
         .animation(.easeOut(duration: kb.animationDuration), value: kb.height)
         // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
         .alert("语音转文字不可用", isPresented: $voiceAuthFailed) {
