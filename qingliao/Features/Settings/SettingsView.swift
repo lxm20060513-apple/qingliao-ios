@@ -1132,6 +1132,12 @@ struct ModelSheet: View {
     @State private var opencodeAppleModels: [String] = []
     // v3.0.4：SenseNova（商汤）订阅模型（同步拉取）
     @State private var sensenovaModels: [String] = []
+    // v3.0.4：通用 provider 列表（后端 model-providers 聚合——新增 provider 免改版）
+    @State private var allProviders: [(id: String, models: [String])] = []
+    // v3.0.4：用户手动隐藏的 provider（存 UserDefaults，可恢复）
+    @State private var hiddenProviders: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_providers") ?? [])
+    // v3.0.4：用户手动隐藏的单个模型（"provider:model" 形式）
+    @State private var hiddenModels: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
     // v2.0.118：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
@@ -1255,6 +1261,30 @@ struct ModelSheet: View {
                     if !localInstalled.isEmpty {
                         groupSection("本地模型（断网兜底）", models: localInstalled.map { ($0, $0 + " · 本地", "local") })
                     }
+                    // v3.0.4：通用 provider 分组（后端聚合——新增 provider 免改版，自动出现）
+                    // 跳过已在上面硬编码渲染的 provider（避免重复），只渲染新增/未知的（如 xiaomi）
+                    ForEach(allProviders, id: \.id) { p in
+                        let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
+                        if !hardcoded.contains(p.id) && !hiddenProviders.contains(p.id) && !p.models.isEmpty {
+                            groupSection(providerDisplayName(p.id),
+                                         models: p.models.filter { !hiddenModels.contains("\(p.id):\($0)") }.map {
+                                         ($0, providerModelDisplayName(p.id, $0), p.id) },
+                                         onHideProvider: { toggleHideProvider(p.id) })
+                        }
+                    }
+                    // 管理隐藏的 provider（恢复入口）
+                    if !hiddenProviders.isEmpty {
+                        Button {
+                            hiddenProviders.removeAll()
+                            UserDefaults.standard.set(Array(hiddenProviders), forKey: "qingliao_hidden_providers")
+                        } label: {
+                            Text("恢复全部隐藏的模型组")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(.bottom, 8)
             }
@@ -1287,20 +1317,70 @@ struct ModelSheet: View {
             if let sn = UserDefaults.standard.array(forKey: "qingliao_models_sensenova") as? [String] {
                 sensenovaModels = sn
             }
+            // v3.0.4：恢复已隐藏 provider/模型
+            hiddenProviders = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_providers") ?? [])
+            hiddenModels = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
+            // v3.0.4：首次打开自动拉取通用 provider 列表（免手动同步）
+            if allProviders.isEmpty {
+                Task { await loadAllProviders() }
+            }
         }
     }
 
-    /// 分组标题 + 模型行
-    private func groupSection(_ group: String, models: [(String, String, String)]) -> some View {
+    /// 分组标题 + 模型行（v3.0.4：可选 onHideProvider 显示分组隐藏按钮）
+    private func groupSection(_ group: String, models: [(String, String, String)],
+                              onHideProvider: (() -> Void)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(group)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
+            HStack {
+                Text(group)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let onHideProvider {
+                    Button {
+                        onHideProvider()
+                    } label: {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.leading, 4)
             ForEach(models, id: \.0) { m in
                 modelRow(id: m.0, name: m.1, provider: m.2)
             }
         }
+    }
+
+    /// v3.0.4：provider 显示名（已知映射用中文名，未知用 id）
+    private func providerDisplayName(_ id: String) -> String {
+        switch id {
+        case "opencode": return "opencode（google）"
+        case "opencode-apple": return "opencode（apple）"
+        case "stepfun": return "stepfun"
+        case "deepseek": return "deepseek（官方）"
+        case "sensenova": return "sensenova（商汤）"
+        case "xiaomi": return "xiaomi（小米）"
+        case "local": return "本地模型（断网兜底）"
+        default: return id
+        }
+    }
+
+    /// v3.0.4：provider 内模型显示名（复用现有映射，未知用 id）
+    private func providerModelDisplayName(_ pid: String, _ model: String) -> String {
+        switch pid {
+        case "opencode", "opencode-apple": return opencodeNames[model] ?? model
+        case "sensenova": return sensenovaNames[model] ?? model
+        default: return model
+        }
+    }
+
+    /// v3.0.4：隐藏一个 provider 分组（存 UserDefaults，可"恢复全部"）
+    private func toggleHideProvider(_ id: String) {
+        hiddenProviders.insert(id)
+        UserDefaults.standard.set(Array(hiddenProviders), forKey: "qingliao_hidden_providers")
     }
 
     private func modelRow(id: String, name: String, provider: String) -> some View {
@@ -1381,11 +1461,13 @@ struct ModelSheet: View {
                 opencodeAppleModels = oa
                 UserDefaults.standard.set(oa, forKey: "qingliao_models_opencode_apple")
             }
+            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
             if let sn {
                 sensenovaModels = sn
                 UserDefaults.standard.set(sn, forKey: "qingliao_models_sensenova")
             }
-            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
+            // v3.0.4：通用拉取全部 provider（含新增，免改版）
+            await loadAllProviders()
             syncing = false
         }
     }
@@ -1395,6 +1477,25 @@ struct ModelSheet: View {
               (j["ok"] as? Bool) == true,
               let list = j["models"] as? [String] else { return nil }
         return list
+    }
+
+    /// v3.0.4：通用拉取所有 provider + 模型（后端聚合接口——新 provider 免改版，自动出现）
+    private func loadAllProviders() async {
+        guard let j = try? await auth.json("/api/stream/model-providers?with_models=1"),
+              (j["ok"] as? Bool) == true,
+              let plist = j["providers"] as? [[String: Any]] else { return }
+        var result: [(id: String, models: [String])] = []
+        for p in plist {
+            guard let id = p["id"] as? String else { continue }
+            let models = (p["models"] as? [String]) ?? []
+            // 未知 provider 的模型，通过单独 sync-models 补充（聚合可能因 key 缺失返回空）
+            var m = models
+            if m.isEmpty, let extra = await fetchModels(id) {
+                m = extra
+            }
+            result.append((id: id, models: m))
+        }
+        allProviders = result
     }
 }
 
