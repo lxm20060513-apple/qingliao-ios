@@ -135,7 +135,9 @@ final class CloudBackend {
                         if let err = obj["error"] as? [String: Any] {
                             let msg = err["message"] as? String ?? "未知错误"
                             continuation.yield(CloudStreamChunk(error: msg))
-                            break
+                            // v3.0.5 review fix：error 后直接 finish，避免循环外再 yield(done:true) 双 chunk 语义重复
+                            continuation.finish()
+                            return
                         }
                         if let choices = obj["choices"] as? [[String: Any]],
                            let first = choices.first {

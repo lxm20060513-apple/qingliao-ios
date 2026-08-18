@@ -152,12 +152,15 @@ final class CloudConfig {
     private func loadProviders() {
         if let data = defaults.data(forKey: providersKey),
            let list = try? JSONDecoder().decode([CloudProviderConfig].self, from: data) {
-            providers = list
+            // v3.0.5 review fix：从 UserDefaults 取出一律视为无 key（key 只在 Keychain），
+            providers = list.map { var c = $0; c.apiKey = ""; return c }
         }
     }
 
     private func saveProviders() {
-        if let data = try? JSONEncoder().encode(providers) {
+        // v3.0.5 review fix（安全）：落盘前清空 apiKey——key 只存 Keychain，UserDefaults 绝不落明文
+        let sanitized = providers.map { var c = $0; c.apiKey = ""; return c }
+        if let data = try? JSONEncoder().encode(sanitized) {
             defaults.set(data, forKey: providersKey)
         }
     }
