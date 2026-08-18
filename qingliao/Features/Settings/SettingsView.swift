@@ -79,12 +79,6 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "设置")
-            // v3.0.3：模式切换（本地 ↔ 云端）——切换时退出登录回对应模式的登录页
-            ModeSwitchBar()
-                .padding(.bottom, 4)
-                .onChange(of: config.mode) { _, _ in
-                    auth.logout()   // 切模式 → 回登录页重新登录对应模式
-                }
             ScrollView {
                 VStack(spacing: 0) {
                     // 账号与安全
@@ -569,26 +563,37 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                         }
-                        Divider().padding(.leading, 52)
-                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "2.0", chevron: true)
-                            .onTapGesture { showAbout = true }
-                        Divider().padding(.leading, 52)
-                        Button {
-                            auth.logout()
-                        } label: {
-                            HStack {
-                                Spacer()
-                                Text("退出登录")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.red)
-                                Spacer()
-                            }
-                            .padding(.vertical, 13)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
                     }
                     .glassListCard()
+
+                    // v3.0.4：关于 + 退出登录独立卡片（对齐云端设置页风格；退出登录用胶囊图标）
+                    SectionHeader("关于")
+                    VStack(spacing: 0) {
+                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: nil, chevron: true)
+                            .onTapGesture { showAbout = true }
+                    }
+                    .glassListCard()
+
+                    SectionHeader("")
+                    Button {
+                        auth.logout()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("退出登录")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(
+                            Color.red.opacity(0.10),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)

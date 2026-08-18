@@ -15,12 +15,6 @@ struct CloudSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "设置")
-            // v3.0.3：模式切换（云端 ↔ 本地）——切换时退出登录回对应模式的登录页
-            ModeSwitchBar()
-                .padding(.bottom, 4)
-                .onChange(of: config.mode) { _, _ in
-                    auth.logout()   // 切模式 → 回登录页重新登录对应模式
-                }
             ScrollView {
                 VStack(spacing: 0) {
                     // 账号与安全（对齐本地分组）
@@ -93,23 +87,28 @@ struct CloudSettingsView: View {
                     // 关于
                     SectionHeader("关于")
                     VStack(spacing: 0) {
-                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: "v3.0.0", chevron: true)
+                        // v3.0.4：关于行不显示版本号（统一在弹窗内显示）
+                        SettingRow(icon: "info.circle.fill", iconColor: .gray, title: "关于轻聊", value: nil, chevron: true)
                             .onTapGesture { showAbout = true }
                     }
                     .glassListCard()
 
-                    // 退出登录（对齐本地红色退出按钮风格）
+                    // v3.0.4：退出登录胶囊图标（对齐本地设置页样式）
                     SectionHeader("")
                     Button {
                         confirmLogout = true
                     } label: {
-                        Text("退出登录（返回模式选择）")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.red)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        HStack(spacing: 6) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("退出登录")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.red.opacity(0.10),
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .confirmationDialog("退出登录？", isPresented: $confirmLogout, titleVisibility: .visible) {
