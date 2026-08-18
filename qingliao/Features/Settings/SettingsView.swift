@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var showTasks = false
     @State private var showLogs = false
     @State private var showAppearanceOptions = false
+    @State private var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
     @State private var scrollPos = ScrollPosition()
     @State private var showModelSheet = false
     @State private var showAbout = false
@@ -373,7 +374,7 @@ struct SettingsView: View {
                     SectionHeader("外观与显示")
                     VStack(spacing: 0) {
                         SettingRow(icon: "circle.lefthalf.filled", iconColor: .purple, title: "外观", value: appearanceName, chevron: true)
-                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAppearanceOptions.toggle() } }
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAppearance = true } }   // v3.0.4：与云端统一弹窗
                         if showAppearanceOptions {
                             // 内联三选（非弹窗）
                             HStack(spacing: 8) {
@@ -604,6 +605,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showPasswordSheet) {
             PasswordSheet()
                 .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showAppearance) {
+            // v3.0.4：外观弹窗（与云端共用同一组件，样式统一）
+            AppearanceSheet()
         }
         .sheet(isPresented: $showTasks) {
             TasksView()

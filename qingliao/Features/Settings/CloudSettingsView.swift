@@ -180,6 +180,10 @@ struct AppearanceSheet: View {
     @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
     @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
     @AppStorage("qingliao_siri_glow_width") private var glowWidth = 22.0
+    // v3.0.4：补全本地外观独有项（输入框流光 / 天气城市）
+    @AppStorage("qingliao_input_glow") private var glowOn = true
+    @State private var weatherCity = UserDefaults.standard.string(forKey: "qingliao_weather_city") ?? ""
+    @State private var showWeatherCityField = false
 
     var body: some View {
         NavigationStack {
@@ -196,6 +200,7 @@ struct AppearanceSheet: View {
                 // 交互
                 Section("交互") {
                     Toggle("智能球输入", isOn: $ballInput)
+                    Toggle("输入框流光光效", isOn: $glowOn)   // v3.0.4：补全本地独有项
                     Toggle("Dock 栏", isOn: $hideDock)
                         .onChange(of: hideDock) { _, on in
                             if on {
@@ -246,6 +251,36 @@ struct AppearanceSheet: View {
                         Slider(value: $aiLineSpacing, in: 0...6, step: 0.5)
                             .tint(Color.accentColor)
                         Text("宽松").font(.system(size: 16)).foregroundStyle(.secondary)
+                    }
+                }
+                // 天气（v3.0.4：补全本地外观独有项）
+                Section("天气") {
+                    HStack {
+                        Text("天气城市")
+                            .font(.system(size: 15))
+                        Spacer()
+                        Text(weatherCity.isEmpty ? "未设置" : weatherCity)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    if showWeatherCityField {
+                        HStack(spacing: 10) {
+                            TextField("如：上海 / 北京", text: $weatherCity)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                            Button("保存") {
+                                UserDefaults.standard.set(weatherCity.trimmingCharacters(in: .whitespaces), forKey: "qingliao_weather_city")
+                                showWeatherCityField = false
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        }
+                    } else {
+                        Button("设置城市") {
+                            withAnimation(.easeOut(duration: 0.2)) { showWeatherCityField = true }
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
                     }
                 }
             }
