@@ -9,6 +9,7 @@ struct CloudSettingsView: View {
     @State private var showAddSheet = false
     @State private var showAppearance = false
     @State private var showAbout = false
+    @State private var showCloudModels = false   // v3.0.2：云端模型管理列表
     @State private var confirmLogout = false
 
     var body: some View {
@@ -69,6 +70,9 @@ struct CloudSettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "plus.circle.fill", iconColor: .blue, title: "添加/编辑厂商", chevron: true)
                             .onTapGesture { showAddSheet = true }
+                        Divider().padding(.leading, 52)
+                        SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: activeProviderModel, chevron: true)
+                            .onTapGesture { showCloudModels = true }   // v3.0.2：列出当前 API 可用模型
                     }
                     .glassListCard()
 
@@ -124,6 +128,9 @@ struct CloudSettingsView: View {
         .sheet(isPresented: $showAppearance) {
             AppearanceSheet()
         }
+        .sheet(isPresented: $showCloudModels) {
+            CloudModelsSheet()
+        }
         .sheet(isPresented: $showAbout) {
             AboutView(isCloud: true)   // v3.0.1：云端文案
         }
@@ -132,6 +139,11 @@ struct CloudSettingsView: View {
     /// 当前生效厂商名（账号行显示）
     private var activeProviderName: String {
         config.providers.first(where: { $0.providerID == config.activeProviderID })?.name ?? "云端 AI"
+    }
+
+    /// 当前生效厂商的默认模型（模型管理行 value 显示）
+    private var activeProviderModel: String {
+        config.providers.first(where: { $0.providerID == config.activeProviderID })?.model ?? ""
     }
 
     /// 外观摘要（对齐本地 SettingRow 的 value 显示）
@@ -268,5 +280,135 @@ struct AppearanceSheet: View {
             Text(suffix(value.wrappedValue)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 46, alignment: .trailing)
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - v3.0.2 云端模型管理（列出当前 API 可用模型，对齐本地模型管理面板）
+
+struct CloudModelsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var config = CloudConfig.shared
+    @State private var models: [String] = []
+    @State private var loading = true
+    @State private var errorText: String?
+    @State private var selectedModel = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 在线状态 + 厂商
+                HStack(spacing: 5) {
+                    Circle().fill(loading ? Color.orange : Color.green).frame(width: 7, height: 7)
+                    Text(loading ? "加载中..." : "\(config.activeConfig?.name ?? "云端") 在线")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+                Divider().padding(.vertical, 8)
+
+                if loading {
+                    VStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("获取模型列表…")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+                } else if let e = errorText {
+                    VStack(spacing: 10) {
+                        Text("⚠️ \(e)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                        Button("重试") { Task { await load() } }
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.top, 60)
+                } else {
+                    // 模型列表
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(models, id: \.self) { m in
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(m)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundStyle(selectedModel == m ? Color.accentColor : Color.primary)
+                                        Text(m == config.activeConfig?.model ? "当前模型" : "可用")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    if selectedModel == m {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedModel = m
+                                }
+                                if m != models.last {
+                                    Divider().padding(.leading, 16)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 12)
+                    }
+                }
+            }
+            .navigationTitle("模型管理")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        // 保存选中的模型到当前厂商配置
+                        if !selectedModel.isEmpty, var c = config.activeConfig {
+                            c.model = selectedModel
+                            config.saveProvider(c)
+                        }
+                        dismiss()
+                    }
+                    .disabled(selectedModel.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        errorText = nil
+        selectedModel = config.activeConfig?.model ?? ""
+        let (ids, err) = await CloudBackend.shared.fetchModels()
+        if let err {
+            errorText = err
+        } else {
+            models = ids
+            // 若当前模型不在列表，取第一个
+            if !models.contains(selectedModel), let first = models.first {
+                selectedModel = first
+            }
+        }
+        loading = false
     }
 }

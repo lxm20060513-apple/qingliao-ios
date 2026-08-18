@@ -164,6 +164,31 @@ final class CloudBackend {
         }
     }
 
+    /// 拉取当前 API 可用模型列表（OpenAI 兼容 /models 端点）——对齐本地模型管理
+    func fetchModels() async -> ([String], String?) {
+        guard let config = CloudConfig.shared.activeConfig,
+              !config.baseURL.isEmpty, !config.apiKey.isEmpty,
+              let url = URL(string: config.baseURL + "/models") else {
+            return ([], "云端模型未配置")
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
+        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, resp) = try await session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let arr = obj["data"] as? [[String: Any]] else {
+                return ([], "无法获取模型列表 (HTTP \(code))")
+            }
+            let ids = arr.compactMap { $0["id"] as? String }.sorted()
+            return (ids, nil)
+        } catch {
+            return ([], "无法连接：\(error.localizedDescription)")
+        }
+    }
+
     /// 非流式单次对话（用于标题生成等）
     func simpleChat(messages: [[String: Any]], maxTokens: Int = 30) async -> String? {
         guard let config = CloudConfig.shared.activeConfig, config.isValidForChat,
