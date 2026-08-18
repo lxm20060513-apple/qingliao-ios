@@ -12,16 +12,19 @@ final class ChatStore {
 
     private let defaults = UserDefaults.standard
     // v3.0.1 fix：云端/本地会话 id 用不同 key 隔离（原共用一个 key → 切模式串 sessionId）
+    // 注意：init 里不能访问 self.sessionKey（sessionId 未初始化会报 'self' used before init），
+    // 因此 init 内直接判断 CloudConfig.shared（静态单例，不依赖 self）
     private var sessionKey: String {
         CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
     }
 
     init() {
-        if let saved = defaults.string(forKey: sessionKey), !saved.isEmpty {
+        let key = CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
+        if let saved = defaults.string(forKey: key), !saved.isEmpty {
             sessionId = saved
         } else {
             sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
-            defaults.set(sessionId, forKey: sessionKey)
+            defaults.set(sessionId, forKey: key)
         }
     }
 
