@@ -33,6 +33,9 @@ struct CloudStreamChunk {
 final class CloudBackend {
     static let shared = CloudBackend()
 
+    // v3.0.2：云端流式进行中标记（驱动 Siri 边框发光等 isStreaming 相关 UI）
+    var isStreaming = false
+
     private var session: URLSession
 
     init() {

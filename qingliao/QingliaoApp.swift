@@ -61,6 +61,14 @@ struct RootView: View {
     @Environment(StreamClient.self) private var stream   // v2.0.87bd：Siri 发光读取流式状态
     // v3.0：@Observable 单例必须 @State 持有，body 才能观察 mode 变化（否则分支切换不响应）
     @State private var config = CloudConfig.shared
+    // v3.0.2：登录页 TabView 页码（0=本地AI 1=云端AI），与 config.mode 双向同步
+    @State private var loginPage: Int = 0
+    private var modeIndex: Binding<Int> {
+        Binding(
+            get: { config.isCloudMode ? 1 : 0 },
+            set: { loginPage = $0 }
+        )
+    }
     @State private var showSplash = true
     // v2.0.92：App 锁（启动 Face ID 验证；与 Face ID 登录相互独立）
     @AppStorage("qingliao_app_lock") private var appLockOn = false
@@ -68,20 +76,24 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            // v3.0 登录门禁：按模式分流——本地 AI 走现有 LoginView，云端 AI 走 CloudLoginView
-            // v3.0.1：加滑动+淡入过渡（ModeSwitchBar 切换时平滑过渡，原直接替换生硬）
+            // v3.0.2 登录门禁：TabView paging——左右滑动切换本地/云端 AI 登录页
+            // selection 绑定模式索引：0=本地AI 1=云端AI，滑到哪页 mode 跟随切换
             if auth.isLoggedIn {
                 DockTabView()
-            } else if config.isCloudMode {
-                CloudLoginView()
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)))
             } else {
-                LoginView()
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)))
+                TabView(selection: modeIndex) {
+                    LoginView()
+                        .tag(0)
+                    CloudLoginView()
+                        .tag(1)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .ignoresSafeArea()
+                .onChange(of: modeIndex.wrappedValue) { _, new in
+                    // 滑动切换 → 同步模式
+                    if new == 0 && config.isCloudMode { config.setMode(.local) }
+                    else if new == 1 && !config.isCloudMode { config.setMode(.cloud) }
+                }
             }
 
             // v2.0.92：App 锁遮罩（已登录 + 开关开 + 未解锁时覆盖，splash 之下）
@@ -101,7 +113,9 @@ struct RootView: View {
             }
 
             // v2.0.87bh：AI 回答时 Siri 边框发光（回退顶层 zIndex——下层方案被 DockTabView 背景盖住）
-            if stream.isStreaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
+            // v3.0.2：云端模式也会触发（CloudBackend.isStreaming）；原只看 stream.isStreaming（云端永不 true → 发光失效）
+            let streaming = stream.isStreaming || CloudBackend.shared.isStreaming
+            if streaming && UserDefaults.standard.bool(forKey: "qingliao_siri_glow") {
                 SiriGlowOverlay()
                     .zIndex(20)
             }

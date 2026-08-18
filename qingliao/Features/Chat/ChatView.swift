@@ -873,10 +873,14 @@ struct ChatView: View {
     /// 云端模式回答：直连 OpenAI 兼容端点，逐段追加 assistant 内容
     private func startCloudStream(for msg: ChatMessage) {
         let startSid = chat.sessionId
+        CloudBackend.shared.isStreaming = true   // v3.0.2：标记云端流式进行中（驱动 Siri 发光）
         Task {
             // v3.0.1 fix：defer 保证任何完成/失败/队列路径都释放发送锁
             // （原实现漏释放 → 第二次发送被 sendingLock 拦截，无法发送）
-            defer { sendingLock = false }
+            defer {
+                sendingLock = false
+                CloudBackend.shared.isStreaming = false   // v3.0.2：流结束复位
+            }
             do {
                 let history = chat.historyPayload()
                 var accumulated = ""

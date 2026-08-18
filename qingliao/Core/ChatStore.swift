@@ -11,7 +11,10 @@ final class ChatStore {
     var title = ""
 
     private let defaults = UserDefaults.standard
-    private let sessionKey = "qingliao_current_session"
+    // v3.0.1 fix：云端/本地会话 id 用不同 key 隔离（原共用一个 key → 切模式串 sessionId）
+    private var sessionKey: String {
+        CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
+    }
 
     init() {
         if let saved = defaults.string(forKey: sessionKey), !saved.isEmpty {
@@ -115,10 +118,17 @@ final class ChatStore {
         }
     }
 
-    /// 保存会话到后端（POST /api/sessions/merge）
+    /// 保存会话（v3.0.1：按模式分流——云端写本地 CloudSessionStore 文件，本地走后端）
+    /// 本地模式：POST /api/sessions/merge（2.0 原逻辑）
+    /// 云端模式：写 App 本地文档（防云端会话串进本地 AI 后端 sessions）
     /// 图片消息降级为文本（不带 base64 data URL，防 sessions.json 膨胀；历史重放本就不渲染图片）
     func saveToServer(auth: AuthStore) async {
         guard !messages.isEmpty else { return }
+        // v3.0.1 fix：云端模式会话存本地文件，绝不写后端（否则串到本地 AI）
+        if CloudConfig.shared.isCloudMode {
+            CloudSessionStore.shared.saveChat(store: self)
+            return
+        }
         let msgs: [[String: Any]] = messages.map { m in
             var content = m.content
             if m.imageDataURL != nil {

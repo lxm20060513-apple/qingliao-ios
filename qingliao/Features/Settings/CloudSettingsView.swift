@@ -148,18 +148,17 @@ struct CloudSettingsView: View {
     }
 }
 
-// MARK: - 云端模式外观设置（复用本地外观参数，仅保留外观相关项）
+// MARK: - 云端模式外观设置（v3.0.2 完全对齐本地 AI 外观：主题/字体大小/行高/Siri发光/Dock/智能球）
 
 struct AppearanceSheet: View {
     @Environment(\.dismiss) private var dismiss
+    // v3.0.2：全部用本地真实 key + 本地交互（主题用 qingliao_appearance，字体用 qingliao_font_size）
+    @AppStorage("qingliao_appearance") private var appearance = "system"   // dark/light/system（对齐本地主题）
+    @AppStorage("qingliao_font_size") private var fontSize = 15.0          // 12-20 聊天字体（对齐本地）
+    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0  // AI 输出行高
     @AppStorage("qingliao_siri_glow") private var siriGlow = false
     @AppStorage("qingliao_ball_input") private var ballInput = true
-    // v3.0.1 fix：Dock 开关 key 用本地真实 key qingliao_hide_dock（原 qingliao_show_dock 不存在→开关无效）
-    // 语义与本地一致：hideDock=true = 隐藏 Dock
     @AppStorage("qingliao_hide_dock") private var hideDock = false
-    @AppStorage("qingliao_font_scale") private var fontScale = 1.0
-    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
-    // v3.0.1：Siri 发光自定义参数（与本地 AI 外观设置一致，4 项）
     @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
     @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
     @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
@@ -168,10 +167,19 @@ struct AppearanceSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                // 主题模式（对齐本地 appearanceOption 三段选择）
+                Section("主题") {
+                    HStack(spacing: 10) {
+                        appearanceOption("浅色", value: "light")
+                        appearanceOption("深色", value: "dark")
+                        appearanceOption("跟随系统", value: "system")
+                    }
+                    .padding(.vertical, 4)
+                }
+                // 交互
                 Section("交互") {
                     Toggle("智能球输入", isOn: $ballInput)
                     Toggle("Dock 栏", isOn: $hideDock)
-                        // v3.0.1：与本地 AI 一致，联动 DockVisibility 立即生效
                         .onChange(of: hideDock) { _, on in
                             if on {
                                 DockVisibility.shared.forceHidden = true
@@ -181,33 +189,46 @@ struct AppearanceSheet: View {
                                 DockVisibility.shared.reset()
                             }
                         }
-                    // v2.0.46：隐藏 Dock 时输入框贴底（本地 ChatView 读取 hideDock），无额外项
                 }
+                // AI 回答发光（对齐本地 Siri 发光 4 参数）
                 Section("AI 回答发光") {
                     Toggle("Siri 边框发光", isOn: $siriGlow)
                     if siriGlow {
-                        sliderRow("亮度", value: $glowBrightness, range: 0.2...1.5, format: "%.0f%%", suffix: { String(format: "%.0f%%", $0 * 100) })
-                        sliderRow("呼吸频率", value: $glowFreq, range: 0.5...6.0, format: "%.1f", suffix: { String(format: "%.1f", $0) })
-                        sliderRow("呼吸幅度", value: $glowAmp, range: 0...0.4, format: "%.2f", suffix: { String(format: "%.2f", $0) })
-                        sliderRow("光带范围", value: $glowWidth, range: 10...44, format: "%.0fpt", suffix: { String(format: "%.0fpt", $0) })
+                        sliderRow("亮度", value: $glowBrightness, range: 0.2...1.5, suffix: { String(format: "%.0f%%", $0 * 100) })
+                        sliderRow("呼吸频率", value: $glowFreq, range: 0.5...6.0, suffix: { String(format: "%.1f", $0) })
+                        sliderRow("呼吸幅度", value: $glowAmp, range: 0...0.4, suffix: { String(format: "%.2f", $0) })
+                        sliderRow("光带范围", value: $glowWidth, range: 10...44, suffix: { String(format: "%.0fpt", $0) })
                     }
                 }
-                Section("字体") {
+                // 文本（对齐本地：字体大小滑条 + AI 行高滑条）
+                Section("文本") {
                     HStack {
-                        Text("字体大小")
+                        Text("聊天字体大小")
+                            .font(.system(size: 15))
                         Spacer()
-                        Text(String(format: "%.0f%%", fontScale * 100))
+                        Text("\(Int(fontSize))")
+                            .font(.system(size: 13))
                             .foregroundStyle(.secondary)
-                        Stepper("", value: $fontScale, in: 0.85...1.4, step: 0.05)
-                            .labelsHidden()
+                    }
+                    HStack(spacing: 10) {
+                        Text("小").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Slider(value: $fontSize, in: 12...20, step: 1)
+                            .tint(Color.accentColor)
+                        Text("大").font(.system(size: 16)).foregroundStyle(.secondary)
                     }
                     HStack {
                         Text("AI 输出行高")
+                            .font(.system(size: 15))
                         Spacer()
                         Text(String(format: "%.1f", aiLineSpacing))
+                            .font(.system(size: 13))
                             .foregroundStyle(.secondary)
-                        Stepper("", value: $aiLineSpacing, in: 0...6, step: 0.5)
-                            .labelsHidden()
+                    }
+                    HStack(spacing: 10) {
+                        Text("紧凑").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Slider(value: $aiLineSpacing, in: 0...6, step: 0.5)
+                            .tint(Color.accentColor)
+                        Text("宽松").font(.system(size: 16)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -221,8 +242,26 @@ struct AppearanceSheet: View {
         }
     }
 
+    /// 主题选项（对齐本地 appearanceOption：选中高亮段）
+    private func appearanceOption(_ name: String, value: String) -> some View {
+        Button {
+            appearance = value
+        } label: {
+            Text(name)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(appearance == value ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(appearance == value ? Color.accentColor : Color(uiColor: .systemGray5))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>,
-                           format: String, suffix: @escaping (Double) -> String) -> some View {
+                           suffix: @escaping (Double) -> String) -> some View {
         HStack(spacing: 10) {
             Text(title).font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
             Slider(value: value, in: range).tint(Color.accentColor)

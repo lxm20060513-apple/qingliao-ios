@@ -113,11 +113,31 @@ struct SelectableTextLabel: UIViewRepresentable {
             return buildMenu(for: nsRange, in: textView)
         }
 
-        /// 自定义编辑菜单：复制/引用/分享/大爆炸/选择文本/重新生成/撤回/删除
+        /// 自定义编辑菜单：复制选中/复制整段/引用/分享/大爆炸/选择文本/重新生成/撤回/删除
         private func buildMenu(for range: NSRange, in textView: UITextView) -> UIMenu {
             var children: [UIMenuElement] = []
 
-            children.append(UIAction(title: "复制", image: UIImage(systemName: "doc.on.doc")) { _ in
+            // v3.0.2 fix：区分「复制选中」和「复制整段」——选中文字后点复制应只复制选区，
+            // 之前一律走 onCopy() 复制整段（用户 bug：选中几个字却复制全文）。
+            // 有实际选区 → 复制选中文本；无选区（长按空白/未选中）→ 复制整段。
+            let hasSelection = !range.length.isZero && textView.selectedTextRange != nil
+            children.append(UIAction(title: hasSelection ? "复制选中" : "复制",
+                                     image: UIImage(systemName: "doc.on.doc")) { _ in
+                if hasSelection {
+                    // 复制当前选中文本（精确选区）
+                    if let selected = textView.selectedTextRange,
+                       let text = textView.text(in: selected),
+                       !text.isEmpty {
+                        UIPasteboard.general.string = text
+                    } else {
+                        self.parent.onCopy()   // 兜底整段
+                    }
+                } else {
+                    self.parent.onCopy()   // 整段复制
+                }
+            })
+            // v3.0.2：始终提供「复制整段」（AI 长回复整段复制）
+            children.append(UIAction(title: "复制整段", image: UIImage(systemName: "doc.on.doc.fill")) { _ in
                 self.parent.onCopy()
             })
             children.append(UIAction(title: "引用", image: UIImage(systemName: "quote.opening")) { _ in
