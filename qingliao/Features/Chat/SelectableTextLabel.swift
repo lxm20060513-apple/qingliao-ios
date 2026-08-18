@@ -120,7 +120,7 @@ struct SelectableTextLabel: UIViewRepresentable {
             // v3.0.2 fix：区分「复制选中」和「复制整段」——选中文字后点复制应只复制选区，
             // 之前一律走 onCopy() 复制整段（用户 bug：选中几个字却复制全文）。
             // 有实际选区 → 复制选中文本；无选区（长按空白/未选中）→ 复制整段。
-            let hasSelection = !range.length.isZero && textView.selectedTextRange != nil
+            let hasSelection = range.length != 0 && textView.selectedTextRange != nil
             children.append(UIAction(title: hasSelection ? "复制选中" : "复制",
                                      image: UIImage(systemName: "doc.on.doc")) { _ in
                 if hasSelection {
