@@ -59,6 +59,7 @@ struct QingliaoApp: App {
 struct RootView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(StreamClient.self) private var stream   // v2.0.87bd：Siri 发光读取流式状态
+    @Environment(ChatStore.self) private var chat   // v3.0.2：模式切换时要复位会话语境
     // v3.0：@Observable 单例必须 @State 持有，body 才能观察 mode 变化（否则分支切换不响应）
     @State private var config = CloudConfig.shared
     // v3.0.2：登录页 TabView 页码（0=本地AI 1=云端AI），与 config.mode 双向同步
@@ -77,11 +78,10 @@ struct RootView: View {
     var body: some View {
         ZStack {
             // v3.0.2 登录门禁：TabView paging——左右滑动切换本地/云端 AI 登录页
-            // selection 绑定模式索引：0=本地AI 1=云端AI，滑到哪页 mode 跟随切换
             if auth.isLoggedIn {
                 DockTabView()
             } else {
-                TabView(selection: modeIndex) {
+                TabView(selection: $loginPage) {
                     LoginView()
                         .tag(0)
                     CloudLoginView()
@@ -89,11 +89,22 @@ struct RootView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .ignoresSafeArea()
-                .onChange(of: modeIndex.wrappedValue) { _, new in
-                    // 滑动切换 → 同步模式
+                // 滑动到哪页 → 同步模式（loginPage 是真页码，滑动即改）
+                .onChange(of: loginPage) { _, new in
                     if new == 0 && config.isCloudMode { config.setMode(.local) }
                     else if new == 1 && !config.isCloudMode { config.setMode(.cloud) }
                 }
+            }
+
+            // v3.0.2 fix：ModeSwitchBar 点「本地/云端」改 mode 后，同步登录 TabView 页码 + 复位会话语境
+            // （原 modeIndex 绑定 get/set 互相冲突 → 顶部 Tab 不跟随滑动）
+            .onChange(of: config.mode) { _, new in
+                if !auth.isLoggedIn {
+                    // 同步登录 TabView 当前页（云端=1 本地=0）
+                    loginPage = (new == .cloud) ? 1 : 0
+                }
+                // 会话串位根治：切模式清空 ChatStore 内存，从新模式 key 重读
+                chat.switchToMode()
             }
 
             // v2.0.92：App 锁遮罩（已登录 + 开关开 + 未解锁时覆盖，splash 之下）

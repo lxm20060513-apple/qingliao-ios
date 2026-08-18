@@ -546,6 +546,17 @@ struct BotCard: View {
     // v2.0.50：模型/提供商动态读取（设置切换后实时刷新）
     @AppStorage("qingliao_model") private var modelName = "deepseek-v4-flash"
     @AppStorage("qingliao_provider") private var provider = "opencode"
+    // v3.0.2 fix：云端 AI 会话头像模型应显示「设置→模型管理」选的模型（存 CloudConfig，非 qingliao_model）
+    @State private var cloudConfig = CloudConfig.shared
+
+    // 按模式取当前模型：云端读 CloudConfig.activeConfig，本地读 qingliao_model
+    private var displayModel: String {
+        if CloudConfig.shared.isCloudMode {
+            let c = CloudConfig.shared.activeConfig
+            return "\(c?.name ?? "云端")/\(c?.model ?? "未选")"
+        }
+        return "\(provider)/\(modelName)"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -562,7 +573,8 @@ struct BotCard: View {
                 Text("轻聊 agent")
                     .font(.system(size: 15, weight: .semibold))
                 // v2.0.50：模型名动态显示（之前硬编码，设置切模型不刷新）
-                Text("\(provider)/\(modelName)")
+                // v3.0.2：云端模式显示 CloudConfig 选中模型
+                Text(displayModel)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
             }

@@ -36,6 +36,22 @@ final class ChatStore {
         defaults.set(sessionId, forKey: sessionKey)
     }
 
+    /// v3.0.2 fix（会话串位根治）：模式切换时调用——清空当前模式的内存数据，
+    /// 并按**新模式的 key** 重新读取当前会话 id。原实现：ChatStore 是全局单例，
+    /// 切模式不复位 → 云端聊天时内存里还带本地 messages → 界面串位。
+    func switchToMode() {
+        let key = CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
+        if let saved = defaults.string(forKey: key), !saved.isEmpty {
+            sessionId = saved
+        } else {
+            sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
+            defaults.set(sessionId, forKey: key)
+        }
+        title = ""
+        messages = []
+        highlightTarget = nil
+    }
+
     /// 新会话
     func newSession() {
         sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
