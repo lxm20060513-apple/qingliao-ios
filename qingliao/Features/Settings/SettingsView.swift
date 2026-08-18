@@ -1112,6 +1112,8 @@ struct ModelSheet: View {
     @State private var deepseekModels: [String] = []
     // v2.0.131：opencode Go 订阅模型（同步拉取，本地预置作兜底——修复"刷新不全"）
     @State private var opencodeModels: [String] = []
+    // v2.0.140：opencode-apple 第二组订阅（google/apple 双 key 共存，同步拉取）
+    @State private var opencodeAppleModels: [String] = []
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
     // v2.0.118：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
@@ -1206,7 +1208,11 @@ struct ModelSheet: View {
 
             ScrollView {
                 VStack(spacing: 12) {
-                    groupSection("opencode", models: opencodeDisplay.map { ($0.0, $0.1, "opencode") })
+                    groupSection("opencode（google）", models: opencodeDisplay.map { ($0.0, $0.1, "opencode") })
+                    if !opencodeAppleModels.isEmpty {
+                        // v2.0.140：第二组 opencode 订阅（apple），同名模型按 provider 区分勾选
+                        groupSection("opencode（apple）", models: opencodeAppleModels.map { ($0, opencodeNames[$0] ?? $0, "opencode-apple") })
+                    }
                     if !deepseekModels.isEmpty {
                         // v2.0.83：官方 API 分组标注（与 opencode 的 deepseek 区分）
                         groupSection("deepseek（官方）", models: deepseekModels.map { ($0, $0, "deepseek") })
@@ -1241,6 +1247,10 @@ struct ModelSheet: View {
             // v2.0.131：恢复 opencode 同步结果（修复"刷新不全"——之前从不拉取 opencode）
             if let o = UserDefaults.standard.array(forKey: "qingliao_models_opencode") as? [String] {
                 opencodeModels = o
+            }
+            // v2.0.140：恢复第二组 opencode（apple）同步结果
+            if let a = UserDefaults.standard.array(forKey: "qingliao_models_opencode_apple") as? [String] {
+                opencodeAppleModels = a
             }
         }
     }
@@ -1316,6 +1326,8 @@ struct ModelSheet: View {
             let d = await fetchModels("deepseek")
             // v2.0.132：同步 opencode Go 订阅模型（修复"刷新不全"——之前从不拉取）
             let o = await fetchModels("opencode")
+            // v2.0.140：同步第二组 opencode（apple）订阅
+            let oa = await fetchModels("opencode-apple")
             if let s {
                 stepfunModels = s
                 UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
@@ -1328,7 +1340,11 @@ struct ModelSheet: View {
                 opencodeModels = o
                 UserDefaults.standard.set(o, forKey: "qingliao_models_opencode")
             }
-            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
+            if let oa {
+                opencodeAppleModels = oa
+                UserDefaults.standard.set(oa, forKey: "qingliao_models_opencode_apple")
+            }
+            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
             syncing = false
         }
     }
