@@ -1,6 +1,7 @@
 import SwiftUI
+import LocalAuthentication
 
-// MARK: - v3.0 云端模式登录页：厂商选择 + API Key 配置 + 测试连接
+// MARK: - v3.0 云端模式登录页：厂商选择 + API Key 配置 + 测试连接 + Face ID 一键登录
 // 数据全部存 App 本地（配置 UserDefaults + key Keychain），不依赖任何服务器
 
 struct CloudLoginView: View {
@@ -10,6 +11,8 @@ struct CloudLoginView: View {
     @State private var testResult: String?
     @State private var showAddSheet = false
     @State private var selectedID = CloudConfig.shared.activeProviderID
+    // v3.0.2：Face ID 一键登录
+    @State private var faceIDEnabled = UserDefaults.standard.object(forKey: "qingliao_faceid_login") as? Bool ?? true
 
     var body: some View {
         ZStack {
@@ -154,6 +157,27 @@ struct CloudLoginView: View {
                 .padding(.top, 8)
                 .disabled(!config.isConfigured)
 
+                // v3.0.2：Face ID 一键登录（配置已在手机本地 → 验证通过直接进入）
+                if faceIDEnabled && config.isConfigured {
+                    Button {
+                        authenticateWithFaceID()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "faceid")
+                                .font(.system(size: 15))
+                            Text("Face ID 登录")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 10)
+                }
+
                 Spacer()
                 Spacer()
             }
@@ -173,6 +197,25 @@ struct CloudLoginView: View {
     private func displayURL(_ s: String) -> String {
         s.replacingOccurrences(of: "https://", with: "")
             .replacingOccurrences(of: "/v1", with: "")
+    }
+
+    /// v3.0.2：Face ID 验证 → 通过直接进入（云端配置已在手机本地 Keychain，无需重输）
+    private func authenticateWithFaceID() {
+        let context = LAContext()
+        context.localizedReason = "验证身份以登录轻聊云端"
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            // 无 Face ID/Touch ID → 提示走手动
+            return
+        }
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "验证身份以登录轻聊云端") { success, _ in
+            DispatchQueue.main.async {
+                if success {
+                    auth.isLoggedIn = true
+                    UserDefaults.standard.set(true, forKey: "qingliao_logged_in")
+                }
+            }
+        }
     }
 }
 
