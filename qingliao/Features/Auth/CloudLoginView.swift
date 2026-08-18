@@ -269,8 +269,11 @@ struct CloudProviderSheet: View {
                 Section {
                     Button("保存") {
                         let id = custom ? "custom-\(UUID().uuidString.prefix(6))" : presetID
+                        // v3.0.4：从预设继承视觉支持（OpenAI 默认模型支持视觉，其余 false）
+                        let presetVision = CloudProviderPreset.presets.first(where: { $0.id == presetID })?.supportsVision ?? false
                         onSave(CloudProviderConfig(providerID: id, name: name.isEmpty ? "自定义" : name,
-                                                   baseURL: baseURL, apiKey: apiKey, model: model))
+                                                   baseURL: baseURL, apiKey: apiKey, model: model,
+                                                   supportsVision: presetVision))
                         dismiss()
                     }
                     .disabled(name.isEmpty || baseURL.isEmpty || model.isEmpty || apiKey.isEmpty)

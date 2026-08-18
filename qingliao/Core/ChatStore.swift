@@ -126,12 +126,18 @@ final class ChatStore {
     /// 发送请求用的历史消息（payload 形态）
     /// 只保留最后一条带图消息的 imageDataURL（前面已发过的图片不进 payload，防 base64 全量重复膨胀）
     func historyPayload() -> [[String: Any]] {
-        // v2.0.81：多图视觉——所有图片消息保留 image_url 内容块（原逻辑只发最后一张图的图，
-        // 其余图片消息 content 被覆盖为纯文本；改为全部图片都让 AI 可见）
+        // v3.0.4 fix：云端模式若当前厂商不支持视觉 → 图片消息降级为纯文本「[图片]」
+        //（否则 DeepSeek 等纯文本模型收到 `image_url` content 块会返回 400
+        //  "unknown variant image_url, expected text"——用户实测报错）
+        let visionOK = !CloudConfig.shared.isCloudMode || (CloudConfig.shared.activeConfig?.supportsVision ?? false)
         return messages.map { m in
             var p = m.asPayload()
             if m.imageDataURL == nil {
                 p["content"] = m.content
+            } else if !visionOK {
+                // 不支持视觉 → 图片降级为文本（内容 + [图片] 标记）
+                let t = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                p["content"] = t.isEmpty ? "[图片]" : t + "\n[图片]"
             }
             return p
         }

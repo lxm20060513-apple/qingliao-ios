@@ -16,6 +16,7 @@ struct CloudProviderPreset: Identifiable {
     let baseURL: String      // 默认 base_url
     let defaultModel: String // 默认模型
     let apiKeyHint: String   // key 格式提示
+    var supportsVision: Bool = false   // v3.0.4：默认模型是否支持视觉
 
     static let presets: [CloudProviderPreset] = [
         CloudProviderPreset(id: "deepseek", name: "DeepSeek",
@@ -37,7 +38,8 @@ struct CloudProviderPreset: Identifiable {
         CloudProviderPreset(id: "openai", name: "OpenAI",
                             baseURL: "https://api.openai.com/v1",
                             defaultModel: "gpt-4o-mini",
-                            apiKeyHint: "sk-..."),
+                            apiKeyHint: "sk-...",
+                            supportsVision: true),   // v3.0.4：gpt-4o 系列支持视觉
         CloudProviderPreset(id: "custom", name: "自定义 (OpenAI 兼容)",
                             baseURL: "",
                             defaultModel: "",
@@ -52,6 +54,7 @@ struct CloudProviderConfig: Codable, Identifiable {
     var baseURL: String
     var apiKey: String
     var model: String
+    var supportsVision: Bool = false   // v3.0.4：是否支持视觉（图片降级判断）
 
     var id: String { providerID }   // v3.0: ForEach 需要 Identifiable
 }
