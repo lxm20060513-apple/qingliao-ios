@@ -316,9 +316,10 @@ struct ChatView: View {
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
                         // v2.0.132：点击智能球 → 全屏粒子爆发（v2.0.133b：粒子寿命延至 1.2s 放烟花闪烁，特效层同步延长）
+                        // v2.0.137：粒子寿命上限提至 1.45s，特效层同步延长到 1.55s
                         onFullBurst: {
                             showFullBurst = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
                                 showFullBurst = false
                             }
                         })   // v2.0.106/107：长按输入框进语音模式

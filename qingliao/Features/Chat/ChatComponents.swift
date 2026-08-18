@@ -763,7 +763,7 @@ struct ChatInputBar: View {
                                  })
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 26)   // v2.0.132：球态再下沉（用户反馈位置偏高）
+                .padding(.bottom, 40)   // v2.0.132：球态下沉；v2.0.136：再下沉贴近 Dock（球底距 Dock 顶约 12pt）
                 // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出
                 .transition(.scale(1.35).combined(with: .opacity))
             } else {
@@ -982,7 +982,7 @@ struct FullScreenBurst: View {
             let w = geo.size.width
             let h = geo.size.height
             let maxDim = max(w, h)
-            let origin = CGPoint(x: w / 2, y: h - 150)
+            let origin = CGPoint(x: w / 2, y: h - 164)   // v2.0.136：随球下沉同步（球心 86+40+36）
             ZStack {
                 // 1) 超大扩散波纹：3 层错相，Core Animation 隐式动画（repeatForever 循环扩散）
                 //    周期 0.4545s（原 Canvas p = t*2.2 % 1），错相 0.12s，淡出至 0 后跳回起点
@@ -1032,30 +1032,32 @@ struct BurstCanvas: View {
             let w = size.width, h = size.height
             // v2.0.135：扩散波纹已移出 Canvas（改 FullScreenBurst 的 Core Animation 隐式动画，
             // GPU 合成零逐帧重绘）——原每帧 stroke 3 个全屏大椭圆是卡顿主因
-            // 发射原点：底部中央（智能球位置，Dock 上方）
-            let origin = CGPoint(x: w / 2, y: h - 150)
+            // 发射原点：底部中央（智能球位置，Dock 上方；v2.0.136 随球下沉同步 h-164）
+            let origin = CGPoint(x: w / 2, y: h - 164)
             // 粒子群：160 颗。v2.0.133 放烟花参数：
             //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
             //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
             //    v2.0.133d：单位圆 Path 复用 + translate/scale 变换绘制（原每帧 320 次
             //    Path(ellipseIn:) 对象分配是掉帧主因，现仅 1 个 Path 实例复用）
+            //    v2.0.137：粒子提速（480-950）提寿命（0.9-1.45s）+ 减重力下拉（70→25），
+            //    最大飞行距离 ~826pt 可冲到灵动岛/屏幕顶，不再只在下半屏；向上粒子占比 92%
             let colors: [Color] = [.blue, .indigo, .pink, .purple]
             let unitDot = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
             for i in 0..<160 {
-                let life = 0.7 + hash(i, 1) * 0.5
+                let life = 0.9 + hash(i, 1) * 0.55
                 guard t < life else { continue }
                 let progress = t / life
-                let speed = 250 + hash(i, 2) * 400
-                let upBias = hash(i, 3) < 0.85
+                let speed = 480 + hash(i, 2) * 470
+                let upBias = hash(i, 3) < 0.92
                 let angle: Double
                 if upBias {
-                    angle = .pi * (0.05 + hash(i, 4) * 0.9)   // 几乎覆盖整个上半球（5%-95%）
+                    angle = .pi * (0.08 + hash(i, 4) * 0.84)   // 收窄朝上扇形（8%-92%），直冲顶部灵动岛
                 } else {
                     angle = .pi * 2 * hash(i, 5)
                 }
                 let dist = speed * t * (1 - 0.55 * progress)   // 减速 0.25→0.55：爆开初速快、末端近乎悬停
                 let x = origin.x + CGFloat(cos(angle)) * dist
-                let y = origin.y - CGFloat(sin(angle)) * dist + 70 * CGFloat(progress * progress)
+                let y = origin.y - CGFloat(sin(angle)) * dist + 25 * CGFloat(progress * progress)
                 let colorIdx = Int(hash(i, 6) * 4)
                 let c = colors[colorIdx]
                 let coreR = 2.0 + hash(i, 7) * 3.6
