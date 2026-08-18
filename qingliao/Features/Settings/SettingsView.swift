@@ -1461,13 +1461,14 @@ struct ModelSheet: View {
                 opencodeAppleModels = oa
                 UserDefaults.standard.set(oa, forKey: "qingliao_models_opencode_apple")
             }
-            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
             if let sn {
                 sensenovaModels = sn
                 UserDefaults.standard.set(sn, forKey: "qingliao_models_sensenova")
             }
             // v3.0.4：通用拉取全部 provider（含新增，免改版）
             await loadAllProviders()
+            // v3.0.4 fix：syncResult 放在所有赋值之后，计数才准确（原在 sn 赋值前显示=旧值0）
+            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
             syncing = false
         }
     }
