@@ -939,7 +939,9 @@ struct ChatInputBar: View {
         // v2.0.96：语音转文字模式同样开启 Siri 流光
         .overlay {
             if (streaming || voiceMode) && UserDefaults.standard.bool(forKey: "qingliao_input_glow") {
-                TimelineView(.animation) { context in
+                // v2.0.139 性能：流光 60→30fps（旋转渐变肉眼无差，重绘开销减半）
+                let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 30.0)
+                TimelineView(schedule) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let angle = (t * 70).truncatingRemainder(dividingBy: 360)
                     // 内部流光：Siri 淡雅蓝紫粉红旋转（87 版效果）
@@ -1017,7 +1019,9 @@ struct BurstCanvas: View {
             //    最大飞行距离 ~826pt 可冲到灵动岛/屏幕顶，不再只在下半屏；向上粒子占比 92%
             let colors: [Color] = [.blue, .indigo, .pink, .purple]
             let unitDot = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
-            for i in 0..<160 {
+            // v2.0.139 性能：160→120 颗（-25% fill），且光晕大圆只对半数粒子绘制（-50% 光晕 fill），
+            // 每帧绘制调用 320 → ~180（-44%）；视觉密度几乎无差（小粒子光晕本就淡）
+            for i in 0..<120 {
                 let life = 0.9 + hash(i, 1) * 0.55
                 guard t < life else { continue }
                 let progress = t / life
@@ -1036,14 +1040,18 @@ struct BurstCanvas: View {
                 let c = colors[colorIdx]
                 let coreR = 2.0 + hash(i, 7) * 3.6
                 let alpha = 0.9 * (1 - progress)   // 平滑淡出（v2.0.133c：去掉 twinkle 闪烁）
-                // 光晕（大圆低透明）：缩放 3.5 倍单位圆（CGFloat 显式转换——GraphicsContext 参数是 CGFloat，Double 直传会类型错误）
                 // 注：GraphicsContext 无 saveGState/restoreGState（那是 CGContext API），保存/恢复 transform 等效
                 let savedTransform = ctx.transform
                 ctx.translateBy(x: x, y: y)
-                ctx.scaleBy(x: CGFloat(coreR * 3.5), y: CGFloat(coreR * 3.5))
-                ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
-                // 核心（小圆高透明）：缩放 1 倍单位圆
-                ctx.scaleBy(x: 1.0 / 3.5, y: 1.0 / 3.5)
+                // 光晕（大圆低透明）只对半数粒子绘制（hash<0.5），减半 fill 次数
+                if hash(i, 8) < 0.5 {
+                    ctx.scaleBy(x: CGFloat(coreR * 3.5), y: CGFloat(coreR * 3.5))
+                    ctx.fill(unitDot, with: .color(c.opacity(alpha * 0.22)))
+                    ctx.transform = savedTransform
+                    ctx.translateBy(x: x, y: y)
+                }
+                // 核心（小圆高透明）：缩放 1 倍单位圆（CGFloat 显式转换——GraphicsContext 参数是 CGFloat，Double 直传会类型错误）
+                ctx.scaleBy(x: CGFloat(coreR), y: CGFloat(coreR))
                 ctx.fill(unitDot, with: .color(c.opacity(alpha)))
                 ctx.transform = savedTransform
             }
@@ -1086,7 +1094,7 @@ struct SiriBallView: View {
                    .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
                    .blue.opacity(0.85 * breathe)]
             ZStack {
-                // 外发光（虚化光晕）
+                // 外发光（虚化光晕）v2.0.139 性能：blur 8→6（blur 开销随半径超线性，视觉几乎无差）
                 Circle()
                     .fill(
                         AngularGradient(
@@ -1094,8 +1102,8 @@ struct SiriBallView: View {
                             center: .center
                         )
                     )
-                    .blur(radius: 8)
-                    .frame(width: 88, height: 88)
+                    .blur(radius: 6)
+                    .frame(width: 84, height: 84)
                 // 主体球（v2.0.130：72pt = 与首页"你好，我是轻聊" Logo 同尺寸）
                 Circle()
                     .fill(
