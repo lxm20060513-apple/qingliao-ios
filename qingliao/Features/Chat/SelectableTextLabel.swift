@@ -75,22 +75,12 @@ struct SelectableTextLabel: UIViewRepresentable {
     // SwiftUI 用 intrinsicContentSize 布局时宽度未定，UITextView 按单行宽度算高度 → 多行被裁。
     // sizeThatFits 拿到提案宽度后精确计算换行高度；宽度始终占满容器（防换行错乱断句）。
     // 🚨 防 .infinity 提案：宽度为无穷时 UITextView 按单行换行算高度 → 仍会裁切，须钳制到气泡最大宽。
-    // v3.0.2 fix：气泡应随文字宽度自适应（不总是满条）——单行短文本按内容宽收缩，
-    // 多行/长文本用满容器宽。用文本高度 vs 一行高度判断是否需要换行宽度。
+    // v3.0.4 fix：移除 singleLine 动态宽度分支——它导致流式时单行/多行切换 → 气泡宽度+排版
+    // 每帧跳变（"字时大时小"）；统一满容器宽，气泡收缩交给外层 .fixedSize(horizontal:) 处理。
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let maxWidth = UIScreen.main.bounds.width - 60   // 消息块水平 padding 后的可用宽
         let w = proposal.width ?? maxWidth
         let width = w.isFinite ? min(max(w, 1), maxWidth) : maxWidth
-        // 判断是否单行：一行内容是否超过容器宽？
-        // 一行宽 = 用最大宽度排版的高度 == 单行高度 → 短文本，返回内容实际宽度（自适应收缩）
-        let singleLine = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).height <= uiView.font?.lineHeight ?? 20
-        if singleLine {
-            // 单行短文本：宽度贴合内容（+ 少量 padding），不撑满
-            let contentWidth = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width
-            let resultW = min(max(contentWidth + 8, 1), maxWidth)
-            let h = uiView.sizeThatFits(CGSize(width: resultW, height: .greatestFiniteMagnitude)).height
-            return CGSize(width: resultW, height: h)
-        }
         let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         return CGSize(width: width, height: size.height)
     }
