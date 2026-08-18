@@ -79,6 +79,22 @@ struct MessageBlockView: View {
     // v2.0.128：AI 图片点击打开大图（传图片 URL/data URL）
     var onImageTap: (String) -> Void = { _ in }
 
+    // v3.0.2 性能：缓存 markdown 渲染结果——流式每段更新 parent.messages 会触发子视图重算，
+    // 若每次 body 都 MarkdownRenderer.render() 重新解析，长文本/流式下是滚动+更新卡顿主因。
+    // 用 @State 缓存 + 内容指纹：文本/字号未变 → 复用已渲染的 NSAttributedString。
+    @State private var cachedKey = ""
+    @State private var cachedAttr: NSAttributedString? = nil
+
+    /// 渲染并缓存 markdown（内容指纹：文本+字号）
+    private func cachedRender(_ text: String) -> NSAttributedString {
+        let key = "\(text.hashValue)|\(fontSize)"
+        if key != cachedKey || cachedAttr == nil {
+            cachedKey = key
+            cachedAttr = NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize)))
+        }
+        return cachedAttr ?? NSAttributedString(string: text)
+    }
+
     /// 代码块/表格共用的 SwiftUI 长按菜单（与原气泡级菜单项一致）
     @ViewBuilder
     private var bubbleMenu: some View {
@@ -127,8 +143,9 @@ struct MessageBlockView: View {
         switch block.kind {
         case .markdown(let text):
             // v2.0.125：UITextView 渲染 —— 长按文字弹菜单，点「选择文本」从手按位置选中可拖动
+            // v3.0.2 性能：用 cachedRender 缓存 markdown 渲染结果（避免流式/滚动反复重解析）
             SelectableTextLabel(
-                attributedText: NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize))),
+                attributedText: cachedRender(text),
                 fallbackColor: .label,
                 lineSpacingFromSettings: true,   // v2.0.130：AI 消息行距实时读设置
                 onCopy: onCopy,
