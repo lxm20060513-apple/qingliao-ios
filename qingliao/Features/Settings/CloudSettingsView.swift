@@ -127,16 +127,43 @@ struct AppearanceSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("qingliao_siri_glow") private var siriGlow = false
     @AppStorage("qingliao_ball_input") private var ballInput = true
-    @AppStorage("qingliao_show_dock") private var showDock = true
+    // v3.0.1 fix：Dock 开关 key 用本地真实 key qingliao_hide_dock（原 qingliao_show_dock 不存在→开关无效）
+    // 语义与本地一致：hideDock=true = 隐藏 Dock
+    @AppStorage("qingliao_hide_dock") private var hideDock = false
     @AppStorage("qingliao_font_scale") private var fontScale = 1.0
+    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
+    // v3.0.1：Siri 发光自定义参数（与本地 AI 外观设置一致，4 项）
+    @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
+    @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
+    @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
+    @AppStorage("qingliao_siri_glow_width") private var glowWidth = 22.0
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("交互") {
                     Toggle("智能球输入", isOn: $ballInput)
-                    Toggle("Siri 发光", isOn: $siriGlow)
-                    Toggle("显示底部 Dock", isOn: $showDock)
+                    Toggle("Dock 栏", isOn: $hideDock)
+                        // v3.0.1：与本地 AI 一致，联动 DockVisibility 立即生效
+                        .onChange(of: hideDock) { _, on in
+                            if on {
+                                DockVisibility.shared.forceHidden = true
+                                DockVisibility.shared.hidden = true
+                            } else {
+                                DockVisibility.shared.forceHidden = false
+                                DockVisibility.shared.reset()
+                            }
+                        }
+                    // v2.0.46：隐藏 Dock 时输入框贴底（本地 ChatView 读取 hideDock），无额外项
+                }
+                Section("AI 回答发光") {
+                    Toggle("Siri 边框发光", isOn: $siriGlow)
+                    if siriGlow {
+                        sliderRow("亮度", value: $glowBrightness, range: 0.2...1.5, format: "%.0f%%", suffix: { String(format: "%.0f%%", $0 * 100) })
+                        sliderRow("呼吸频率", value: $glowFreq, range: 0.5...6.0, format: "%.1f", suffix: { String(format: "%.1f", $0) })
+                        sliderRow("呼吸幅度", value: $glowAmp, range: 0...0.4, format: "%.2f", suffix: { String(format: "%.2f", $0) })
+                        sliderRow("光带范围", value: $glowWidth, range: 10...44, format: "%.0fpt", suffix: { String(format: "%.0fpt", $0) })
+                    }
                 }
                 Section("字体") {
                     HStack {
@@ -145,6 +172,14 @@ struct AppearanceSheet: View {
                         Text(String(format: "%.0f%%", fontScale * 100))
                             .foregroundStyle(.secondary)
                         Stepper("", value: $fontScale, in: 0.85...1.4, step: 0.05)
+                            .labelsHidden()
+                    }
+                    HStack {
+                        Text("AI 输出行高")
+                        Spacer()
+                        Text(String(format: "%.1f", aiLineSpacing))
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: $aiLineSpacing, in: 0...6, step: 0.5)
                             .labelsHidden()
                     }
                 }
@@ -157,5 +192,15 @@ struct AppearanceSheet: View {
                 }
             }
         }
+    }
+
+    private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>,
+                           format: String, suffix: @escaping (Double) -> String) -> some View {
+        HStack(spacing: 10) {
+            Text(title).font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+            Slider(value: value, in: range).tint(Color.accentColor)
+            Text(suffix(value.wrappedValue)).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 46, alignment: .trailing)
+        }
+        .padding(.vertical, 2)
     }
 }
