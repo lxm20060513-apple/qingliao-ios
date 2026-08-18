@@ -83,6 +83,11 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v2.0.135，2026-08-18）
+
+- **圆环波纹卡顿修复**：点智能球的"圆环波一圈圈向外扩"特效不再卡——波纹原在 Canvas 里每帧全屏重绘（3 个大椭圆描边），改为 Core Animation 隐式动画（GPU 合成、零逐帧重绘），粒子层保留 Canvas 160 颗；视觉效果不变（3 层错相循环扩散 + 淡出）
+- **键盘收回修复**：键盘打开时点聊天区任意空白即可收回（此前只有点居中 logo 才收）——根因是收键盘手势挂在无 contentShape 的透明容器上，空白处不可命中，且 ScrollView 区域点击不冒泡；修复：消息区补 contentShape + ScrollView 自身挂收键盘手势 + 输入栏消费点击不误收
+
 ## 🆕 近期变更（v2.0.134，2026-08-17）
 
 - **粒子纯烟花效果**：去掉末段闪烁与十字星芒，只保留满天烟花粒子（160 颗，先快后慢 + 1.2s 平滑淡出）

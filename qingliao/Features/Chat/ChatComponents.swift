@@ -965,18 +965,49 @@ struct ChatInputBar: View {
 // MARK: - v2.0.132 全屏爆发特效（点击智能球：满屏粒子散开）
 
 /// 点击智能球展开输入框时的全屏级爆发：粒子从球心（底部中央）向全屏飞散，
-/// 叠加超大扩散波纹 + 远处十字星芒闪烁。Canvas 逐帧绘制（90 粒子开销低），
-/// 无需外部状态驱动，触发方在 ~0.95s 后移除本层。
+/// 叠加超大扩散波纹 + 远处十字星芒闪烁。触发方在 ~0.95s 后移除本层。
+/// v2.0.135 性能修复：扩散波纹从 Canvas 逐帧 stroke（每帧 3 个全屏大椭圆）改为
+/// SwiftUI 隐式动画（Core Animation 合成、GPU 处理，零逐帧重绘）——圆环波卡顿根因。
+/// Canvas 仅保留粒子层（160 颗小圆，绘制面积小）。
 struct FullScreenBurst: View {
     @State private var spawn = Date()
+    // v2.0.135：波纹扩散触发标志——onAppear 置 true，3 层各自 delay 错相 + repeatForever 循环扩散
+    @State private var ringsGo = false
 
     var body: some View {
-        // 全屏粒子爆发：锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
+        // 锁 60fps（v2.0.133d：ProMotion 120Hz 下每帧全屏 Canvas 重绘开销大，60fps 肉眼已顺滑）
         // v2.0.134 修复 CI：TimelineView content 只返回简单类型 BurstCanvas——原内联 Canvas 多语句闭包
         // 类型错误会让编译器报外层 generic parameter 'Content' could not be inferred（check_swift.sh 查不出）
-        let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 60.0)
-        TimelineView(schedule) { context in
-            BurstCanvas(date: context.date, spawn: spawn)
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let maxDim = max(w, h)
+            let origin = CGPoint(x: w / 2, y: h - 150)
+            ZStack {
+                // 1) 超大扩散波纹：3 层错相，Core Animation 隐式动画（repeatForever 循环扩散）
+                //    周期 0.4545s（原 Canvas p = t*2.2 % 1），错相 0.12s，淡出至 0 后跳回起点
+                //    （与原逐帧版 p 归零跳变视觉一致）；frame/opacity/lineWidth 全部由 CA 插值合成
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .strokeBorder(Color.indigo.opacity(ringsGo ? 0 : 0.75),
+                                      lineWidth: ringsGo ? 0.4 : 2.6)
+                        .frame(width: ringsGo ? maxDim * 1.8 : 48,
+                               height: ringsGo ? maxDim * 1.8 : 48)
+                        .position(origin)
+                        .animation(
+                            .linear(duration: 0.4545)
+                                .delay(Double(i) * 0.12)
+                                .repeatForever(autoreverses: false),
+                            value: ringsGo
+                        )
+                }
+                // 2) 粒子层：160 颗飞散粒子（BurstCanvas，仅粒子无波纹）
+                let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 60.0)
+                TimelineView(schedule) { context in
+                    BurstCanvas(date: context.date, spawn: spawn)
+                }
+            }
+            .onAppear { ringsGo = true }
         }
         .allowsHitTesting(false)
     }
@@ -999,21 +1030,11 @@ struct BurstCanvas: View {
         let t = date.timeIntervalSince(spawn)
         Canvas { ctx, size in
             let w = size.width, h = size.height
-            let maxDim = max(w, h)
+            // v2.0.135：扩散波纹已移出 Canvas（改 FullScreenBurst 的 Core Animation 隐式动画，
+            // GPU 合成零逐帧重绘）——原每帧 stroke 3 个全屏大椭圆是卡顿主因
             // 发射原点：底部中央（智能球位置，Dock 上方）
             let origin = CGPoint(x: w / 2, y: h - 150)
-            // 1) 超大扩散波纹：3 层错相，扩散到屏尺寸的 0.9 倍后淡出
-            for i in 0..<3 {
-                let p = (t * 2.2 + Double(i) * 0.12).truncatingRemainder(dividingBy: 1.0)
-                let radius = 24 + CGFloat(p) * maxDim * 0.9
-                let alpha = 0.75 * pow(1 - p, 1.5)
-                let ring = CGRect(x: origin.x - radius, y: origin.y - radius,
-                                  width: radius * 2, height: radius * 2)
-                ctx.stroke(Path(ellipseIn: ring),
-                           with: .color(Color.indigo.opacity(alpha)),
-                           lineWidth: CGFloat(2.2 * (1 - p) + 0.4))
-            }
-            // 2) 粒子群：160 颗。v2.0.133 放烟花参数：
+            // 粒子群：160 颗。v2.0.133 放烟花参数：
             //    速度调慢（250-650）且减速加大（0.25→0.55）= 先快后慢的爆开感；
             //    生命周期拉长（0.7-1.2s）平滑淡出（v2.0.133c：去掉末段 sin 闪烁，用户觉得闪烁多余）
             //    v2.0.133d：单位圆 Path 复用 + translate/scale 变换绘制（原每帧 320 次

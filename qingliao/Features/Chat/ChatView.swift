@@ -324,6 +324,9 @@ struct ChatView: View {
                         })   // v2.0.106/107：长按输入框进语音模式
                         // v2.0.129：球态输入框 —— 绑定会话 id，切会话重建复位（展开态在切会话后回球态）
                         .id(chat.sessionId)
+                        // v2.0.135：消费输入栏区域的点击，防冒泡到消息区 ZStack 根手势误收键盘
+                        // （TextField/按钮自身优先消费，此手势只兜底输入栏空白处）
+                        .onTapGesture {}
                          // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
             // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
             // v2.0.133e：动画时长/曲线跟随键盘系统动画（观察器已记录），完全同步无跳变
@@ -586,6 +589,12 @@ struct ChatView: View {
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
+            // v2.0.135：ScrollView 是 UIKit 桥接视图，其区域点击不冒泡到 ZStack 根手势
+            // （v2.0.112b 把 onTapGesture 移到 ZStack 后，有消息时点空白收键盘失效，用户复报）
+            // → ScrollView 自身也挂一个：点消息区空白收键盘（点气泡由 MessageBubble 手势优先消费，不受影响）
+            .onTapGesture {
+                inputFocus = false
+            }
             .onChange(of: chat.messages.count) {
                 scrollBottom(proxy)
             }
@@ -597,6 +606,9 @@ struct ChatView: View {
         }
         // v2.0.112b：点消息区空白收键盘——原 onTapGesture 只挂 ScrollView（有消息才显示），
         // 欢迎页（无消息）状态点空白无法收键盘 → 移到 ZStack 根统一生效
+        // v2.0.135：ZStack 无 contentShape 时透明空白不可命中（此前只有点 logo/气泡才触发收键盘）
+        // → 补 contentShape(Rectangle()) 让整片区域可命中；有消息场景由 ScrollView 自身手势兜底
+        .contentShape(Rectangle())
         .onTapGesture {
             inputFocus = false
         }
