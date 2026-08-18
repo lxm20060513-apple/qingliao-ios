@@ -89,14 +89,6 @@ private struct PendingSend {
     let imageData: String?
 }
 
-// v2.0.140：禁用系统键盘避让（iOS 26+，包一层 ViewModifier 拆链——
-// 直接内联到 ChatView 主 chain 会导致类型检查超时：unable to type-check this expression）
-private struct KeyboardAvoidanceDisabled: ViewModifier {
-    func body(content: Content) -> some View {
-        content.keyboardAvoidance(.disabled)
-    }
-}
-
 struct ChatView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
@@ -348,9 +340,9 @@ struct ChatView: View {
         }
         // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确算 bottom padding，
         // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注：让红线长度=0）
-        // iOS 26+ 用 .keyboardAvoidance(.disabled)（.ignoresSafeArea(.keyboard) 在 iOS 26 已不生效）
-        // 实测：直接内联该 modifier 使主链类型检查超时（CI: unable to type-check），改走自定义 ViewModifier 拆链
-        .modifier(KeyboardAvoidanceDisabled())
+        // 注：.keyboardAvoidance(.disabled) 并非 SwiftUI 公开 API（CI 编译报 no member），
+        // 用官方键盘避让 opt-out：.ignoresSafeArea(.keyboard)
+        .ignoresSafeArea(.keyboard)
         .animation(.easeOut(duration: kb.animationDuration), value: kb.height)
         // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
         .alert("语音转文字不可用", isPresented: $voiceAuthFailed) {
