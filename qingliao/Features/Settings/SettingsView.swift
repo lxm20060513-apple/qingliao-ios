@@ -1130,6 +1130,8 @@ struct ModelSheet: View {
     @State private var opencodeModels: [String] = []
     // v2.0.140：opencode-apple 第二组订阅（google/apple 双 key 共存，同步拉取）
     @State private var opencodeAppleModels: [String] = []
+    // v3.0.4：SenseNova（商汤）订阅模型（同步拉取）
+    @State private var sensenovaModels: [String] = []
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
     // v2.0.118：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
@@ -1173,6 +1175,15 @@ struct ModelSheet: View {
         "mimo-v2-omni": "MiMo V2 Omni",
         "gpt-5.6-luna": "GPT-5.6 Luna",
         "grok-4.5": "Grok 4.5",
+    ]
+
+    /// v3.0.4：SenseNova（商汤）模型显示名映射
+    private let sensenovaNames: [String: String] = [
+        "sensenova-6.8-flash-lite": "SenseNova 6.8 Flash Lite",
+        "sensenova-6.7-flash-lite": "SenseNova 6.7 Flash Lite",
+        "sensenova-u1-fast": "SenseNova U1 Fast",
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "glm-5.2": "GLM 5.2",
     ]
 
     /// v2.0.131：opencode 分组显示列表——同步结果优先，空则用本地预置兜底
@@ -1236,6 +1247,10 @@ struct ModelSheet: View {
                     if !stepfunModels.isEmpty {
                         groupSection("stepfun", models: stepfunModels.map { ($0, $0, "stepfun") })
                     }
+                    // v3.0.4：SenseNova（商汤）订阅模型分组
+                    if !sensenovaModels.isEmpty {
+                        groupSection("sensenova（商汤）", models: sensenovaModels.map { ($0, sensenovaNames[$0] ?? $0, "sensenova") })
+                    }
                     // v2.0.118：本地模型（动态显示 Ollama 已安装模型——自主选择）
                     if !localInstalled.isEmpty {
                         groupSection("本地模型（断网兜底）", models: localInstalled.map { ($0, $0 + " · 本地", "local") })
@@ -1267,6 +1282,10 @@ struct ModelSheet: View {
             // v2.0.140：恢复第二组 opencode（apple）同步结果
             if let a = UserDefaults.standard.array(forKey: "qingliao_models_opencode_apple") as? [String] {
                 opencodeAppleModels = a
+            }
+            // v3.0.4：恢复 SenseNova（商汤）同步结果
+            if let sn = UserDefaults.standard.array(forKey: "qingliao_models_sensenova") as? [String] {
+                sensenovaModels = sn
             }
         }
     }
@@ -1344,6 +1363,8 @@ struct ModelSheet: View {
             let o = await fetchModels("opencode")
             // v2.0.140：同步第二组 opencode（apple）订阅
             let oa = await fetchModels("opencode-apple")
+            // v3.0.4：同步 SenseNova（商汤）订阅模型
+            let sn = await fetchModels("sensenova")
             if let s {
                 stepfunModels = s
                 UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
@@ -1360,7 +1381,11 @@ struct ModelSheet: View {
                 opencodeAppleModels = oa
                 UserDefaults.standard.set(oa, forKey: "qingliao_models_opencode_apple")
             }
-            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count)）"
+            if let sn {
+                sensenovaModels = sn
+                UserDefaults.standard.set(sn, forKey: "qingliao_models_sensenova")
+            }
+            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
             syncing = false
         }
     }
