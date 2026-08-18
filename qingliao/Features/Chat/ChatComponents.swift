@@ -740,6 +740,8 @@ struct ChatInputBar: View {
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
     // v2.0.109b：onChanged 记录按下瞬间键盘可见状态（down 时键盘未弹/已弹，比时间戳推断可靠）
     var onLongPressInput: (Bool) -> Void = { _ in }
+    // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
+    var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
     @State private var pressKeyboardUp = false
     // v2.0.129：Siri 圆球输入（设置开关，默认开）——默认状态是圆球，单击展开输入框，长按语音转文字
@@ -775,6 +777,14 @@ struct ChatInputBar: View {
                                                                                                   },
                                  onLongPress: {
                                      // 长按 = 语音转文字（球保持特效，不展开输入框）
+                                     // v3.0.4：云端模式无语音 → 长按球展开输入框（等同点击）
+                                     guard voiceEnabled else {
+                                         onFullBurst()
+                                         withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                                             ballExpanded = true
+                                         }
+                                         return
+                                     }
                                      guard !transcribing else { return }
                                      onLongPressInput(kbEnv.isVisible)
                                  })
@@ -848,15 +858,14 @@ struct ChatInputBar: View {
                     // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
                     //           → 改 simultaneousGesture 与系统手势共存触发
                     // v2.0.109b：onChanged（down 瞬间）记录键盘可见状态——键盘开=true 保持，关=false 收回
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.4)
-                            .onChanged { _ in
-                                pressKeyboardUp = kbEnv.isVisible
-                            }
-                            .onEnded { _ in
-                                onLongPressInput(pressKeyboardUp)
-                            }
-                    )
+                    // v3.0.4：云端无语音 → 输入框长按不触发语音转文字（保留系统默认长按）
+                    .simultaneousGesture(voiceEnabled ? AnyGesture(LongPressGesture(minimumDuration: 0.4)
+                        .onChanged { _ in
+                            pressKeyboardUp = kbEnv.isVisible
+                        }
+                        .onEnded { _ in
+                            onLongPressInput(pressKeyboardUp)
+                        }) : AnyGesture(SimultaneousGesture(LongPressGesture(minimumDuration: 9999), LongPressGesture(minimumDuration: 9999))))
                     .overlay {
                         if text.isEmpty {
                             if transcribing {
@@ -930,7 +939,12 @@ struct ChatInputBar: View {
                                     // .first = 长按成功（语音模式开关）；.second = 轻点（发送/退出）
                                     switch value {
                                     case .first:
-                                        onVoiceModeToggle()
+                                        // v3.0.4：云端无语音 → 长按等同轻点发送
+                                        if voiceEnabled {
+                                            onVoiceModeToggle()
+                                        } else {
+                                            onSend()
+                                        }
                                     case .second:
                                         if voiceMode {
                                             onVoiceModeToggle()

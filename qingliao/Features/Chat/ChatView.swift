@@ -317,6 +317,8 @@ struct ChatView: View {
                         transcribing: transcribing,   // v2.0.100：转换中动画
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
+                        // v3.0.4：云端模式无后端 ASR → 关闭全部语音入口
+                        voiceEnabled: !CloudConfig.shared.isCloudMode,
                         // v2.0.132：点击智能球 → 全屏粒子爆发（v2.0.133b：粒子寿命延至 1.2s 放烟花闪烁，特效层同步延长）
                         // v2.0.137：粒子寿命上限提至 1.45s，特效层同步延长到 1.55s
                         onFullBurst: {
@@ -1151,6 +1153,8 @@ struct ChatView: View {
     /// v2.0.107：键盘两场景——长按前键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
     /// v2.0.107b：震动改 heavy + prepare（原 medium 无 prepare，首次 impact 常被系统丢弃/偏弱）
     private func toggleVoiceMode(keyboardWasUp: Bool = false) {
+        // v3.0.4：云端模式无后端 ASR → 屏蔽语音转文字入口（双重保护，避免误入）
+        guard !CloudConfig.shared.isCloudMode else { return }
         if voiceMode {
             exitVoiceMode()
         } else {
