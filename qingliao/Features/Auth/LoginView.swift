@@ -14,15 +14,17 @@ struct ModeSwitchBar: View {
         .padding(4)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
         .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8))
+        // v3.0.1：胶囊选中高亮平滑过渡（点击瞬间移动渐变，非跳变）
+        .animation(.spring(duration: 0.3, bounce: 0.2), value: config.mode)
         .padding(.horizontal, 24)
         .padding(.top, 12)
     }
 
     private func modeButton(_ title: String, mode: QingliaoMode, icon: String) -> some View {
         Button {
-            withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
-                config.setMode(mode)
-            }
+            // v3.0.1：动画由 RootView .animation(value: config.mode) 统一驱动，
+            // 这里不再包 withAnimation（避免与上层动画叠加）
+            config.setMode(mode)
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: icon)

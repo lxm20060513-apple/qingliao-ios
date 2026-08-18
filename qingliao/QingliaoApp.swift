@@ -59,6 +59,8 @@ struct QingliaoApp: App {
 struct RootView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(StreamClient.self) private var stream   // v2.0.87bd：Siri 发光读取流式状态
+    // v3.0：@Observable 单例必须 @State 持有，body 才能观察 mode 变化（否则分支切换不响应）
+    @State private var config = CloudConfig.shared
     @State private var showSplash = true
     // v2.0.92：App 锁（启动 Face ID 验证；与 Face ID 登录相互独立）
     @AppStorage("qingliao_app_lock") private var appLockOn = false
@@ -67,12 +69,19 @@ struct RootView: View {
     var body: some View {
         ZStack {
             // v3.0 登录门禁：按模式分流——本地 AI 走现有 LoginView，云端 AI 走 CloudLoginView
+            // v3.0.1：加滑动+淡入过渡（ModeSwitchBar 切换时平滑过渡，原直接替换生硬）
             if auth.isLoggedIn {
                 DockTabView()
-            } else if CloudConfig.shared.isCloudMode {
+            } else if config.isCloudMode {
                 CloudLoginView()
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)))
             } else {
                 LoginView()
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)))
             }
 
             // v2.0.92：App 锁遮罩（已登录 + 开关开 + 未解锁时覆盖，splash 之下）
@@ -97,6 +106,8 @@ struct RootView: View {
                     .zIndex(20)
             }
         }
+        // v3.0.1：模式切换驱动登录页过渡动画（ModeSwitchBar 点击 → mode 变化 → 平滑滑动淡入）
+        .animation(.spring(duration: 0.35, bounce: 0.18), value: config.mode)
         .task {
             // v2.0.43：登录态下上报上次崩溃（不阻塞启动）
             if auth.isLoggedIn {
