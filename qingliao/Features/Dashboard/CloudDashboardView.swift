@@ -16,80 +16,20 @@ struct CloudDashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // v3.0.1：天气与本地 AI 同位置——右上角 WeatherBadge（小图标+温度+城市），点击换城市
             PageHeader(title: "看板",
                        subtitle: "云端模式",
                        trailing: AnyView(
                            Button {
                                showCitySheet = true
                            } label: {
-                               Image(systemName: "location.circle")
-                                   .font(.system(size: 17, weight: .semibold))
-                                   .foregroundStyle(Color.accentColor)
+                               WeatherBadge(temp: temp, code: code, city: city)
                            }
                            .buttonStyle(.plain)
                        ))
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    // 天气卡
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("天气", systemImage: "cloud.sun.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if !city.isEmpty {
-                                Text(city)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        if loading {
-                            HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("加载天气…")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if let t = temp {
-                            HStack(spacing: 14) {
-                                Image(systemName: WeatherBadge.icon(for: code))
-                                    .font(.system(size: 38))
-                                    .foregroundStyle(WeatherBadge.color(for: code))
-                                Text(String(format: "%.0f°", t))
-                                    .font(.system(size: 34, weight: .bold))
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text(weatherDesc)
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.secondary)
-                                    Text("数据来自 Open-Meteo")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        } else if let e = errorText {
-                            Text("⚠️ \(e)")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.orange)
-                            Button("重试") {
-                                Task { await loadWeather() }
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.accentColor)
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                    )
-
-                    // 待开发占位
+                    // 待开发占位（v3.0.1：天气已上移到右上角徽章，与本地 AI 看板一致；内容区暂无卡片）
                     VStack(spacing: 12) {
                         Image(systemName: "hammer.fill")
                             .font(.system(size: 30))
@@ -133,28 +73,6 @@ struct CloudDashboardView: View {
                 Spacer()
             }
             .presentationDetents([.height(220)])
-        }
-    }
-
-    private var weatherDesc: String {
-        guard let c = code else { return "未知" }
-        switch c {
-        case 0: return "晴"
-        case 1: return "大致晴朗"
-        case 2: return "多云"
-        case 3: return "阴"
-        case 45, 48: return "雾"
-        case 51, 53, 55: return "毛毛雨"
-        case 56, 57: return "冻雨"
-        case 61, 63, 65: return "雨"
-        case 66, 67: return "冻雨"
-        case 71, 73, 75: return "雪"
-        case 77: return "雪粒"
-        case 80, 81, 82: return "阵雨"
-        case 85, 86: return "阵雪"
-        case 95: return "雷暴"
-        case 96, 99: return "雷暴伴冰雹"
-        default: return "未知"
         }
     }
 
