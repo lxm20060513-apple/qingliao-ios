@@ -1,10 +1,10 @@
-name: Build iOS 2.0 IPA (native SwiftUI, unsigned for SideStore)
+name: Build iOS IPA (native SwiftUI, unsigned for SideStore)
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'v2*'
+      - 'v*'
 
 permissions:
   contents: write
