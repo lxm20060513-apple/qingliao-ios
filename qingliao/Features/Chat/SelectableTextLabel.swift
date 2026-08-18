@@ -73,16 +73,19 @@ struct SelectableTextLabel: UIViewRepresentable {
 
     // v2.0.130：修复"AI 回复文字显示不完整断句"——
     // SwiftUI 用 intrinsicContentSize 布局时宽度未定，UITextView 按单行宽度算高度 → 多行被裁。
-    // sizeThatFits 拿到提案宽度后精确计算换行高度；宽度始终占满容器（防换行错乱断句）。
     // 🚨 防 .infinity 提案：宽度为无穷时 UITextView 按单行换行算高度 → 仍会裁切，须钳制到气泡最大宽。
-    // v3.0.4 fix：移除 singleLine 动态宽度分支——它导致流式时单行/多行切换 → 气泡宽度+排版
-    // 每帧跳变（"字时大时小"）；统一满容器宽，气泡收缩交给外层 .fixedSize(horizontal:) 处理。
+    // v3.0.4 fix（气泡自适应+无抖动）：宽度 = min(单行内容宽, 最大宽)——单行短文本窄气泡，
+    // 多行超宽自动钳制为最大宽；宽度随文本单调增长（短→窄 长→宽），流式时平滑不跳变
+    // （区别于 v3.0.2 按高度判断单行 → 边界抖动"字时大时小"）。
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
-        let maxWidth = UIScreen.main.bounds.width - 60   // 消息块水平 padding 后的可用宽
-        let w = proposal.width ?? maxWidth
-        let width = w.isFinite ? min(max(w, 1), maxWidth) : maxWidth
-        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-        return CGSize(width: width, height: size.height)
+        let maxWidth = UIScreen.main.bounds.width - 60
+        // 单行整段内容宽（不换行测量）
+        let contentW = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
+        // 宽度 = min(内容宽 + 少量余量, 最大宽)，单调增长无跳变
+        let w = (proposal.width ?? maxWidth)
+        let target = min(max(contentW + 10, w.isFinite ? min(w, 1) : 1), maxWidth)
+        let size = uiView.sizeThatFits(CGSize(width: target, height: .greatestFiniteMagnitude))
+        return CGSize(width: target, height: size.height)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
