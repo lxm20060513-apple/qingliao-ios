@@ -1,4 +1,4 @@
-# 轻聊 2.0（Qingliao）— 原生 iOS AI 助手
+# 轻聊 3.0（Qingliao）— 原生 iOS AI 助手
 
 家庭 NAS 上的 AI 助手客户端，SwiftUI 原生（非 HTML 套壳），连接自部署后端（Hermes + 自研 Python 服务），提供 AI 对话、智能家居看板（Home Assistant）、NAS/路由器状态、Docker 管理、知识库、AI 记忆、密码管理、定时任务等能力。iOS 17+（实测 iOS 26/27），SideStore 侧载分发。
 
@@ -8,7 +8,8 @@
 
 ## 🚀 快速上手（开发环境）
 
-- 仓库默认分支：**`native-2.0`**（唯一开发分支，也是远端默认分支——Actions 只认默认分支的 workflow）
+- 仓库默认分支：**`native-3.0`**（3.0 开发分支，也是远端默认分支——Actions 只认默认分支的 workflow）
+- **2.0 已收官**（v2.0.140 终版）：历史冻结在 `native-2.0` 分支 + tag `v2.0.140`，2.0 产物归档于 NAS `轻聊app/archive/2.0-final/`；3.0 从 2.0 HEAD 切出，git 历史完整
 - 工程由 **XcodeGen** 生成（`project.yml`），源文件目录 `qingliao/` 整体 glob，**新增 .swift 文件无需改 project.yml**
 - `check_swift.sh`：Linux 下的 **swiftc -parse 纯语法检查**（全工程）。**⚠️ 只查语法不查类型/作用域/并发**——类型错误、方法插错 struct、@MainActor 违规只有 CI 编译才暴露（v2.0.90 实踩：方法误入 PasswordSheet struct，语法全过、CI 报 cannot find in scope）
 
@@ -18,14 +19,14 @@
 
 ## 🔧 发版流程（唯一 CI 触发方式）
 
-CI 只在 **`v2.0.x` tag 推送**时触发（分支 push 不触发），产出 unsigned IPA artifact。
+CI 只在 **`v3.0.x` tag 推送**时触发（分支 push 不触发），产出 unsigned IPA artifact。
 
 ```bash
 # 1) 版本号：project.yml 4 处必须一致（CFBundleShortVersionString / CFBundleVersion / MARKETING_VERSION / CURRENT_PROJECT_VERSION）
-#    grep -n '"2.0.x"' project.yml 确认全部为最新版本，否则崩溃日志版本误导定位（v2.0.53 教训）
+#    grep -n '"3.0.x"' project.yml 确认全部为最新版本，否则崩溃日志版本误导定位（v2.0.53 教训）
 # 2) 自查（见下）+ ./check_swift.sh + commit
-git push origin native-2.0
-git tag v2.0.x && git push origin v2.0.x     # 触发 CI（约 15-20 分钟）
+git push origin native-3.0
+git tag v3.0.x && git push origin v3.0.x     # 触发 CI（约 15-20 分钟）
 ```
 
 - **⚠️ 同 tag force push 不触发 CI**（GitHub 只认新建 tag）——失败重试必须**删远端 tag 重建**（`git push origin :refs/tags/vX`）或升新版本号
