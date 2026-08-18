@@ -423,6 +423,8 @@ struct CloudModelsSheet: View {
                         // 保存选中的模型到当前厂商配置
                         if !selectedModel.isEmpty, var c = config.activeConfig {
                             c.model = selectedModel
+                            // v3.0.5 review fix：按所选模型实时判断视觉能力（预设默认模型可能被切走）
+                            c.supportsVision = CloudConfig.modelSupportsVision(selectedModel)
                             config.saveProvider(c)
                         }
                         dismiss()

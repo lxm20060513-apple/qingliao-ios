@@ -208,4 +208,20 @@ final class CloudConfig {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    /// v3.0.5 review fix：按模型名判断是否视觉模型（切模型后实时更新，避免预设默认模型脱钩）
+    /// 命中特征：gpt-4o / gpt-5 / -vision / -o（omni）/ 多模态 / minimax-m2.x / glm-4v / u1 / flash-lite(部分)
+    static func modelSupportsVision(_ model: String) -> Bool {
+        let m = model.lowercased()
+        if m.contains("gpt-4o") || m.contains("gpt-5") || m.contains("vision")
+            || m.contains("-omni") || m.contains("omni") || m.contains("multimodal")
+            || m.contains("u1") || m.contains("glm-4v") || m.contains("flash-lite") {
+            return true
+        }
+        // MiniMax 系列多数支持多模态（M2/M2.1+ 视觉）
+        if m.contains("minimax-") && (m.contains("m2") || m.contains("m2.")) {
+            return true
+        }
+        return false
+    }
 }

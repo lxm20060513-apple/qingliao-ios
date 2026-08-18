@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var scrollPos = ScrollPosition()
     @State private var showModelSheet = false
     @State private var showAbout = false
+    @State private var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
     @State private var secretCount = 0
     @State private var showHASettings = false
     @State private var haAddress = ""
@@ -575,7 +576,7 @@ struct SettingsView: View {
 
                     SectionHeader("")
                     Button {
-                        auth.logout()
+                        confirmLogout = true   // v3.0.5 review fix：二次确认（与云端一致）
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -592,6 +593,14 @@ struct SettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .confirmationDialog("退出登录？", isPresented: $confirmLogout, titleVisibility: .visible) {
+                        Button("退出登录", role: .destructive) {
+                            auth.logout()
+                        }
+                        Button("取消", role: .cancel) {}
+                    } message: {
+                        Text("退出后回到登录页，可切换本地 AI / 云端 AI 模式。")
+                    }
                     .padding(.top, 2)
                 }
                 .padding(.horizontal, 14)

@@ -79,11 +79,13 @@ struct SelectableTextLabel: UIViewRepresentable {
     // （区别于 v3.0.2 按高度判断单行 → 边界抖动"字时大时小"）。
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let maxWidth = UIScreen.main.bounds.width - 60
+        // v3.0.5 review fix：优先用容器提案宽（iPad 分栏等窄容器），无提案才用屏幕宽
+        let available = (proposal.width.map { $0.isFinite ? $0 : nil } ?? nil) ?? maxWidth
+        let upperBound = min(available, maxWidth)
         // 单行整段内容宽（不换行测量）
         let contentW = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
-        // 宽度 = min(内容宽 + 少量余量, 最大宽)，单调增长无跳变
-        let w = (proposal.width ?? maxWidth)
-        let target = min(max(contentW + 10, w.isFinite ? min(w, 1) : 1), maxWidth)
+        // 宽度 = min(内容宽 + 少量余量, 容器可用宽, 屏幕最大宽)，单调增长无跳变
+        let target = max(min(contentW + 10, upperBound), 1)
         let size = uiView.sizeThatFits(CGSize(width: target, height: .greatestFiniteMagnitude))
         return CGSize(width: target, height: size.height)
     }

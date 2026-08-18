@@ -130,6 +130,18 @@ struct RootView: View {
             }
             chat.switchToMode()   // 会话串位根治：切模式清空内存，从新模式 key 重读
         }
+        // v3.0.5 review fix：冷启动/登出后 loginPage 与持久化 mode 同步（原恒为 0 → 云端模式登出后错位）
+        .onAppear {
+            if !auth.isLoggedIn {
+                loginPage = config.isCloudMode ? 1 : 0
+            }
+        }
+        .onChange(of: auth.isLoggedIn) { _, loggedIn in
+            if !loggedIn {
+                // 登出回门禁 → 登录页跟随当前模式（云端=1 本地=0）
+                loginPage = config.isCloudMode ? 1 : 0
+            }
+        }
         .task {
             // v2.0.43：登录态下上报上次崩溃（不阻塞启动）
             if auth.isLoggedIn {
