@@ -66,9 +66,11 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            // 登录门禁：未登录显示登录页，登录后进主界面（登录状态 UserDefaults 持久化）
+            // v3.0 登录门禁：按模式分流——本地 AI 走现有 LoginView，云端 AI 走 CloudLoginView
             if auth.isLoggedIn {
                 DockTabView()
+            } else if CloudConfig.shared.isCloudMode {
+                CloudLoginView()
             } else {
                 LoginView()
             }

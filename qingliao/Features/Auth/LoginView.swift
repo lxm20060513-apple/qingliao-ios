@@ -1,6 +1,49 @@
 import SwiftUI
 import LocalAuthentication
 
+// MARK: - v3.0 登录模式切换器（本地 AI / 云端 AI 共用，置于登录页顶部）
+
+struct ModeSwitchBar: View {
+    @State private var config = CloudConfig.shared
+
+    var body: some View {
+        HStack(spacing: 0) {
+            modeButton("本地 AI", mode: .local, icon: "server.rack")
+            modeButton("云端 AI", mode: .cloud, icon: "cloud.fill")
+        }
+        .padding(4)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8))
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+    }
+
+    private func modeButton(_ title: String, mode: QingliaoMode, icon: String) -> some View {
+        Button {
+            withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
+                config.setMode(mode)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(config.mode == mode ? Color.white : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                config.mode == mode
+                    ? AnyShapeStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .leading, endPoint: .trailing))
+                    : AnyShapeStyle(Color.clear),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - 登录页（服务器地址 + 账号密码 + 记住登录 + Face ID 快捷登录）
 
 struct LoginView: View {
@@ -24,6 +67,8 @@ struct LoginView: View {
             Color(uiColor: .systemBackground).ignoresSafeArea()
 
             VStack(spacing: 24) {
+                // v3.0：模式切换器（本地 AI / 云端 AI）
+                ModeSwitchBar()
                 Spacer()
 
                 // Logo

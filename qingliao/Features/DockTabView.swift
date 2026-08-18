@@ -53,8 +53,18 @@ struct DockTabView: View {
                     ChatView().tag(DockTab.chat)
                 }
                 SessionsView(onOpenSession: { selected = .chat }).tag(DockTab.sessions)
-                DashboardView().tag(DockTab.dashboard)
-                SettingsView().tag(DockTab.settings)
+                // v3.0 云端模式看板：只留天气（直连 Open-Meteo）；本地模式看板不变
+                if CloudConfig.shared.isCloudMode {
+                    CloudDashboardView().tag(DockTab.dashboard)
+                } else {
+                    DashboardView().tag(DockTab.dashboard)
+                }
+                // v3.0 云端模式设置页：只保留云端相关项
+                if CloudConfig.shared.isCloudMode {
+                    CloudSettingsView().tag(DockTab.settings)
+                } else {
+                    SettingsView().tag(DockTab.settings)
+                }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .background(Color(uiColor: .systemBackground))

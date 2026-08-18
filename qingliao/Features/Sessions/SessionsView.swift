@@ -427,6 +427,14 @@ struct SessionsView: View {
     private func load() async {
         isLoading = true
         errorText = nil
+        // v3.0 云端模式：会话历史存 App 本地（CloudSessionStore），不走后端
+        if CloudConfig.shared.isCloudMode {
+            CloudSessionStore.shared.load()
+            sessions = CloudSessionStore.shared.sessions
+            chat.syncUnread(from: sessions, currentId: chat.sessionId)
+            isLoading = false
+            return
+        }
         do {
             let j = try await auth.json("/api/sessions/list")
             let raw = (j["sessions"] as? [Any] ?? [])
@@ -453,6 +461,14 @@ struct SessionsView: View {
         selectedIds.removeAll()
         editing = false
         Task {
+            // v3.0 云端模式：本地删除
+            if CloudConfig.shared.isCloudMode {
+                for id in idsCopy {
+                    CloudSessionStore.shared.delete(id: id)
+                }
+                await load()
+                return
+            }
             do {
                 let j = try await auth.json("/api/sessions/merge", method: "POST", body: [
                     "sessions": [] as [Any], "deleted": idsCopy
@@ -481,6 +497,18 @@ struct SessionsView: View {
         //    不再隐藏页清空（v2.0.54/56 的延迟只是推迟崩溃，隐藏页清空才是 SIGTRAP 根因）
         let deletingId = s.id
         Task {
+            // v3.0 云端模式：本地删除
+            if CloudConfig.shared.isCloudMode {
+                CloudSessionStore.shared.delete(id: s.id)
+                await load()
+                if chat.sessionId == deletingId {
+                    onOpenSession?()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        chat.requestNewSession()
+                    }
+                }
+                return
+            }
             do {
                 let j = try await auth.json("/api/sessions/merge", method: "POST", body: [
                     "sessions": [] as [Any],

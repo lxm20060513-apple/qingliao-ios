@@ -821,7 +821,13 @@ struct ChatView: View {
 
     /// v2.0.88：启动流式回答（消息已在列表；失败标记/回复完成/队列联动统一在这里）
     /// v2.0.102：记录发起会话——回答期间切换会话则丢弃结果（防跨会话污染）；完成回调释放 sendingLock
+    /// v3.0：云端模式走 CloudBackend 直连 SSE（不经过 NAS 后端）
     private func startStream(for msg: ChatMessage) {
+        // v3.0 云端模式：直连大模型 API
+        if CloudConfig.shared.isCloudMode {
+            startCloudStream(for: msg)
+            return
+        }
         // v2.0.126：蜂窝 relay 3.5KB 限制——历史从后往前保留直到 payload 达标（只影响蜂窝兜底路径）
         var history = chat.historyPayload()
         if NetworkMonitor.shared.isCellular {
@@ -859,6 +865,77 @@ struct ChatView: View {
                     sendQueued(next)
                 }
             }
+        }
+    }
+
+    // MARK: - v3.0 云端流式直连（SSE 增量拼接，UI 与本地模式一致）
+
+    /// 云端模式回答：直连 OpenAI 兼容端点，逐段追加 assistant 内容
+    private func startCloudStream(for msg: ChatMessage) {
+        let startSid = chat.sessionId
+        Task {
+            do {
+                let history = chat.historyPayload()
+                var accumulated = ""
+                for try await chunk in CloudBackend.shared.streamChat(messages: history) {
+                    guard chat.sessionId == startSid else { return }
+                    if !chunk.error.isEmpty {
+                        chat.markFailed(id: msg.id)
+                        chat.upsertAssistant(accumulated.isEmpty ? "⚠️ \(chunk.error)" : accumulated + "\n\n⚠️ \(chunk.error)")
+                        CloudSessionStore.shared.saveChat(store: chat)
+                        finishCloudQueue()
+                        return
+                    }
+                    accumulated += chunk.contentDelta
+                    if !chunk.contentDelta.isEmpty {
+                        cloudUpsertDelta(accumulated)   // 流式增量：更新最后一条 assistant（非追加）
+                    }
+                    if chunk.done {
+                        break
+                    }
+                }
+                guard chat.sessionId == startSid else { return }
+                if accumulated.isEmpty {
+                    chat.markFailed(id: msg.id)
+                    chat.upsertAssistant("⚠️ 云端未返回内容")
+                } else {
+                    showSentOK()
+                    if UIApplication.shared.applicationState != .active {
+                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
+                                                  sessionId: chat.sessionId)
+                    }
+                }
+                CloudSessionStore.shared.saveChat(store: chat)
+                finishCloudQueue()
+            } catch {
+                guard chat.sessionId == startSid else { return }
+                chat.markFailed(id: msg.id)
+                chat.upsertAssistant("⚠️ \(error.localizedDescription)")
+                CloudSessionStore.shared.saveChat(store: chat)
+                finishCloudQueue()
+            }
+        }
+    }
+
+    /// 云端流式增量：更新最后一条 assistant 消息内容（流式过程中不追加新消息，只更新）
+    private func cloudUpsertDelta(_ text: String) {
+        if let idx = chat.messages.indices.last,
+           chat.messages[idx].role == "assistant" {
+            // 更新最后一条 assistant（重建 struct，保留时间戳）
+            let old = chat.messages[idx]
+            chat.messages[idx] = ChatMessage(role: "assistant", content: text,
+                                             timestamp: old.timestamp ?? Date().timeIntervalSince1970 * 1000)
+        } else {
+            // 无 assistant 尾巴 → 新建（首段）
+            chat.upsertAssistant(text)
+        }
+    }
+
+    /// 云端模式回答完成 → 自动发送队列下一条
+    private func finishCloudQueue() {
+        if !pendingQueue.isEmpty {
+            let next = pendingQueue.removeFirst()
+            sendQueued(next)
         }
     }
 
