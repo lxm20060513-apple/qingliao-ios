@@ -31,9 +31,7 @@ struct SettingsView: View {
     @State private var haAddress = ""
     // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
-    // v2.0.87am：天气城市（手动输入）
-    @AppStorage("qingliao_weather_city") private var weatherCity = ""
-    @State private var showWeatherCity = false
+    // v3.0.9：外观下天气城市已移除（天气城市设定在看板 WeatherBadge 点按处），相关状态一并清理
     // v2.0.101：Agent 使用说明内联展开
     @State private var showAgentHelp = false
     // v2.0.105：Agent 关键词管理弹窗
@@ -537,33 +535,7 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                         }
-                        // v2.0.87am：天气城市（手动输入，看板右上角天气）
-                        SettingRow(icon: "location.fill", iconColor: .teal, title: "天气城市", value: weatherCity.isEmpty ? "未设置" : weatherCity, chevron: false)
-                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showWeatherCity.toggle() } }
-                        if showWeatherCity {
-                            HStack(spacing: 10) {
-                                TextField("如：上海 / 北京", text: $weatherCity)
-                                    .font(.system(size: 13))
-                                    .textInputAutocapitalization(.never)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .onSubmit {
-                                        UserDefaults.standard.set(weatherCity.trimmingCharacters(in: .whitespaces), forKey: "qingliao_weather_city")
-                                        withAnimation { showWeatherCity = false }
-                                    }
-                                Button("保存") {
-                                    UserDefaults.standard.set(weatherCity.trimmingCharacters(in: .whitespaces), forKey: "qingliao_weather_city")
-                                    withAnimation { showWeatherCity = false }
-                                }
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 10)
-                        }
+                        // v3.0.9：外观下天气城市已移除——「天气城市」设定在设置页独立项（看板右上角天气用）
                         // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
                         SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
                             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showFontOptions.toggle() } }
@@ -602,8 +574,9 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
                         .background(
-                            Color.red.opacity(0.10),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            // v3.0.9：更红（红 0.35 底）+ 更圆（18）
+                            Color.red.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                         )
                     }
                     .buttonStyle(.plain)
@@ -1561,19 +1534,8 @@ struct AboutView: View {
             Divider().padding(.horizontal, 30)
 
             VStack(alignment: .leading, spacing: 10) {
-                // v3.0.8：项目版本说明（Hermes 容器当前运行版本）
+                // v3.0.8：项目版本说明（iOS 客户端版本）
                 aboutRow("项目版本", "轻聊 3.0 · iOS 客户端 v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
-                if !isCloud {
-                    HStack(alignment: .top) {
-                        Text("Hermes Agent")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 68, alignment: .leading)
-                        Text(hermesVersion)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                    }
-                }
                 // v3.0.3：统一介绍框架——顶部 App 概述（两端一致），下方「当前模式」针对云端/本地分别说明
                 aboutRow("产品", "轻聊 —— 面向家庭的 AI 智能助手，SwiftUI 原生客户端，支持「本地 AI」与「云端 AI」两种形态，数据按模式本地保存。")
                 appModeRow(isCloud)
@@ -1586,6 +1548,18 @@ struct AboutView: View {
                 aboutRow("架构", isCloud
                           ? "SwiftUI 原生 · 轻聊 3.0 云端模式 · 直连云端 API（Wi-Fi / 蜂窝均可）"
                           : "SwiftUI 原生 · Hermes Agent · 自建 NAS 后端（连接自家 NAS）")
+                // v3.0.8：Hermes Agent 版本号固定放在介绍最后一行（本地模式读容器实时版本）
+                if !isCloud {
+                    HStack(alignment: .top) {
+                        Text("Hermes Agent")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 68, alignment: .leading)
+                        Text(hermesVersion)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .font(.system(size: 13))
             .padding(.horizontal, 24)

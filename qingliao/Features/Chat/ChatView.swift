@@ -201,7 +201,8 @@ struct ChatView: View {
                     if let c = current {
                         c.avatarIcon(size: 13)
                     } else {
-                        Image(systemName: "person.crop.circle.fill")
+                        // v3.0.9：通用助手科幻图标（六边形网格 = AI 感知网络）
+                        Image(systemName: "circle.hexagongrid.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(Color.accentColor)
                     }

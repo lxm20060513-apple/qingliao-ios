@@ -389,9 +389,9 @@ struct SessionsView: View {
     private func botGroupHeaderIfNeeded(_ key: String) -> some View {
         let groupTitle = key.isEmpty ? "通用助手 · 主 Agent" : (botStore.bot(key)?.name ?? "Bot")
         if key.isEmpty {
-            // 通用助手（主 Agent）组头——扁平头像符号（v3.0.8 beautify，替代 sparkles/emoji）
+            // 通用助手（主 Agent）组头——AI 科幻图标（六边形网格，v3.0.9）
             HStack(spacing: 6) {
-                Image(systemName: "person.crop.circle.fill")
+                Image(systemName: "circle.hexagongrid.fill")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                 Text(groupTitle)
