@@ -70,9 +70,9 @@ struct SelectableTextLabel: UIViewRepresentable {
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // v3.0.13：宽度变化 → 立即信息 intrinsic 尺寸失效，让 SwiftUI 重新测量/调用 sizeThatFits；
         // 并重置指纹，下次 updateUIView 按新宽重排容器
-        tv.onWidthChange = { [weak context = context.coordinator, weak weakTV] _ in
-            weakTV?.invalidateIntrinsicContentSize()
-            weakTV?.setNeedsLayout()
+        tv.onWidthChange = { [weak context = context.coordinator, weak tv] _ in
+            tv?.invalidateIntrinsicContentSize()
+            tv?.setNeedsLayout()
             context?.lastKey = ""
         }
         return tv
