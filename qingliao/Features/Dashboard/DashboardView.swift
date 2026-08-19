@@ -9,6 +9,7 @@ enum DashboardSheet: String, Identifiable {
 
 struct DashboardView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化深浅适配
 
     @State private var nas = NASStatus()
     @State private var haEntities: [HAEntity] = []
@@ -94,8 +95,13 @@ struct DashboardView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化（与 DeviceCard 一致）
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    // v3.0.9 beautify：背景毛玻璃化（复用 GlassListCard：浅色白0.85/深色毛玻璃）
+                    .background(
+                        scheme == .dark
+                            ? AnyShapeStyle(.ultraThinMaterial)
+                            : AnyShapeStyle(Color.white.opacity(0.85)),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -128,8 +134,13 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                .background(.ultraThinMaterial,
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                // v3.0.9：背景毛玻璃化（浅色白0.85/深色毛玻璃）
+                                .background(
+                                    scheme == .dark
+                                        ? AnyShapeStyle(.ultraThinMaterial)
+                                        : AnyShapeStyle(Color.white.opacity(0.85)),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -169,8 +180,13 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                .background(.ultraThinMaterial,
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                // v3.0.9：背景毛玻璃化（浅色白0.85/深色毛玻璃）
+                                .background(
+                                    scheme == .dark
+                                        ? AnyShapeStyle(.ultraThinMaterial)
+                                        : AnyShapeStyle(Color.white.opacity(0.85)),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -1322,6 +1338,8 @@ struct DeviceCard: View {
     let value: String
     let sub: String
     let status: DeviceStatus
+    // v3.0.9：背景毛玻璃化（浅色白底0.85带通透感/深色毛玻璃，防纯material灰蒙板）
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1347,8 +1365,13 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化（ultraThinMaterial + 0.8pt 描边）
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85玻璃质感/深色ultraThin毛玻璃，保持原布局与描边）
+        .background(
+            scheme == .dark
+                ? AnyShapeStyle(.ultraThinMaterial)
+                : AnyShapeStyle(Color.white.opacity(0.85)),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -1372,6 +1395,7 @@ struct MeterCard: View {
     let sub: String?
     let ratio: Double
     let color: Color
+    @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1403,8 +1427,13 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85/深色毛玻璃，保持原布局与描边）
+        .background(
+            scheme == .dark
+                ? AnyShapeStyle(.ultraThinMaterial)
+                : AnyShapeStyle(Color.white.opacity(0.85)),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -1418,6 +1447,7 @@ struct ServiceCard: View {
     let icon: String   // v2.0.85c 图标
     let running: Bool
     let detail: String
+    @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1438,8 +1468,13 @@ struct ServiceCard: View {
         // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85/深色毛玻璃，保持原布局与描边）
+        .background(
+            scheme == .dark
+                ? AnyShapeStyle(.ultraThinMaterial)
+                : AnyShapeStyle(Color.white.opacity(0.85)),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
