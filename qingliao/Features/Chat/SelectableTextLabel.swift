@@ -19,6 +19,10 @@ struct SelectableTextLabel: UIViewRepresentable {
     var lineSpacing: CGFloat = 3
     // v2.0.130：AI 消息行距从设置实时读（UserDefaults 直读，不依赖 SwiftUI 参数传递时机——修复"调了没生效"）
     var lineSpacingFromSettings: Bool = false
+    // v3.0.11 fix：AI 消息统一满容器宽（流式宽度恒定，消除"字变小/排版每帧跳变"）
+    // —— v3.0.2/a253fe4 引入的"按内容宽收缩"在流式内容增长时会跳变（v3.0.4 曾修复又被同天回退），
+    // 用户消息保持内容自适应（短文本窄气泡，微信风格）不受影响。
+    var fillWidth: Bool = false
     var onCopy: () -> Void = {}
     var onQuote: () -> Void = {}
     var onShare: () -> Void = {}
@@ -85,6 +89,11 @@ struct SelectableTextLabel: UIViewRepresentable {
         // v3.0.5 review fix：优先用容器提案宽（iPad 分栏等窄容器），无提案才用屏幕宽
         let available = (proposal.width.map { $0.isFinite ? $0 : nil } ?? nil) ?? maxWidth
         let upperBound = min(available, maxWidth)
+        if fillWidth {
+            // v3.0.11 fix：满容器宽——宽度恒定（只随行数长高），流式内容增长时布局不跳变
+            let size = uiView.sizeThatFits(CGSize(width: upperBound, height: .greatestFiniteMagnitude))
+            return CGSize(width: upperBound, height: size.height)
+        }
         // 单行整段内容宽（不换行测量）
         let contentW = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
         // 宽度 = min(内容宽 + 少量余量, 容器可用宽, 屏幕最大宽)，单调增长无跳变

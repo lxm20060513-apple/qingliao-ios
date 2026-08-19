@@ -170,22 +170,30 @@ struct ChatView: View {
     private var botSelectorBar: some View {
         let current = botStore.bot(chat.botId)
         return Menu {
-            Button {
-                switchBot(to: nil)
-            } label: {
-                Label(chat.botId == nil ? "✓ 通用助手" : "通用助手", systemImage: "person.crop.circle")
-            }
-            if !botStore.bots.isEmpty {
-                Divider()
-                ForEach(botStore.bots) { b in
-                    Button {
-                        switchBot(to: b.id)
-                    } label: {
-                        Label(chat.botId == b.id ? "✓ \(b.name)" : b.name,
-                              systemImage: "person.crop.circle.badge.checkmark")
+                Button {
+                    switchBot(to: nil)
+                } label: {
+                    // v3.0.11 fix：图标与胶囊内当前角色图标一致（v3.0.9 通用助手已改科幻图标）
+                    Label(chat.botId == nil ? "✓ 通用助手" : "通用助手",
+                          systemImage: "circle.hexagongrid.fill")
+                }
+                if !botStore.bots.isEmpty {
+                    Divider()
+                    ForEach(botStore.bots) { b in
+                        Button {
+                            switchBot(to: b.id)
+                        } label: {
+                            // v3.0.11 fix：菜单内头像跟随 Bot 设定的图标（原硬编码
+                            // person.crop.circle.badge.checkmark，用户设定图标不显示）
+                            Label {
+                                Text(chat.botId == b.id ? "✓ \(b.name)" : b.name)
+                            } icon: {
+                                b.avatarIcon(size: 14)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
                     }
                 }
-            }
             Divider()
             Button {
                 showBotManage = true
@@ -226,12 +234,17 @@ struct ChatView: View {
 
     /// 切换聊天角色：先保存当前会话（快照捕获防清空竞态）→ 停流 → 换独立新会话 → 清输入态
     /// v3.0.7 fix：切换放 Task 内延迟到保存完成，且切前校验 botId 未再变（防快速连点 A→B→C 乱序）
+    /// v3.0.11 fix（bot 串话根治）：先清排队队列、再停流——原顺序（先停流）会让 onFinished 的
+    /// sendQueued 在队列清空前触发，用旧 bot 的会话/人设跨会话起新流 → 回答出现在新 bot 聊天里。
+    /// 顺序与停止按钮（onStop）一致：clearPendingQueue → stream.stop。
     private func switchBot(to id: String?) {
         guard chat.botId != id else { return }
         let fromID = chat.botId
         let snapshotID = chat.sessionId
         let snapshotMessages = chat.messages
         let snapshotTitle = chat.title
+        // v3.0.11：必须先清队列再停流（顺序反了 = 跨会话幽灵流）
+        clearPendingQueue()
         if stream.isStreaming { stream.stop(auth: auth) }
         Task {
             if !snapshotMessages.isEmpty {
@@ -246,7 +259,6 @@ struct ChatView: View {
         pendingImage = nil
         pendingImageData = nil
         quotedMessage = nil
-        clearPendingQueue()
     }
 
     // MARK: - v3.0.7 fix：输入栏上方三个小条拆独立 property（body 瘦身，防 type-check 超时）
@@ -714,6 +726,10 @@ struct ChatView: View {
                 guard pending else { return }
                 clearing = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    // v3.0.11 fix：新建会话前先清队列+停流——原实现旧流仍在跑，
+                    // 回答内容会持续显示/落进新会话（同 bot 串话根因族）
+                    clearPendingQueue()
+                    if stream.isStreaming { stream.stop(auth: auth) }
                     withAnimation(nil) { chat.newSession() }
                     chat.pendingNewSession = false
                     clearing = false
@@ -995,7 +1011,12 @@ struct ChatView: View {
                     }
                 }
                 // 保存会话到后端（会话记录同步）
-                Task { await chat.saveToServer(auth: auth) }
+                // v3.0.11 fix：快照参数化——同步捕获 sid/messages/title，防止 Task 延迟执行时
+                // 读到切换后的新会话（空/新 bot 消息）而把内容存错会话
+                let saveSid = chat.sessionId
+                let saveMsgs = chat.messages
+                let saveTitle = chat.title
+                Task { await chat.saveToServer(auth: auth, sessionId: saveSid, messages: saveMsgs, title: saveTitle) }
                 // v2.0.88：回答完成（成功/失败/停止）→ 自动发送队列中的下一条
                 if !pendingQueue.isEmpty {
                     let next = pendingQueue.removeFirst()

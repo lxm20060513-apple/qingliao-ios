@@ -148,6 +148,7 @@ struct MessageBlockView: View {
                 attributedText: cachedRender(text),
                 fallbackColor: .label,
                 lineSpacingFromSettings: true,   // v2.0.130：AI 消息行距实时读设置
+                fillWidth: true,   // v3.0.11 fix：AI 消息满容器宽（流式不跳变）
                 onCopy: onCopy,
                 onQuote: onQuote,
                 onShare: onShare,
@@ -364,6 +365,7 @@ struct MessageBubble: View {
                                     ]),
                                     fallbackColor: .label,
                                     lineSpacingFromSettings: true,   // v2.0.130：AI 折叠消息行距实时读设置
+                                    fillWidth: true,   // v3.0.11 fix：AI 消息满容器宽
                                     onCopy: { UIPasteboard.general.string = message.content },
                                     onQuote: onQuote,
                                     onShare: onShare,
