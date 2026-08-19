@@ -1,5 +1,35 @@
 import Foundation
 
+// MARK: - Bot Mode（v3.0.7：每个 Bot 独立人设/模型，独立会话；数据源 NAS bots.json）
+
+struct QingliaoBot: Identifiable, Codable, Equatable {
+    var id: String
+    var name: String
+    var systemPrompt: String
+    var model: String
+    var provider: String
+    var avatar: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, model, provider, avatar
+        case systemPrompt = "system_prompt"
+    }
+
+    /// 模型副标题（模型名 + 供应商；为空则显示"默认模型"）
+    var displayModel: String {
+        if !model.isEmpty { return provider.isEmpty ? model : "\(model) · \(provider)" }
+        return provider.isEmpty ? "默认模型" : provider
+    }
+
+    /// 头像显示（emoji / 单字 / 默认图标）
+    var avatarText: String {
+        let a = avatar.trimmingCharacters(in: .whitespacesAndNewlines)
+        if a.isEmpty { return "🤖" }
+        // emoji 可能多字符（如 🐱），第一个字簇即可
+        return String(a.prefix(2))
+    }
+}
+
 // MARK: - 聊天消息（content 可能是纯文本或数组，手动解析最稳）
 
 struct ChatMessage: Identifiable {

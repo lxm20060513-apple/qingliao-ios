@@ -25,9 +25,10 @@ final class StreamClient {
     private var pollTask: Task<Void, Never>?
     private var onFinished: ((Bool, String) -> Void)?   // (success, errorMessage)
 
-    /// 启动流式请求
+    /// 启动流式请求（v3.0.7：bot 透传给 streamStart）
     func start(auth: AuthStore, sessionId: String, model: String, provider: String,
-               messages: [[String: Any]], onFinished: ((Bool, String) -> Void)? = nil) async {
+               messages: [[String: Any]], bot: String? = nil,
+               onFinished: ((Bool, String) -> Void)? = nil) async {
         stopPolling()
         content = ""
         offset = 0
@@ -46,7 +47,7 @@ final class StreamClient {
 
         do {
             let tid = try await auth.streamStart(sessionId: sessionId, model: model,
-                                                 provider: provider, messages: messages)
+                                                 provider: provider, messages: messages, bot: bot)
             taskId = tid
             startPolling(auth: auth)
         } catch APIError.relayCancelled {

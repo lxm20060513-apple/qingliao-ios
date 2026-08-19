@@ -5,6 +5,7 @@ import SwiftUI
 struct SessionsView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
+    @Environment(BotStore.self) private var botStore   // v3.0.7：bot 分组显示
 
     @State private var sessions: [ChatSession] = []
     @State private var isLoading = false
@@ -182,41 +183,47 @@ struct SessionsView: View {
                                 // v2.0.133g：VStack → LazyVStack——会话多时全量渲染拖慢 TabView 切页；
                                 // 删除已改后端驱动+load() 整体刷新（v2.0.56 根治），无就地 diff 崩溃路径，安全
                                 LazyVStack(spacing: 8) {
-                                    ForEach(sortedSessions) { s in
-                                        SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
-                                                   showCheck: editing, checked: selectedIds.contains(s.id)) {
-                                            if editing {
-                                                toggleSelect(s.id)
-                                            } else {
-                                                chat.load(s)
-                                                onOpenSession?()
-                                            }
+                                    ForEach(groupedSessions, id: \.key) { group in
+                                        // v3.0.7：bot 组显示组头（通用助手组不显示，保持原有观感）
+                                        if !group.key.isEmpty, let b = botStore.bot(group.key) {
+                                            botGroupHeader(b)
                                         }
-                                        // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
-                                        .contextMenu {
-                                            Button {
-                                                togglePin(s)
-                                            } label: {
-                                                Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
+                                        ForEach(group.items) { s in
+                                            SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
+                                                       showCheck: editing, checked: selectedIds.contains(s.id)) {
+                                                if editing {
+                                                    toggleSelect(s.id)
+                                                } else {
+                                                    chat.load(s)
+                                                    onOpenSession?()
+                                                }
                                             }
-                                            // v2.0.60：收藏
-                                            Button {
-                                                toggleFav(s)
-                                            } label: {
-                                                Label(favIDs.contains(s.id) ? "取消收藏" : "收藏", systemImage: favIDs.contains(s.id) ? "star.slash" : "star")
-                                            }
-                                            // v2.0.43：会话重命名
-                                            Button {
-                                                renameTarget = s
-                                                renameText = s.title
-                                            } label: {
-                                                Label("重命名", systemImage: "pencil")
-                                            }
-                                            // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
-                                            Button(role: .destructive) {
-                                                confirmDelete = s
-                                            } label: {
-                                                Label("删除会话", systemImage: "trash")
+                                            // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
+                                            .contextMenu {
+                                                Button {
+                                                    togglePin(s)
+                                                } label: {
+                                                    Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
+                                                }
+                                                // v2.0.60：收藏
+                                                Button {
+                                                    toggleFav(s)
+                                                } label: {
+                                                    Label(favIDs.contains(s.id) ? "取消收藏" : "收藏", systemImage: favIDs.contains(s.id) ? "star.slash" : "star")
+                                                }
+                                                // v2.0.43：会话重命名
+                                                Button {
+                                                    renameTarget = s
+                                                    renameText = s.title
+                                                } label: {
+                                                    Label("重命名", systemImage: "pencil")
+                                                }
+                                                // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
+                                                Button(role: .destructive) {
+                                                    confirmDelete = s
+                                                } label: {
+                                                    Label("删除会话", systemImage: "trash")
+                                                }
                                             }
                                         }
                                     }
@@ -236,7 +243,13 @@ struct SessionsView: View {
         }
         .task { await load() }
         // v2.0.102：切回会话列表立即刷新（聊天里新建/重命名后列表即时更新，原只有 .task 首刷）
-        .onAppear { Task { await load() } }
+        .onAppear {
+            Task { await load() }
+            // v3.0.7：bot 列表加载（分组显示需要 bot 名；云端模式无 bot，跳过）
+            if !CloudConfig.shared.isCloudMode {
+                Task { await botStore.load(auth: auth) }
+            }
+        }
         // v2.0.78：搜索键盘完成按钮
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -336,6 +349,50 @@ struct SessionsView: View {
             if a != b { return a > b }
             return ($0.lastTime ?? 0) > ($1.lastTime ?? 0)
         }
+    }
+
+    // MARK: - v3.0.7 Bot 会话分组
+
+    /// 会话分组视图模型（通用助手 = key ""；bot 组 = bot id）
+    private struct BotGroup: Identifiable {
+        let key: String
+        let title: String
+        let items: [ChatSession]
+        var id: String { key }
+    }
+
+    /// 按 bot 分组（保持 sortedSessions 的顺序：组序 = 组内最近活动时间，组内仍按时间倒序）
+    /// bot 已删除的会话回落"通用助手"组（原 Bot 删除不级联删会话）
+    private var groupedSessions: [BotGroup] {
+        var groups: [String: [ChatSession]] = [:]
+        var order: [String] = []
+        for s in sortedSessions {
+            let rawKey = ChatStore.botID(fromSessionID: s.id) ?? ""
+            let key = (rawKey.isEmpty || botStore.bot(rawKey) == nil) ? "" : rawKey
+            if groups[key] == nil {
+                groups[key] = []
+                order.append(key)
+            }
+            groups[key]?.append(s)
+        }
+        return order.map { key in
+            let title = key.isEmpty ? "通用助手" : (botStore.bot(key)?.name ?? "Bot")
+            return BotGroup(key: key, title: title, items: groups[key] ?? [])
+        }
+    }
+
+    /// v3.0.7：bot 组头（头像 + 名字，仅 bot 会话组显示）
+    private func botGroupHeader(_ b: QingliaoBot) -> some View {
+        HStack(spacing: 6) {
+            Text(b.avatarText)
+                .font(.system(size: 12))
+            Text(b.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
     }
 
     private func rank(_ id: String) -> Int {

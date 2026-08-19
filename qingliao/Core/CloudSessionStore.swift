@@ -56,12 +56,17 @@ final class CloudSessionStore {
 
     /// 从 ChatStore 保存当前会话（消息降级规则与后端一致：图片→[图片]，语音→[语音]）
     func saveChat(store: ChatStore) {
-        guard !store.messages.isEmpty else { return }
-        let msgs: [[String: Any]] = store.messages.map { m in
+        saveChat(sessionId: store.sessionId, messages: store.messages, title: store.title)
+    }
+
+    /// v3.0.7：参数化快照版（切换角色前调用，捕获消息快照防清空竞态）
+    func saveChat(sessionId: String, messages msgs: [ChatMessage], title t: String) {
+        guard !msgs.isEmpty else { return }
+        let msgsPayload: [[String: Any]] = msgs.map { m in
             var content = m.content
             if m.imageDataURL != nil {
-                let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                content = t.isEmpty ? "[图片]" : t + "\n[图片]"
+                let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                content = trimmed.isEmpty ? "[图片]" : trimmed + "\n[图片]"
             }
             if m.audioPath != nil {
                 content = "[语音]"
@@ -70,10 +75,10 @@ final class CloudSessionStore {
             if let ts = m.timestamp { p["timestamp"] = ts }
             return p
         }
-        let firstUserText = store.messages.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
-        let title = store.title.isEmpty ? firstUserText : store.title
-        let payload = ChatSession(id: store.sessionId, title: title,
-                                  messages: msgs.compactMap { ChatMessage.parse($0) })
+        let firstUserText = msgs.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
+        let title = t.isEmpty ? firstUserText : t
+        let payload = ChatSession(id: sessionId, title: title,
+                                  messages: msgsPayload.compactMap { ChatMessage.parse($0) })
         upsert(payload)
     }
 

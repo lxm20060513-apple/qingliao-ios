@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
     @State private var scrollPos = ScrollPosition()
     @State private var showModelSheet = false
+    @State private var showBotManage = false   // v3.0.7：Bot 管理
     @State private var showAbout = false
     @State private var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
     @State private var secretCount = 0
@@ -160,6 +161,11 @@ struct SettingsView: View {
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                             .onTapGesture { showModelSheet = true }
+                        Divider().padding(.leading, 52)
+                        // v3.0.7：Bot Mode 管理入口（本地模式下有效，云端模式提示用不了）
+                        SettingRow(icon: "person.2.crop.square.stack.fill", iconColor: .teal, title: "Bot 管理",
+                                   value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
+                            .onTapGesture { showBotManage = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
                             .onTapGesture { showHASettings = true }
@@ -631,6 +637,11 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showModelSheet) {
             ModelSheet(current: currentModel)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showBotManage) {
+            // v3.0.7：Bot 管理（云端模式下 BotStore 拉取会失败，入口标注「仅本地模式」）
+            BotManageSheet()
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAbout) {

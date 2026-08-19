@@ -94,6 +94,7 @@ struct ChatView: View {
     @Environment(ChatStore.self) private var chat
     @Environment(StreamClient.self) private var stream
     @Environment(KeyboardObserver.self) private var kb
+    @Environment(BotStore.self) private var botStore   // v3.0.7：Bot Mode
 
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
@@ -115,6 +116,7 @@ struct ChatView: View {
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
     @State private var showModelSheet = false   // 模型快速切换
+    @State private var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
     @State private var showAttachmentMenu = false
     // v2.0.96：Hermes 捷径面板（官方斜杠命令）
     @State private var showHermesShortcut = false
@@ -152,6 +154,89 @@ struct ChatView: View {
     }
     private var headerColor: Color {
         serverOnline == true ? .green : (serverOnline == false ? .red : .gray)
+    }
+
+    // MARK: - v3.0.7 Bot 选择器
+
+    /// 实际生效的 bot id：Bot 已删除（列表无此 id）→ 回落空（nil = 通用助手），
+    /// 保证发送不带 bot 字段时后端恢复 KB 注入 + agent 分流（人设本身也没了）
+    private var effectiveBot: String? {
+        guard let id = chat.botId, botStore.bot(id) != nil else { return nil }
+        return id
+    }
+
+    /// 输入栏上方角色切换条：当前角色胶囊 + 菜单（通用助手 / 各 Bot / 管理入口）
+    private var botSelectorBar: some View {
+        let current = botStore.bot(chat.botId)
+        return HStack(spacing: 0) {
+            Menu {
+                Button {
+                    switchBot(to: nil)
+                } label: {
+                    Label(chat.botId == nil ? "✓ 通用助手" : "通用助手", systemImage: "person.crop.circle")
+                }
+                if !botStore.bots.isEmpty {
+                    Divider()
+                    ForEach(botStore.bots) { b in
+                        Button {
+                            switchBot(to: b.id)
+                        } label: {
+                            Label(chat.botId == b.id ? "✓ \(b.name)" : b.name,
+                                  systemImage: "person.crop.circle.badge.checkmark")
+                        }
+                    }
+                }
+                Divider()
+                Button {
+                    showBotManage = true
+                } label: {
+                    Label("管理 Bot…", systemImage: "gearshape")
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(current?.avatarText ?? "🤖")
+                        .font(.system(size: 14))
+                    Text(current?.name ?? "通用助手")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
+    }
+
+    /// 切换聊天角色：先保存当前会话（快照捕获防清空竞态）→ 停流 → 换独立新会话 → 清输入态
+    /// v3.0.7 fix：切换放 Task 内延迟到保存完成，且切前校验 botId 未再变（防快速连点 A→B→C 乱序）
+    private func switchBot(to id: String?) {
+        guard chat.botId != id else { return }
+        let fromID = chat.botId
+        let snapshotID = chat.sessionId
+        let snapshotMessages = chat.messages
+        let snapshotTitle = chat.title
+        if stream.isStreaming { stream.stop(auth: auth) }
+        Task {
+            if !snapshotMessages.isEmpty {
+                await chat.saveToServer(auth: auth, sessionId: snapshotID,
+                                        messages: snapshotMessages, title: snapshotTitle)
+            }
+            // 保存期间用户又切了其它角色 → 丢弃本次过期切换（最终以最后一次为准）
+            guard chat.botId == fromID else { return }
+            chat.switchBot(id: id)
+        }
+        inputText = ""
+        pendingImage = nil
+        pendingImageData = nil
+        quotedMessage = nil
+        clearPendingQueue()
     }
 
     var body: some View {
@@ -298,6 +383,10 @@ struct ChatView: View {
                 .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.horizontal, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // v3.0.7：Bot 选择器（仅本地模式——bot 定义在 NAS 后端，云端模式无此功能）
+            if !CloudConfig.shared.isCloudMode {
+                botSelectorBar
             }
             ChatInputBar(text: $inputText,
                          focused: $inputFocus,
@@ -629,9 +718,18 @@ struct ChatView: View {
             // 服务器连接状态检测（真实绿点）
             let r = await auth.testConnection(server: auth.serverURL)
             serverOnline = r.hasPrefix("✅")
+            // v3.0.7：Bot 列表加载（角色切换菜单/管理页共用；失败静默，管理页可重试）
+            if !CloudConfig.shared.isCloudMode {
+                await botStore.load(auth: auth)
+            }
         }
         .sheet(isPresented: $showModelSheet) {
             ModelSheet(current: modelName)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showBotManage) {
+            // v3.0.7：Bot 管理（列表/新建/编辑/删除）
+            BotManageSheet()
                 .presentationDetents([.medium, .large])
         }
         .fullScreenCover(item: $bigBangPayload) { payload in
@@ -845,7 +943,8 @@ struct ChatView: View {
                 sessionId: chat.sessionId,
                 model: modelName,
                 provider: provider,
-                messages: history
+                messages: history,
+                bot: effectiveBot
             ) { success, error in
                 sendingLock = false   // 无论结果，先释放发送锁
                 guard chat.sessionId == startSid else { return }   // 已切换会话 → 本次结果丢弃
@@ -961,13 +1060,15 @@ struct ChatView: View {
 
     /// 模拟 SafariRelay.relay 的最终 URL 长度：payload={m,p,h,b} → base64url → /r?r=<b64>
     /// 用于发送前预判是否超限（限制 ~3.5KB = 3584，保守取 3400）
+    /// v3.0.7：bot 字段同步进估算（与 streamStart payload 一致，否则低估长度导致 relay 超限）
     private func relayPayloadLength(messages: [[String: Any]]) -> Int {
-        let body: [String: Any] = ["sessionId": chat.sessionId,
+        var body: [String: Any] = ["sessionId": chat.sessionId,
                                    "model": modelName,
                                    "provider": provider,
                                    "messages": messages,
                                    "pushEnabled": false,
                                    "agentEnabled": true]
+        if let b = effectiveBot, !b.isEmpty { body["bot"] = b }
         guard let bodyData = try? JSONSerialization.data(withJSONObject: body),
               let bodyStr = String(data: bodyData, encoding: .utf8) else { return Int.max }
         let payload: [String: Any] = ["m": "POST", "p": "/api/stream/start", "b": bodyStr]

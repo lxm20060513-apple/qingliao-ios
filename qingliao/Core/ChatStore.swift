@@ -10,6 +10,12 @@ final class ChatStore {
     var messages: [ChatMessage] = []
     var title = ""
 
+    // v3.0.7 Bot Mode：当前会话关联的 bot id（nil = 通用助手）
+    // bot 会话 id 用独立命名空间 "bot:<botId>:<sid>"，与普通会话完全隔离
+    var botId: String? {
+        didSet { defaults.set(botId ?? "", forKey: botKey) }
+    }
+
     private let defaults = UserDefaults.standard
     // v3.0.1 fix：云端/本地会话 id 用不同 key 隔离（原共用一个 key → 切模式串 sessionId）
     // 注意：init 里不能访问 self.sessionKey（sessionId 未初始化会报 'self' used before init），
@@ -17,6 +23,7 @@ final class ChatStore {
     private var sessionKey: String {
         CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
     }
+    private let botKey = "qingliao_current_bot"
 
     init() {
         let key = CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
@@ -26,11 +33,42 @@ final class ChatStore {
             sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
             defaults.set(sessionId, forKey: key)
         }
+        let savedBot = defaults.string(forKey: botKey) ?? ""
+        if !savedBot.isEmpty { botId = savedBot }
     }
 
-    /// 切换会话（从会话列表点入）
+    // MARK: - v3.0.7 Bot 会话命名空间
+
+    /// 从会话 id 解析 bot id：普通会话 "<sid>" → nil；bot 会话 "bot:<botId>:<sid>" → botId
+    static func botID(fromSessionID id: String) -> String? {
+        let parts = id.split(separator: ":", maxSplits: 2).map(String.init)
+        guard parts.count == 3, parts[0] == "bot" else { return nil }
+        return parts[1]
+    }
+
+    /// 生成新会话 id（当前是 bot 会话则带 bot 前缀命名空间）
+    private func nextSessionID() -> String {
+        let sid = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
+        if let b = botId, !b.isEmpty { return "bot:\(b):\(sid)" }
+        return sid
+    }
+
+    /// 切换聊天角色（nil = 通用助手）。保存当前会话由调用方负责（需 auth）；
+    /// 这里只换会话：新 bot 会话用独立 id，不与其它 bot / 通用会话串数据
+    func switchBot(id: String?) {
+        guard botId != id else { return }
+        botId = id
+        sessionId = nextSessionID()
+        title = ""
+        messages = []
+        highlightTarget = nil
+        defaults.set(sessionId, forKey: sessionKey)
+    }
+
+    /// 切换会话（从会话列表点入）——v3.0.7：按 id 前缀恢复 bot 上下文
     func load(_ s: ChatSession) {
         sessionId = s.id
+        botId = Self.botID(fromSessionID: s.id)
         title = s.title
         messages = s.messages
         defaults.set(sessionId, forKey: sessionKey)
@@ -39,22 +77,25 @@ final class ChatStore {
     /// v3.0.2 fix（会话串位根治）：模式切换时调用——清空当前模式的内存数据，
     /// 并按**新模式的 key** 重新读取当前会话 id。原实现：ChatStore 是全局单例，
     /// 切模式不复位 → 云端聊天时内存里还带本地 messages → 界面串位。
+    /// v3.0.7：按新 key 的会话 id 前缀恢复 bot 上下文；云端模式不支持 bot（NAS 功能）→ 重置
     func switchToMode() {
         let key = CloudConfig.shared.isCloudMode ? "qingliao_current_session_cloud" : "qingliao_current_session"
         if let saved = defaults.string(forKey: key), !saved.isEmpty {
             sessionId = saved
+            botId = Self.botID(fromSessionID: saved)
         } else {
-            sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
+            sessionId = nextSessionID()
             defaults.set(sessionId, forKey: key)
         }
+        if CloudConfig.shared.isCloudMode { botId = nil }
         title = ""
         messages = []
         highlightTarget = nil
     }
 
-    /// 新会话
+    /// 新会话（v3.0.7：当前是 bot 会话则继续该 bot，生成带命名空间前缀的新 id）
     func newSession() {
-        sessionId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(13).description
+        sessionId = nextSessionID()
         title = ""
         messages = []
         highlightTarget = nil   // v2.0.44：新建会话清除残留定位目标
@@ -148,17 +189,23 @@ final class ChatStore {
     /// 云端模式：写 App 本地文档（防云端会话串进本地 AI 后端 sessions）
     /// 图片消息降级为文本（不带 base64 data URL，防 sessions.json 膨胀；历史重放本就不渲染图片）
     func saveToServer(auth: AuthStore) async {
-        guard !messages.isEmpty else { return }
+        await saveToServer(auth: auth, sessionId: sessionId, messages: messages, title: title)
+    }
+
+    /// v3.0.7 参数化快照版：切换角色（switchBot）前调用——切换会清空 messages，
+    /// 异步保存若不捕获快照会读到空数组丢会话。消息降级规则与 saveToServer 一致。
+    func saveToServer(auth: AuthStore, sessionId sid: String, messages msgs: [ChatMessage], title t: String) async {
+        guard !msgs.isEmpty else { return }
         // v3.0.1 fix：云端模式会话存本地文件，绝不写后端（否则串到本地 AI）
         if CloudConfig.shared.isCloudMode {
-            CloudSessionStore.shared.saveChat(store: self)
+            CloudSessionStore.shared.saveChat(sessionId: sid, messages: msgs, title: t)
             return
         }
-        let msgs: [[String: Any]] = messages.map { m in
+        let msgsPayload: [[String: Any]] = msgs.map { m in
             var content = m.content
             if m.imageDataURL != nil {
-                let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                content = t.isEmpty ? "[图片]" : t + "\n[图片]"
+                let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                content = trimmed.isEmpty ? "[图片]" : trimmed + "\n[图片]"
             }
             if m.audioPath != nil {   // v2.0.61：语音消息降级为文本（文件在本地，不同步服务器）
                 content = "[语音]"
@@ -167,11 +214,11 @@ final class ChatStore {
             if let ts = m.timestamp { p["timestamp"] = ts }
             return p
         }
-        let firstUserText = messages.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
+        let firstUserText = msgs.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
         let payload: [String: Any] = [
-            "id": sessionId,
-            "title": title.isEmpty ? firstUserText : title,
-            "messages": msgs
+            "id": sid,
+            "title": t.isEmpty ? firstUserText : t,
+            "messages": msgsPayload
         ]
         _ = try? await auth.request("/api/sessions/merge", method: "POST", body: [
             "sessions": [payload],
