@@ -171,7 +171,7 @@ struct SettingsView: View {
                         if !CloudConfig.shared.isCloudMode {
                             Divider().padding(.leading, 52)
                             SettingRow(icon: "note.text", iconColor: .yellow, title: "便签存储地址",
-                                       value: NoteStore.shared.customBase.isEmpty ? "当前服务器" : nil, chevron: true)
+                                       value: NoteStore.shared.customDir.isEmpty ? "默认（NAS /data）" : nil, chevron: true)
                                 .onTapGesture { showNotesAddress = true }
                         }
                         Divider().padding(.leading, 52)

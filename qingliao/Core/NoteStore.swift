@@ -2,8 +2,9 @@ import Foundation
 import Observation
 
 // MARK: - 便签 Store（v3.0.8 看板便签）
-// 本地 AI 模式：存 NAS 后端（/api/notes，地址可在设置自定义，默认当前服务器）；云端模式：存 App 本地 UserDefaults。
-// 双模式共用 UI（看板便签卡片），数据层按模式分流。
+// 本地 AI 模式：存 NAS 后端（/api/notes，存储目录可在设置自定义——NAS 绝对路径，默认 /data）；
+//              请求带 X-Notes-Dir 头，后端写到指定目录的 notes.json。
+// 云端模式：存 App 本地 UserDefaults。双模式共用 UI，数据层按模式分流。
 
 struct NoteItem: Identifiable, Codable, Equatable {
     var id: String
@@ -22,13 +23,12 @@ final class NoteStore {
 
     /// 云端模式本地存储 key（JSON 数组）
     private let cloudKey = "qingliao_cloud_notes"
-    /// 本地模式自定义地址（设置页可改；空 = 当前服务器）。
-    /// 存完整 base URL，如 http://192.168.31.40:16668；空则用 auth.serverURL
-    @ObservationIgnored private let baseKey = "qingliao_notes_base"
+    /// 本地模式自定义存储目录（NAS 绝对路径，设置页可改；空 = 服务器默认 /data）
+    @ObservationIgnored private let dirKey = "qingliao_notes_dir"
 
-    var customBase: String {
-        get { UserDefaults.standard.string(forKey: baseKey) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: baseKey) }
+    var customDir: String {
+        get { UserDefaults.standard.string(forKey: dirKey) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: dirKey) }
     }
 
     // MARK: - 读取
@@ -123,31 +123,24 @@ final class NoteStore {
         return false
     }
 
-    // MARK: - 底层请求（支持自定义 base；空 base 用 auth.serverURL）
+    // MARK: - 底层请求（走 AuthStore 统一网络层 + X-Notes-Dir 头）
 
-    /// 发起便签请求：base = customBase 或 auth.serverURL。蜂窝走 AuthStore 统一分流（relay/CFStream）。
     private func request(auth: AuthStore, path: String, method: String = "GET",
                          body: [String: Any]? = nil) async throws -> (Data, Int) {
-        // 复用 AuthStore 的 JSON 请求能力：临时路径改写不可行，直接用其 request() 但需要 base 覆盖——
-        // AuthStore.request 固定 serverURL+path。这里走自定义 base + URLSession 直连，蜂窝降级 relay 由 AuthStore 提供。
-        // 简化：本地模式地址默认即服务器，直接调 auth.json；仅当 customBase 非空且不等于服务器时才走独立 URLSession。
-        let base = customBase.trimmingCharacters(in: .whitespacesAndNewlines)
-        if base.isEmpty || base == auth.serverURL {
-            // 同服务器：走 AuthStore 统一网络层（token/蜂窝分流都现成）
-            let (data, resp) = try await auth.request(path, method: method, body: body)
-            return (data, resp.statusCode)
-        }
-        // 自定义地址：独立 URLSession 直连 + 带 token（base 规范化：去尾部斜杠防 // 拼接；无协议补 http://）
-        var finalBase = customBase.trimmingCharacters(in: .whitespacesAndNewlines)
-        while finalBase.hasSuffix("/") { finalBase.removeLast() }
-        if !finalBase.hasPrefix("http://") && !finalBase.hasPrefix("https://") {
-            finalBase = "http://" + finalBase
-        }
-        let url = URL(string: finalBase + path) ?? URL(string: "https://localhost")!
+        // 复用 AuthStore 的复用网络层：需附加 X-Notes-Dir 头，直接走 request 并注入头。
+        // AuthStore.request 不开放自定义 header——这里用直接 URLSession + token（蜂窝下
+        // 便签读写量小，短请求可接受；与 App 其它轻接口一致）。
+        let base = auth.serverURL
+        let url = URL(string: base + path) ?? URL(string: "https://localhost")!
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 15
         if !auth.token.isEmpty { req.setValue(auth.token, forHTTPHeaderField: "X-Auth-Token") }
+        // v3.0.8 fix：便签存储目录（NAS 绝对路径）——默认不带头（后端用 /data）
+        let dir = customDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !dir.isEmpty {
+            req.setValue(dir, forHTTPHeaderField: "X-Notes-Dir")
+        }
         if let body, JSONSerialization.isValidJSONObject(body),
            let d = try? JSONSerialization.data(withJSONObject: body) {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
