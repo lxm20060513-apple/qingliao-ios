@@ -286,25 +286,8 @@ struct BotEditSheet: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("图标").font(.system(size: 11)).foregroundStyle(.secondary)
                             // v3.0.7 beautify：内置淡雅 SF Symbols 网格选择（点选即用；可再手动输入 emoji 微调）
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                                ForEach(QingliaoBot.iconPresets) { p in
-                                    Button {
-                                        avatar = p.id
-                                    } label: {
-                                        Image(systemName: p.symbol)
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundStyle(avatar == p.id ? Color.white : p.color)
-                                            .frame(width: 34, height: 34)
-                                            .background(
-                                                avatar == p.id
-                                                    ? p.color
-                                                    : p.color.opacity(0.12),
-                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                            // v3.0.8 CI fix：网格拆独立函数（原内联在 fieldCard 闭包内 type-check 超时）
+                            iconGrid
                             HStack(spacing: 8) {
                                 Image(systemName: "pencil")
                                     .font(.system(size: 11))
@@ -343,6 +326,29 @@ struct BotEditSheet: View {
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    // v3.0.8 CI fix：内置图标网格拆独立属性（内联在 fieldCard 闭包内 type-check 超时）
+    private var iconGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+            ForEach(QingliaoBot.iconPresets) { p in
+                Button {
+                    avatar = p.id
+                } label: {
+                    Image(systemName: p.symbol)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(avatar == p.id ? Color.white : p.color)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            avatar == p.id
+                                ? p.color
+                                : p.color.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func save() {

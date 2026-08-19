@@ -11,6 +11,8 @@ struct QingliaoApp: App {
     @State private var keyboard = KeyboardObserver()
     // v3.0.7：Bot Mode 数据（NAS bots.json 缓存 + 选中状态）
     @State private var botStore = BotStore.shared
+    // v3.0.8：看板便签（本地→NAS 后端 / 云端→App 本地）
+    @State private var noteStore = NoteStore.shared
     @AppStorage("qingliao_appearance") private var appearance = "system"   // dark / light / system（v2.0.42 默认跟随系统，与 SettingsView 默认值一致）
 
     var body: some Scene {
@@ -21,6 +23,7 @@ struct QingliaoApp: App {
                 .environment(stream)
                 .environment(keyboard)
                 .environment(botStore)
+                .environment(noteStore)
                 .preferredColorScheme(colorScheme)
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）

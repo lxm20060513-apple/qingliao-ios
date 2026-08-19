@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var scrollPos = ScrollPosition()
     @State private var showModelSheet = false
     @State private var showBotManage = false   // v3.0.7：Bot 管理
+    @State private var showNotesAddress = false   // v3.0.8：便签存储地址（本地模式）
     @State private var showAbout = false
     @State private var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
     @State private var secretCount = 0
@@ -166,6 +167,13 @@ struct SettingsView: View {
                         SettingRow(icon: "person.2.crop.square.stack.fill", iconColor: .teal, title: "Bot 管理",
                                    value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
                             .onTapGesture { showBotManage = true }
+                        // v3.0.8：便签存储地址（仅本地模式显示；云端便签存 App 本地无此项）
+                        if !CloudConfig.shared.isCloudMode {
+                            Divider().padding(.leading, 52)
+                            SettingRow(icon: "note.text", iconColor: .yellow, title: "便签存储地址",
+                                       value: NoteStore.shared.customBase.isEmpty ? "当前服务器" : nil, chevron: true)
+                                .onTapGesture { showNotesAddress = true }
+                        }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
                             .onTapGesture { showHASettings = true }
@@ -643,6 +651,11 @@ struct SettingsView: View {
             // v3.0.7：Bot 管理（云端模式下 BotStore 拉取会失败，入口标注「仅本地模式」）
             BotManageSheet()
                 .presentationDetents([.medium, .large])
+        }
+        // v3.0.8：便签存储地址（本地模式自定义，留空=当前服务器）
+        .sheet(isPresented: $showNotesAddress) {
+            NotesAddressSheet()
+                .presentationDetents([.height(260)])
         }
         .sheet(isPresented: $showAbout) {
             AboutView()

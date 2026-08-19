@@ -187,9 +187,8 @@ struct SessionsView: View {
                                 LazyVStack(spacing: 8) {
                                     ForEach(groupedSessions, id: \.key) { group in
                                         // v3.0.7：bot 组显示组头（通用助手组不显示，保持原有观感）
-                                        if !group.key.isEmpty, let b = botStore.bot(group.key) {
-                                            botGroupHeader(b)
-                                        }
+                                        // v3.0.8 CI fix：拆成辅助函数，type-check 收敛
+                                        botGroupHeaderIfNeeded(group.key)
                                         ForEach(group.items) { s in
                                             SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
                                                        showCheck: editing, checked: selectedIds.contains(s.id)) {
@@ -384,6 +383,14 @@ struct SessionsView: View {
     }
 
     /// v3.0.7：bot 组头（头像 + 名字，仅 bot 会话组显示）
+    // v3.0.8 CI fix：@ViewBuilder 辅助函数，组内 if-let 拆出避免 type-check 超时
+    @ViewBuilder
+    private func botGroupHeaderIfNeeded(_ key: String) -> some View {
+        if !key.isEmpty, let b = botStore.bot(key) {
+            botGroupHeader(b)
+        }
+    }
+
     private func botGroupHeader(_ b: QingliaoBot) -> some View {
         HStack(spacing: 6) {
             b.avatarIcon(size: 12)   // v3.0.7 beautify：sfs 符号 / emoji 统一渲染

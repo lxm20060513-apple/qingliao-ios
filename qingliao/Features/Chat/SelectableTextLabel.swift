@@ -23,7 +23,7 @@ struct SelectableTextLabel: UIViewRepresentable {
     var onQuote: () -> Void = {}
     var onShare: () -> Void = {}
     var onBigBang: () -> Void = {}
-    var onSelectText: () -> Void = {}  // v2.0.125：选择文本入口（选中手按位置词）
+    // v3.0.8：onSelectText 已随「选择文本」菜单项移除（复制选中覆盖），不再使用
     var onDelete: () -> Void = {}
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
@@ -160,12 +160,8 @@ struct SelectableTextLabel: UIViewRepresentable {
                 self.parent.onBigBang()
             })
 
-            // v2.0.127：核心 —— 选中手按位置的文字 → 系统显示拖动手柄，可自由拖动选取范围
-            // iOS 26 新属性 selectedRanges: [NSRange]（长按菜单的 range 即手按位置的选区）
-            children.append(UIAction(title: "选择文本", image: UIImage(systemName: "selection.pin.in.out")) { _ in
-                textView.selectedRanges = [range]
-                self.parent.onSelectText()
-            })
+            // v3.0.8：移除「选择文本」——已有「复制选中」（长按选区直接复制），该入口冗余
+            // （原 v2.0.127 选中手柄功能：系统原生长按已有文本选择手柄，无需重复入口）
 
             if let onRegenerate = parent.onRegenerate {
                 children.append(UIAction(title: "重新生成", image: UIImage(systemName: "arrow.clockwise")) { _ in

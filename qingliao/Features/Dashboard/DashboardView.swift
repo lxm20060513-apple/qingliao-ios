@@ -40,6 +40,9 @@ struct DashboardView: View {
                 // v2.0.133f：VStack → LazyVStack——TabView 切页动画期间看板全量卡片一次性布局是切页卡顿主因，
                 // 懒加载后只渲染可见卡片（与 v2.0.132 ChatView 消息列表同款方案；看板无批量移除路径，安全）
                 LazyVStack(alignment: .leading, spacing: 10) {
+                    // v3.0.8：便签（本地→NAS 后端 / 云端→App 本地，样式对齐 DeviceCard）
+                    NotesSection()
+
                     // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
                     // v2.0.118：门锁卡同风格（普通圆角卡背景）+ 标题左上 + 内容靠左 + 重新生成右上
                     sectionTitle("智能建议")
@@ -274,6 +277,11 @@ struct DashboardView: View {
                 await refresh()
                 await loadDockerCount()
                 await loadWeatherWithCity()
+                // v3.0.8：切回看板重载便签（force 拉后端最新）
+                let notes = NoteStore.shared
+                if notes.notes.isEmpty || !CloudConfig.shared.isCloudMode {
+                    await notes.load(auth: auth, force: true)
+                }
             }
         }
         // v2.0.133f：离开看板 → 暂停 30s 轮询（隐藏页刷新抢帧，切页卡顿源之一）

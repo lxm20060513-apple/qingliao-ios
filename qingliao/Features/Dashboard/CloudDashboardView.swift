@@ -29,6 +29,9 @@ struct CloudDashboardView: View {
                        ))
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
+                    // v3.0.8：云端便签（App 本地存储，无需服务器）
+                    NotesSection()
+
                     // 待开发占位（v3.0.1：天气已上移到右上角徽章，与本地 AI 看板一致；内容区暂无卡片）
                     VStack(spacing: 12) {
                         Image(systemName: "hammer.fill")
@@ -50,6 +53,10 @@ struct CloudDashboardView: View {
             }
         }
         .task { await loadWeather() }
+        // v3.0.8：切回看板刷新便签（云端便签存 App 本地，重载即同步）
+        .onReceive(NotificationCenter.default.publisher(for: .qingliaoDashboardRefresh)) { _ in
+            Task { await NoteStore.shared.load(auth: nil) }
+        }
         .sheet(isPresented: $showCitySheet) {
             VStack(spacing: 16) {
                 Text("设置天气城市")
