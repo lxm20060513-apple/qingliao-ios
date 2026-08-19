@@ -54,8 +54,8 @@ func makeProj(yaw: CGFloat, tilt: CGFloat, cx: CGFloat, cy: CGFloat, scale: CGFl
     }
 }
 
-func radiusScale(_ size: CGFloat, _ pow: CGFloat) -> CGFloat {
-    return pow(size / 300, pow)
+func radiusScale(_ size: CGFloat, _ power: CGFloat) -> CGFloat {
+    return pow(size / 300, power)
 }
 
 func fibDir(_ i: Int, _ n: Int) -> (CGFloat, CGFloat, CGFloat) {
@@ -104,7 +104,7 @@ func frameOrbits(size: CGFloat, t: CGFloat, opts: OrbOpts) -> OrbFrame {
                 (uy * cos(a) + vy * sin(a)) * ro,
                 (uz * cos(a) + vz * sin(a)) * ro)
             let depth = (z / ro + 1) / 2
-            dots.append(OrbDot(x: px, y: py, z: z, r: (opts.partR + opts.partRDepth * depth) * rs, white: 0.3 - 0.22 * depth))
+            dots.append(OrbDot(x: px, y: py, z: z, r: (opts.partR + opts.partRDepth * depth) * rs, white: 0.3 - 0.22 * depth, alpha: 0.85))
         }
     }
     return finalizeFrame(dots: dots, rMin: opts.rMin)
@@ -200,8 +200,8 @@ extension OrbOpts {
         rsPow: 0.6, rMin: 0.3
     )
     static let ring64 = OrbOpts(
-        lanes: 5, segs: 88, faceOn: 1,
+        ghostN: 150, lanes: 5, segs: 88, faceOn: 1,
         rBase: 1.1, rDepth: 1.7, wobMul: 0.368, bandMul: 3.627, spin: 0,
-        ghostN: 150, rsPow: 0.6, rMin: 0.3
+        rsPow: 0.6, rMin: 0.3
     )
 }
