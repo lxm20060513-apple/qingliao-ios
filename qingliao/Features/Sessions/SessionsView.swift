@@ -30,6 +30,8 @@ struct SessionsView: View {
     // v2.0.87ad：多选删除
     @State private var editing = false
     @State private var selectedIds = Set<String>()
+    // v3.0.7：会话列表加载节流（3s 内不重复拉，防快速滑动切 Tab 重复触发 isLoading 翻转）
+    @State private var lastLoadAt: Date?
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -482,8 +484,11 @@ struct SessionsView: View {
     // MARK: - 数据
 
     private func load() async {
+        // 3 秒内不重复加载（快速滑动切 Tab 时避免 isLoading 翻转蹭卡）
+        if let last = lastLoadAt, Date().timeIntervalSince(last) < 3 { return }
         isLoading = true
         errorText = nil
+        lastLoadAt = Date()
         // v3.0 云端模式：会话历史存 App 本地（CloudSessionStore），不走后端
         if CloudConfig.shared.isCloudMode {
             CloudSessionStore.shared.load()
