@@ -386,8 +386,7 @@ struct SessionsView: View {
     /// v3.0.7：bot 组头（头像 + 名字，仅 bot 会话组显示）
     private func botGroupHeader(_ b: QingliaoBot) -> some View {
         HStack(spacing: 6) {
-            Text(b.avatarText)
-                .font(.system(size: 12))
+            b.avatarIcon(size: 12)   // v3.0.7 beautify：sfs 符号 / emoji 统一渲染
             Text(b.name)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)

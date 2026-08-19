@@ -48,15 +48,18 @@ struct SelectableTextLabel: UIViewRepresentable {
 
     func updateUIView(_ tv: UITextView, context: Context) {
         tv.textColor = fallbackColor
-        tv.font = UIFont.systemFont(ofSize: 15)   // 无字体属性文本的默认（有属性则保留）
+        // v3.0.7 fix：兜底字号跟随聊天字号设置（原硬编码 15，设置调大后无属性 run 仍是 15 → 大小不齐）
+        let uiFontSize = UserDefaults.standard.double(forKey: "qingliao_font_size")
+        tv.font = UIFont.systemFont(ofSize: CGFloat(uiFontSize > 0 ? uiFontSize : 15))
         // 行距：AI 消息从设置实时读（0-6），用户消息用固定值
         let spacing = lineSpacingFromSettings
             ? UserDefaults.standard.double(forKey: "qingliao_ai_line_spacing")
             : lineSpacing
-        // v2.0.132：内容指纹——文本/行距/颜色未变化则跳过重建（LazyVStack 滚动
+        // v2.0.132：内容指纹——文本/行距/颜色/字号未变化则跳过重建（LazyVStack 滚动
         // 复用 cell 时 SwiftUI 反复调 updateUIView，重设 attributedText + layoutIfNeeded
         // 是长记录滑动卡顿主因；同内容直接 return 保留现有布局）
-        let key = "\(attributedText.string.hashValue)|\(spacing)|\(fallbackColor.cgColor)"
+        // v3.0.7 fix：字号加入指纹——设置改字号后同文本不再被指纹命中跳过（旧字大小不齐根因）
+        let key = "\(attributedText.string.hashValue)|\(spacing)|\(fallbackColor.cgColor)|\(uiFontSize)"
         if context.coordinator.lastKey == key {
             return
         }

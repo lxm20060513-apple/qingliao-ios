@@ -166,52 +166,51 @@ struct ChatView: View {
     }
 
     /// 输入栏上方角色切换条：当前角色胶囊 + 菜单（通用助手 / 各 Bot / 管理入口）
+    /// v3.0.7 beautify：改为 header 右下紧凑胶囊（本地模式才显示）
     private var botSelectorBar: some View {
         let current = botStore.bot(chat.botId)
-        return HStack(spacing: 0) {
-            Menu {
-                Button {
-                    switchBot(to: nil)
-                } label: {
-                    Label(chat.botId == nil ? "✓ 通用助手" : "通用助手", systemImage: "person.crop.circle")
-                }
-                if !botStore.bots.isEmpty {
-                    Divider()
-                    ForEach(botStore.bots) { b in
-                        Button {
-                            switchBot(to: b.id)
-                        } label: {
-                            Label(chat.botId == b.id ? "✓ \(b.name)" : b.name,
-                                  systemImage: "person.crop.circle.badge.checkmark")
-                        }
+        return Menu {
+            Button {
+                switchBot(to: nil)
+            } label: {
+                Label(chat.botId == nil ? "✓ 通用助手" : "通用助手", systemImage: "person.crop.circle")
+            }
+            if !botStore.bots.isEmpty {
+                Divider()
+                ForEach(botStore.bots) { b in
+                    Button {
+                        switchBot(to: b.id)
+                    } label: {
+                        Label(chat.botId == b.id ? "✓ \(b.name)" : b.name,
+                              systemImage: "person.crop.circle.badge.checkmark")
                     }
                 }
-                Divider()
-                Button {
-                    showBotManage = true
-                } label: {
-                    Label("管理 Bot…", systemImage: "gearshape")
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Text(current?.avatarText ?? "🤖")
-                        .font(.system(size: 14))
-                    Text(current?.name ?? "通用助手")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: Capsule())
             }
-            .buttonStyle(.plain)
-            Spacer()
+            Divider()
+            Button {
+                showBotManage = true
+            } label: {
+                Label("管理 Bot…", systemImage: "gearshape")
+            }
+        } label: {
+            HStack(spacing: 5) {
+                // v3.0.7 beautify：统一头像渲染（sfs 符号 / emoji）
+                (current?.avatarIcon(size: 13) ?? Text("🤖").font(.system(size: 13)))
+                Text(current?.name ?? "通用助手")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            // v3.0.7 beautify：毛玻璃胶囊 + 浅描边（定稿 UI：玻璃小元素 + 0.8pt 描边）
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8))
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
+        .buttonStyle(.plain)
     }
 
     /// 切换聊天角色：先保存当前会话（快照捕获防清空竞态）→ 停流 → 换独立新会话 → 清输入态
@@ -333,14 +332,20 @@ struct ChatView: View {
             PageHeader(title: "聊天",
                        subtitle: headerSubtitle,
                        trailing: AnyView(
-                           Button {
-                               showMoreMenu = true
-                           } label: {
-                               Image(systemName: "ellipsis.circle")
-                                   .font(.system(size: 17, weight: .semibold))
-                                   .foregroundStyle(Color.accentColor)
+                           // v3.0.7 beautify：Bot 角色胶囊移到 header（本地模式）；右侧跟更多菜单
+                           HStack(spacing: 10) {
+                               if !CloudConfig.shared.isCloudMode {
+                                   botSelectorBar
+                               }
+                               Button {
+                                   showMoreMenu = true
+                               } label: {
+                                   Image(systemName: "ellipsis.circle")
+                                       .font(.system(size: 17, weight: .semibold))
+                                       .foregroundStyle(Color.accentColor)
+                               }
+                               .buttonStyle(.plain)
                            }
-                           .buttonStyle(.plain)
                        ),
                        showStatus: true,
                        statusColor: headerColor)
@@ -405,10 +410,7 @@ struct ChatView: View {
             attachmentMenuBar
             // v2.0.36：引用回复条（发送后自动清除）
             quotedReplyBar
-            // v3.0.7：Bot 选择器（仅本地模式——bot 定义在 NAS 后端，云端模式无此功能）
-            if !CloudConfig.shared.isCloudMode {
-                botSelectorBar
-            }
+            // v3.0.7 beautify：Bot 选择器已移到 header（本地模式），此处不再单独占一行
             ChatInputBar(text: $inputText,
                          focused: $inputFocus,
                          streaming: stream.isStreaming,

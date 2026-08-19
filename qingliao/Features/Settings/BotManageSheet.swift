@@ -130,9 +130,8 @@ struct BotManageSheet: View {
 
     private func botRow(_ b: QingliaoBot) -> some View {
         HStack(spacing: 12) {
-            // 头像
-            Text(b.avatarText)
-                .font(.system(size: 18))
+            // 头像（v3.0.7 beautify：sfs 符号 / emoji 统一渲染）
+            b.avatarIcon(size: 18)
                 .frame(width: 38, height: 38)
                 .background(
                     LinearGradient(colors: [Color.blue.opacity(0.18), Color.indigo.opacity(0.12)],
@@ -284,10 +283,39 @@ struct BotEditSheet: View {
                         }
                     }
                     fieldCard {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("头像（emoji）").font(.system(size: 11)).foregroundStyle(.secondary)
-                            TextField("如：🤖 🐱 💡", text: $avatar)
-                                .font(.system(size: 18))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("图标").font(.system(size: 11)).foregroundStyle(.secondary)
+                            // v3.0.7 beautify：内置淡雅 SF Symbols 网格选择（点选即用；可再手动输入 emoji 微调）
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                                ForEach(QingliaoBot.iconPresets) { p in
+                                    Button {
+                                        avatar = p.id
+                                    } label: {
+                                        Image(systemName: p.symbol)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(avatar == p.id ? Color.white : p.color)
+                                            .frame(width: 34, height: 34)
+                                            .background(
+                                                avatar == p.id
+                                                    ? p.color
+                                                    : p.color.opacity(0.12),
+                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            HStack(spacing: 8) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+                                TextField("或输入 emoji（如 🤖 🐱）", text: $avatar)
+                                    .font(.system(size: 14))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color(uiColor: .tertiarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         }
                     }
                     if let err = errorText {
