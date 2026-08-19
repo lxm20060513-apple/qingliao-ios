@@ -497,10 +497,10 @@ struct ChatView: View {
         }
         // v2.0.43：快捷指令面板（点击填充输入框）
         .sheet(isPresented: $showQuickPrompts) {
-            QuickPromptSheet(includeKB: !CloudConfig.shared.isCloudMode) { prompt in   // v3.0.6：知识库仅本地
+            QuickPromptSheet(onPick: { prompt in
                 inputText = prompt
                 showAttachmentMenu = false
-            }
+            }, includeKB: !CloudConfig.shared.isCloudMode)   // v3.0.6：知识库仅本地
             .presentationDetents([.medium, .large])
         }
         // v2.0.96：Hermes 捷径面板（官方斜杠命令，点击填充输入框）
