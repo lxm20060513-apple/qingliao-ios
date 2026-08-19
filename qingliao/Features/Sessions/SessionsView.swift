@@ -186,7 +186,7 @@ struct SessionsView: View {
                                 // 删除已改后端驱动+load() 整体刷新（v2.0.56 根治），无就地 diff 崩溃路径，安全
                                 LazyVStack(spacing: 8) {
                                     ForEach(groupedSessions, id: \.key) { group in
-                                        // v3.0.7：bot 组显示组头（通用助手组不显示，保持原有观感）
+                                        // v3.0.7：bot 组显示组头（通用助手组也显示「主 Agent」标识，v3.0.8 起）
                                         // v3.0.8 CI fix：拆成辅助函数，type-check 收敛
                                         botGroupHeaderIfNeeded(group.key)
                                         ForEach(group.items) { s in
@@ -384,9 +384,25 @@ struct SessionsView: View {
 
     /// v3.0.7：bot 组头（头像 + 名字，仅 bot 会话组显示）
     // v3.0.8 CI fix：@ViewBuilder 辅助函数，组内 if-let 拆出避免 type-check 超时
+    // v3.0.8 beautify：通用助手 = 主 Agent，也显示组头（与其他 bot 视觉区分）
     @ViewBuilder
     private func botGroupHeaderIfNeeded(_ key: String) -> some View {
-        if !key.isEmpty, let b = botStore.bot(key) {
+        let groupTitle = key.isEmpty ? "通用助手 · 主 Agent" : (botStore.bot(key)?.name ?? "Bot")
+        if key.isEmpty {
+            // 通用助手（主 Agent）组头——扁平头像符号（v3.0.8 beautify，替代 sparkles/emoji）
+            HStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(groupTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+        } else if let b = botStore.bot(key) {
             botGroupHeader(b)
         }
     }

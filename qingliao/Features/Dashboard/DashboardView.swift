@@ -93,16 +93,12 @@ struct DashboardView: View {
                         }
                     }
                     .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                    )
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        // v3.0.8 beautify：看板卡片全部毛玻璃
+                                        .glassCard(cornerRadius: 14)
 
-                    sectionTitle("智能家居")
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                                        sectionTitle("智能家居")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         DeviceCard(name: "开关", icon: "lightbulb.fill", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
                             .onTapGesture { activeSheet = .lights }
                         DeviceCard(name: "空调", icon: "air.conditioner.horizontal", value: haClimate, sub: "\(climateOn) 台运行中 · 点击控制", status: climateOn > 0 ? .on : .off)
@@ -1336,13 +1332,8 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
-        // 浅色下卡片与白底融合 → 统一加细边框（深浅色通用：深色白边/浅色黑边）
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.8 beautify：看板卡片全部毛玻璃（真液态玻璃 + 0.8pt 描边 + 裁切一体）
+        .glassCard(cornerRadius: 16)
     }
 
     private var color: Color {
@@ -1392,12 +1383,8 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))  // v2.0.87h：弹窗玻璃下扁平化
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.8 beautify：看板卡片全部毛玻璃
+        .glassCard(cornerRadius: 16)
     }
 }
 
@@ -1426,12 +1413,8 @@ struct ServiceCard: View {
         // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // v3.0.8 beautify：看板卡片全部毛玻璃
+        .glassCard(cornerRadius: 16)
     }
 }
 

@@ -1537,8 +1537,11 @@ struct ModelSheet: View {
 
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthStore.self) private var auth   // v3.0.8：拉 Hermes 版本
     // v3.0.1：云端模式文案区分（本地 AI = 连接自家 NAS；云端 AI = 直连大模型 API）
     var isCloud: Bool = false
+    // v3.0.8：Hermes 容器版本（项目版本说明，从 NAS /api/nas/status 实时读）
+    @State private var hermesVersion = "读取中…"
 
     var body: some View {
         VStack(spacing: 14) {
@@ -1558,6 +1561,19 @@ struct AboutView: View {
             Divider().padding(.horizontal, 30)
 
             VStack(alignment: .leading, spacing: 10) {
+                // v3.0.8：项目版本说明（Hermes 容器当前运行版本）
+                aboutRow("项目版本", "轻聊 3.0 · iOS 客户端 v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                if !isCloud {
+                    HStack(alignment: .top) {
+                        Text("Hermes Agent")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 68, alignment: .leading)
+                        Text(hermesVersion)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 // v3.0.3：统一介绍框架——顶部 App 概述（两端一致），下方「当前模式」针对云端/本地分别说明
                 aboutRow("产品", "轻聊 —— 面向家庭的 AI 智能助手，SwiftUI 原生客户端，支持「本地 AI」与「云端 AI」两种形态，数据按模式本地保存。")
                 appModeRow(isCloud)
@@ -1581,6 +1597,17 @@ struct AboutView: View {
                 .padding(.bottom, 12)
         }
         .padding(.top, 22)
+        // v3.0.8：本地模式拉取 Hermes 版本
+        .task {
+            guard !isCloud else { return }
+            if let j = try? await auth.json("/api/nas/status"),
+               let svc = j["services"] as? [String: Any],
+               let v = svc["hermes_version"] as? String, !v.isEmpty {
+                hermesVersion = v
+            } else {
+                hermesVersion = "未获取到"
+            }
+        }
     }
 
     /// v3.0.3：当前模式行（云端/本地分别说明，含差异化介绍）

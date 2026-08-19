@@ -98,14 +98,40 @@ struct NotesSection: View {
         }
     }
 
-    /// 便签行：文本 + 右上删除（对齐 DeviceCard 信息布局）
+    /// 便签分类符号（v3.0.8 beautify：每条便签带分类标记，更像真实便利贴）
+    /// 按便签 id 稳定取模分配，符号+底色成对；列表滚动不重排。
+    private static let noteTags: [(symbol: String, color: Color)] = [
+        ("📌", Color(red: 0.45, green: 0.6, blue: 0.9)),    // 待办
+        ("🛒", Color(red: 0.9, green: 0.65, blue: 0.35)),  // 购物
+        ("💡", Color(red: 0.85, green: 0.75, blue: 0.3)),  // 灵感
+        ("📝", Color(red: 0.75, green: 0.55, blue: 0.4)),  // 备忘
+        ("⏰", Color(red: 0.8, green: 0.45, blue: 0.5)),   // 定时
+        ("🍎", Color(red: 0.4, green: 0.7, blue: 0.5)),    // 生活
+        ("🎧", Color(red: 0.55, green: 0.5, blue: 0.85)),  // 娱乐
+        ("📚", Color(red: 0.6, green: 0.65, blue: 0.8)),   // 学习
+    ]
+
+    private func tag(for id: String) -> (symbol: String, color: Color) {
+        let s = id.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        let t = Self.noteTags[s % Self.noteTags.count]
+        return t
+    }
+
+    /// 便签行：分类符号 + 文本 + 右上删除（便利贴观感）
     private func noteRow(_ n: NoteItem) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        let tag = tag(for: n.id)
+        return HStack(alignment: .top, spacing: 10) {
+            // 分类符号：彩色圆底 + emoji（稳定分配）
+            Text(tag.symbol)
+                .font(.system(size: 14))
+                .frame(width: 30, height: 30)
+                .background(tag.color.opacity(0.15), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             Text(n.text)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .lineSpacing(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
             Button {
                 confirmDelete = n
             } label: {
@@ -118,11 +144,19 @@ struct NotesSection: View {
             .buttonStyle(.plain)
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        // v3.0.8 beautify：便签卡与看板一致毛玻璃 + 左侧淡彩色条（便利贴感）
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
         )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(tag.color.opacity(0.7))
+                .frame(width: 3)
+                .padding(.vertical, 10)
+                .padding(.leading, 6)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 

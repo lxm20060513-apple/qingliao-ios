@@ -204,6 +204,7 @@ struct NASStatus {
     var qingliaoMem = 0.0
     var hermesAlive = false
     var hermesMem = 0.0
+    var hermesVersion = ""   // v3.0.8：Hermes 容器版本（docker exec 实时读）
 
     /// 最大磁盘使用率（PWA 概览语义）
     var maxDiskPct: Double {
@@ -227,6 +228,7 @@ struct NASStatus {
             s.qingliaoMem = (svc["qingliao_mem"] as? Double) ?? 0
             s.hermesAlive = (svc["hermes"] as? Bool) ?? false
             s.hermesMem = (svc["hermes_mem"] as? Double) ?? 0
+            s.hermesVersion = (svc["hermes_version"] as? String) ?? ""
         }
         return s
     }
