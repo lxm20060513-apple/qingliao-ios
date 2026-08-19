@@ -32,8 +32,29 @@ struct SelectableTextLabel: UIViewRepresentable {
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
 
+    // v3.0.13：布局跟踪——SwiftUI 只在 observed 属性变化时调 updateUIView，气泡在展开/折叠动画
+    // 期间宽度渐进变化时 updateUIView 可能不重进，导致 UITextView 的 NSTextContainer 锁在动画起始的
+    // 窄宽 → 展开后字体等比缩小（刷新即恢复的根因）。用重写 layoutSubviews 捕获一切宽度变化，
+    // 一旦宽度变化就重置指纹强制重排，且触发 intrinsic 尺寸失效，杜绝"压进小气泡缩小"。
+    final class TrackingTextView: UITextView {
+        var onWidthChange: ((CGFloat) -> Void)?
+        private var lastWidth: CGFloat = -1
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // 强制文本容器宽跟随当前显示宽（widthTracksTextView 兜底，动画期间旧窄宽才能被刷新）
+            let cw = bounds.width - textContainerInset.left - textContainerInset.right
+            if textContainer.size.width != cw {
+                textContainer.size = CGSize(width: max(cw, 0), height: textContainer.size.height)
+            }
+            if bounds.width != lastWidth {
+                lastWidth = bounds.width
+                onWidthChange?(bounds.width)
+            }
+        }
+    }
+
     func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
+        let tv = TrackingTextView()
         tv.isEditable = false
         tv.isSelectable = true
         tv.isScrollEnabled = false
@@ -47,6 +68,13 @@ struct SelectableTextLabel: UIViewRepresentable {
         //（hugging required → 按内容宽；compression low → 超宽时压缩换行）
         tv.setContentHuggingPriority(.required, for: .horizontal)
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // v3.0.13：宽度变化 → 立即信息 intrinsic 尺寸失效，让 SwiftUI 重新测量/调用 sizeThatFits；
+        // 并重置指纹，下次 updateUIView 按新宽重排容器
+        tv.onWidthChange = { [weak context = context.coordinator, weak weakTV] _ in
+            weakTV?.invalidateIntrinsicContentSize()
+            weakTV?.setNeedsLayout()
+            context?.lastKey = ""
+        }
         return tv
     }
 

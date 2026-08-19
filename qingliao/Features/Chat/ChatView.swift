@@ -671,29 +671,29 @@ struct ChatView: View {
                                             .foregroundStyle(.white)
                                     }
                                     .frame(width: 38, height: 38)
-                                    // v3.0.12：思考球——彩色光晕圆环外框 + 内部 orbits 粒子流动
+                                    // v3.0.12/13：思考球——彩色光晕圆环外框 + 内部 orbits 粒子流动（v3.0.13 改小）
                                     ZStack {
                                         Circle()
                                             .stroke(
                                                 AngularGradient(colors: [.blue, .indigo, .pink, .purple, .blue], center: .center),
-                                                lineWidth: 4
+                                                lineWidth: 3
                                             )
-                                            .frame(width: 72, height: 72)
-                                            .blur(radius: 4)
+                                            .frame(width: 50, height: 50)
+                                            .blur(radius: 3)
                                         Circle()
                                             .stroke(
                                                 AngularGradient(colors: [.blue, .indigo, .pink, .purple, .blue], center: .center),
-                                                lineWidth: 2.5
+                                                lineWidth: 2
                                             )
-                                            .frame(width: 68, height: 68)
+                                            .frame(width: 46, height: 46)
                                         // 内部粒子流动
-                                        OrbCanvasView(mode: .orbits, size: 52)
+                                        OrbCanvasView(mode: .orbits, size: 34)
                                     }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 4)
                                     .background(Color(uiColor: .systemGray5))
-                                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                    .frame(minHeight: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .frame(minHeight: 46)
                                     Spacer(minLength: 48)
                                 }
                                 .id("streaming")
