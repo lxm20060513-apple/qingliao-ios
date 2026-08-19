@@ -671,8 +671,8 @@ struct ChatView: View {
                                             .foregroundStyle(.white)
                                     }
                                     .frame(width: 38, height: 38)
-                                    // v2.0.35：去掉"思考中"文字（用户要求），保留三点跳动动画
-                                    TypingIndicator()
+                                    // v3.0.12：思考球 orbits（点点旋转粒子）替代三点跳动
+                                    OrbCanvasView(mode: .orbits, size: 44)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 15)
                                         .background(Color(uiColor: .systemGray5))
