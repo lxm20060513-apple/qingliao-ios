@@ -592,6 +592,17 @@ struct ChatView: View {
         }
     }
 
+    /// v3.0.15：流式输出气泡——拆独立计算属性（防 messageList 巨型 body type-check 超时）
+    @ViewBuilder
+    private var streamingBubble: some View {
+        MessageBubble(
+            message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent),
+            streamingAvatar: true,   // v3.0.15：AI 输出中头像 = 粒子球
+            onAIImageTap: { url in openAIImage(url) }   // v2.0.128：流式中 AI 图片可点
+        )
+        .id("streaming")
+    }
+
     private var messageList: some View {
         ZStack {
             // v2.0.40：clearing 期间直接显示欢迎页（列表已卸载，数据稍后清空）
@@ -684,12 +695,7 @@ struct ChatView: View {
                                 .id("streaming")
                                 .transition(.opacity)
                             } else {
-                                MessageBubble(
-                                    message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent),
-                                    streamingAvatar: true,   // v3.0.15：AI 输出中头像 = 粒子球
-                                    onAIImageTap: { url in openAIImage(url) }   // v2.0.128：流式中 AI 图片可点
-                                )
-                                .id("streaming")
+                                streamingBubble
                             }
                         }
                     }

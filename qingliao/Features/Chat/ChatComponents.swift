@@ -293,27 +293,32 @@ struct MessageBubble: View {
         }
     }
 
+    /// v3.0.15：AI 头像——流式输出中 = 粒子球（渐变底 + orbits 粒子流动），否则脑形标
+    /// 拆独立计算属性：防止 body 巨型表达式 type-check 超时（v3.0.15 CI 实测）
+    @ViewBuilder
+    private var aiAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+            if streamingAvatar {
+                OrbCanvasView(mode: .orbits, size: 30)
+                    .allowsHitTesting(false)
+            } else {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 30, height: 30)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.isUser {
                 // v2.0.41：左侧留白 48→24，用户气泡更宽（右缘贴边）
                 Spacer(minLength: 24)
             } else {
-                // AI 头像（气泡外左侧）
-                // v3.0.15：流式输出中 = 粒子球（渐变底 + orbits 粒子流动），与配音球一致的视觉语言
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    if streamingAvatar {
-                        OrbCanvasView(mode: .orbits, size: 30)
-                            .allowsHitTesting(false)
-                    } else {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .frame(width: 30, height: 30)
+                aiAvatar
             }
 
             // v2.0.66：气泡主体（单 Shape 背景带尾巴，不再用 ZStack overlay）
