@@ -41,9 +41,6 @@ struct DashboardView: View {
                 // v2.0.133f：VStack → LazyVStack——TabView 切页动画期间看板全量卡片一次性布局是切页卡顿主因，
                 // 懒加载后只渲染可见卡片（与 v2.0.132 ChatView 消息列表同款方案；看板无批量移除路径，安全）
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    // v3.0.8：便签（本地→NAS 后端 / 云端→App 本地，样式对齐 DeviceCard）
-                    NotesSection()
-
                     // v2.0.116：智能建议（基于天气/NAS/设备状态，Agent 生成）
                     // v2.0.118：门锁卡同风格（普通圆角卡背景）+ 标题左上 + 内容靠左 + 重新生成右上
                     sectionTitle("智能建议")
@@ -95,18 +92,12 @@ struct DashboardView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // v3.0.9 beautify：背景毛玻璃化（复用 GlassListCard：浅色白0.85/深色毛玻璃）
-                    .background(
-                        scheme == .dark
-                            ? AnyShapeStyle(.ultraThinMaterial)
-                            : AnyShapeStyle(Color.white.opacity(0.85)),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                     sectionTitle("智能家居")
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -134,18 +125,8 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                // v3.0.9：背景毛玻璃化（浅色白0.85/深色毛玻璃）
-                                .background(
-                                    scheme == .dark
-                                        ? AnyShapeStyle(.ultraThinMaterial)
-                                        : AnyShapeStyle(Color.white.opacity(0.85)),
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -180,18 +161,8 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                // v3.0.9：背景毛玻璃化（浅色白0.85/深色毛玻璃）
-                                .background(
-                                    scheme == .dark
-                                        ? AnyShapeStyle(.ultraThinMaterial)
-                                        : AnyShapeStyle(Color.white.opacity(0.85)),
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -304,11 +275,6 @@ struct DashboardView: View {
                 await refresh()
                 await loadDockerCount()
                 await loadWeatherWithCity()
-                // v3.0.8：切回看板重载便签（force 拉后端最新）
-                let notes = NoteStore.shared
-                if notes.notes.isEmpty || !CloudConfig.shared.isCloudMode {
-                    await notes.load(auth: auth, force: true)
-                }
             }
         }
         // v2.0.133f：离开看板 → 暂停 30s 轮询（隐藏页刷新抢帧，切页卡顿源之一）
@@ -1365,13 +1331,8 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85玻璃质感/深色ultraThin毛玻璃，保持原布局与描边）
-        .background(
-            scheme == .dark
-                ? AnyShapeStyle(.ultraThinMaterial)
-                : AnyShapeStyle(Color.white.opacity(0.85)),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
+        // v3.0.9 reverted：恢复原版白底卡片
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -1427,13 +1388,8 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85/深色毛玻璃，保持原布局与描边）
-        .background(
-            scheme == .dark
-                ? AnyShapeStyle(.ultraThinMaterial)
-                : AnyShapeStyle(Color.white.opacity(0.85)),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
+        // v3.0.9 reverted：恢复原版白底卡片
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
@@ -1468,13 +1424,8 @@ struct ServiceCard: View {
         // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.9 beautify：背景毛玻璃化（浅色白0.85/深色毛玻璃，保持原布局与描边）
-        .background(
-            scheme == .dark
-                ? AnyShapeStyle(.ultraThinMaterial)
-                : AnyShapeStyle(Color.white.opacity(0.85)),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
+        // v3.0.9 reverted：恢复原版白底卡片
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
