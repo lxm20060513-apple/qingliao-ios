@@ -597,8 +597,8 @@ struct ChatView: View {
     private var streamingBubble: some View {
         MessageBubble(
             message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent),
-            streamingAvatar: true,   // v3.0.15：AI 输出中头像 = 粒子球
-            onAIImageTap: { url in openAIImage(url) }   // v2.0.128：流式中 AI 图片可点
+            onAIImageTap: { url in openAIImage(url) },   // v2.0.128：流式中 AI 图片可点（参数须在 streamingAvatar 前）
+            streamingAvatar: true   // v3.0.15：AI 输出中头像 = 粒子球
         )
         .id("streaming")
     }
