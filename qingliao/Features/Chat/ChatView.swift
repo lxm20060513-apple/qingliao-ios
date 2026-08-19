@@ -360,11 +360,12 @@ struct ChatView: View {
             }
             // v2.0.36：引用回复条（发送后自动清除）
             if let q = quotedMessage {
+                let quotePreview: String = String(q.content.prefix(60))
                 HStack(spacing: 8) {
                     Image(systemName: "quote.opening")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.accentColor)
-                    Text(String(q.content.prefix(60)))
+                    Text(quotePreview)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

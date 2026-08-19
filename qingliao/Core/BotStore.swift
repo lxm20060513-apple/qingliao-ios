@@ -58,7 +58,7 @@ final class BotStore {
         do {
             let j = try await auth.json("/api/bots")
             let arr = j["bots"] as? [[String: Any]] ?? []
-            let newBots = arr.compactMap { d in
+            let newBots = arr.compactMap { (d: [String: Any]) -> QingliaoBot? in
                 guard let id = d["id"] as? String else { return nil }
                 return QingliaoBot(id: id,
                                    name: d["name"] as? String ?? "",
