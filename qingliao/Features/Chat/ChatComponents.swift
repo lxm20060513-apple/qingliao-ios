@@ -182,7 +182,7 @@ struct MessageBlockView: View {
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(text)
-                        .font(.system(size: max(10, CGFloat(fontSize) - 2), design: .monospaced))
+                        .font(.system(size: max(12, CGFloat(fontSize)), design: .monospaced))
                         .textSelection(.enabled)
                         .padding(.bottom, 4)
                 }
@@ -761,6 +761,7 @@ struct ChatInputBar: View {
                     Spacer(minLength: 0)
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
+                                 thinking: streaming,
                                  onTap: {
                                                                                                       // 转写中点击不响应（避免打断）
                                                                                                       guard !transcribing else { return }
@@ -1103,6 +1104,8 @@ struct SiriBallView: View {
     var isRecording: Bool = false
     var voiceMode: Bool = false
     var transcribing: Bool = false   // v2.0.129：转写中显示转圈
+    // v3.0.12：思考球——流式回答中 orbits(点点旋转) / 空闲 ring(缓慢脉动)
+    var thinking: Bool = false
     var onTap: () -> Void = {}
     var onLongPress: () -> Void = {}
 
@@ -1171,23 +1174,9 @@ struct SiriBallView: View {
                             .foregroundStyle(.white)
                     }
                 } else {
-                    // 声呐波纹：3 层圆环错相扩散（半径增大 + 淡出），录音 logo 风格
-                    ZStack {
-                        ForEach(0..<3, id: \.self) { i in
-                            let phase = t * 1.6 + Double(i) * 2.094   // 120° 相位差
-                            let progress = (sin(phase) + 1) / 2       // 0→1 循环
-                            Circle()
-                                .stroke(Color.white.opacity(0.85 * (1 - progress)), lineWidth: 2.2)
-                                .frame(width: 34 + CGFloat(progress) * 30,
-                                       height: 34 + CGFloat(progress) * 30)
-                        }
-                        // 中心实心圆点（录音 logo 核心）
-                        Circle()
-                            .fill(Color.white.opacity(0.95))
-                            .frame(width: 14, height: 14)
-                            .shadow(color: .white.opacity(0.6), radius: 4)
-                    }
-                    .allowsHitTesting(false)
+                    // v3.0.12：思考球粒子画布——流式/思考中 orbits(点点旋转)，空闲 ring(缓慢脉动)
+                    OrbCanvasView(mode: thinking ? .orbits : .ring, size: 60)
+                        .allowsHitTesting(false)
                 }
             }
         }
