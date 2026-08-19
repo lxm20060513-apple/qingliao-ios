@@ -138,12 +138,12 @@ final class NoteStore {
             return (data, resp.statusCode)
         }
         // 自定义地址：独立 URLSession 直连 + 带 token（base 规范化：去尾部斜杠防 // 拼接；无协议补 http://）
-        var base = customBase.trimmingCharacters(in: .whitespacesAndNewlines)
-        while base.hasSuffix("/") { base.removeLast() }
-        if !base.hasPrefix("http://") && !base.hasPrefix("https://") {
-            base = "http://" + base
+        var finalBase = customBase.trimmingCharacters(in: .whitespacesAndNewlines)
+        while finalBase.hasSuffix("/") { finalBase.removeLast() }
+        if !finalBase.hasPrefix("http://") && !finalBase.hasPrefix("https://") {
+            finalBase = "http://" + finalBase
         }
-        let url = URL(string: base + path) ?? URL(string: "https://localhost")!
+        let url = URL(string: finalBase + path) ?? URL(string: "https://localhost")!
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 15

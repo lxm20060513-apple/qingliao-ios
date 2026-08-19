@@ -195,7 +195,14 @@ struct ChatView: View {
         } label: {
             HStack(spacing: 5) {
                 // v3.0.7 beautify：统一头像渲染（sfs 符号 / emoji）
-                (current?.avatarIcon(size: 13) ?? Text("🤖").font(.system(size: 13)))
+                // v3.0.8 CI fix：some View 不能 ?? 拼接 Text，改用 @ViewBuilder Group
+                Group {
+                    if let c = current {
+                        c.avatarIcon(size: 13)
+                    } else {
+                        Text("🤖").font(.system(size: 13))
+                    }
+                }
                 Text(current?.name ?? "通用助手")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
