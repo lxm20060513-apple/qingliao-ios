@@ -239,6 +239,92 @@ struct ChatView: View {
         clearPendingQueue()
     }
 
+    // MARK: - v3.0.7 fix：输入栏上方三个小条拆独立 property（body 瘦身，防 type-check 超时）
+
+    /// 图片预览条（选图后显示）
+    @ViewBuilder
+    private var pendingImageBar: some View {
+        if let img = pendingImage {
+            HStack(spacing: 10) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 42, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text("图片已选择，发送后 AI 可识别")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    pendingImage = nil
+                    pendingImageData = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 6)
+        }
+    }
+
+    /// 内联附件面板（类微信 + 面板：点击回形针展开）
+    /// v2.0.96b：发牌弹出效果（每个按钮依次从底部弹出 + 回弹）
+    @ViewBuilder
+    private var attachmentMenuBar: some View {
+        if showAttachmentMenu {
+            HStack(spacing: 26) {
+                menuButton("photo.on.rectangle", "图片", Color.blue, idx: 0) { showPhotoPicker = true }
+                menuButton("doc.fill", "文件", Color.indigo, idx: 1) { showFileImporter = true }
+                // v2.0.43：快捷指令（常用 prompt 模板）
+                menuButton("bolt.fill", "指令", Color.orange, idx: 2) { showQuickPrompts = true }
+                // v3.0.6 fix：Hermes 捷径仅本地 AI 显示（云端无，遵循「本地有/云端无」）
+                if !CloudConfig.shared.isCloudMode {
+                    menuButton("sparkles", "Hermes 捷径", Color.purple, idx: 3) { showHermesShortcut = true }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8))
+            .padding(.horizontal, 12)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    /// 引用回复条（发送后自动清除）
+    @ViewBuilder
+    private var quotedReplyBar: some View {
+        if let q = quotedMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "quote.opening")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.accentColor)
+                Text(String(q.content.prefix(60)))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    quotedMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 12)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
     var body: some View {
         // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确计算 bottom padding，
         // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注）。
@@ -313,78 +399,12 @@ struct ChatView: View {
                     .transition(.opacity)
             }
             // 图片预览条（选图后显示）
-            if let img = pendingImage {
-                HStack(spacing: 10) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 42, height: 42)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    Text("图片已选择，发送后 AI 可识别")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        pendingImage = nil
-                        pendingImageData = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 6)
-            }
+            pendingImageBar
             // 内联附件面板（类微信 + 面板：点击回形针展开）
             // v2.0.96b：发牌弹出效果（每个按钮依次从底部弹出 + 回弹）
-            if showAttachmentMenu {
-                HStack(spacing: 26) {
-                    menuButton("photo.on.rectangle", "图片", Color.blue, idx: 0) { showPhotoPicker = true }
-                    menuButton("doc.fill", "文件", Color.indigo, idx: 1) { showFileImporter = true }
-                    // v2.0.43：快捷指令（常用 prompt 模板）
-                    menuButton("bolt.fill", "指令", Color.orange, idx: 2) { showQuickPrompts = true }
-                    // v3.0.6 fix：Hermes 捷径仅本地 AI 显示（云端无，遵循「本地有/云端无」）
-                    if !CloudConfig.shared.isCloudMode {
-                        menuButton("sparkles", "Hermes 捷径", Color.purple, idx: 3) { showHermesShortcut = true }
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8))
-                .padding(.horizontal, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            attachmentMenuBar
             // v2.0.36：引用回复条（发送后自动清除）
-            if let q = quotedMessage {
-                let quotePreview: String = String(q.content.prefix(60))
-                HStack(spacing: 8) {
-                    Image(systemName: "quote.opening")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.accentColor)
-                    Text(quotePreview)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        quotedMessage = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .padding(.horizontal, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            quotedReplyBar
             // v3.0.7：Bot 选择器（仅本地模式——bot 定义在 NAS 后端，云端模式无此功能）
             if !CloudConfig.shared.isCloudMode {
                 botSelectorBar
