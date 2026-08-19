@@ -93,11 +93,16 @@ struct DashboardView: View {
                         }
                     }
                     .padding(12)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        // v3.0.8 beautify：看板卡片全部毛玻璃
-                                        .glassCard(cornerRadius: 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化（与 DeviceCard 一致）
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                                        sectionTitle("智能家居")
+                    sectionTitle("智能家居")
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         DeviceCard(name: "开关", icon: "lightbulb.fill", value: haLights, sub: "\(lightsOn) 盏开启 · 点击控制", status: lightsOn > 0 ? .on : .off)
                             .onTapGesture { activeSheet = .lights }
@@ -123,8 +128,13 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                .background(.ultraThinMaterial,
                                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -159,8 +169,13 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                .background(.ultraThinMaterial,
                                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -1332,8 +1347,13 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        // v3.0.8 beautify：看板卡片全部毛玻璃（真液态玻璃 + 0.8pt 描边 + 裁切一体）
-        .glassCard(cornerRadius: 16)
+        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化（ultraThinMaterial + 0.8pt 描边）
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var color: Color {
@@ -1383,8 +1403,13 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.8 beautify：看板卡片全部毛玻璃
-        .glassCard(cornerRadius: 16)
+        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -1413,8 +1438,13 @@ struct ServiceCard: View {
         // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.8 beautify：看板卡片全部毛玻璃
-        .glassCard(cornerRadius: 16)
+        // v3.0.8 beautify：HomeKit 风格卡片，背景毛玻璃化
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
