@@ -215,6 +215,8 @@ struct MessageBubble: View {
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
     // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
     var onAIImageTap: (String) -> Void = { _ in }
+    // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标
+    var streamingAvatar: Bool = false
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.128：AI 输出行高（设置页滑条，实时生效）
@@ -223,7 +225,6 @@ struct MessageBubble: View {
     @Environment(\.colorScheme) private var scheme
     // v2.0.130：AI 发图 MEDIA 路径 → 服务器图片 URL（读 App 配置的服务器地址）
     @AppStorage("qingliao_server") private var serverURL = ""
-    @State private var expanded = false
     // v2.0.81：AI 回复朗读状态（全局单例）
     @ObservedObject private var speech = SpeechManager.shared
 
@@ -299,12 +300,18 @@ struct MessageBubble: View {
                 Spacer(minLength: 24)
             } else {
                 // AI 头像（气泡外左侧）
+                // v3.0.15：流式输出中 = 粒子球（渐变底 + orbits 粒子流动），与配音球一致的视觉语言
                 ZStack {
                     Circle()
                         .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white)
+                    if streamingAvatar {
+                        OrbCanvasView(mode: .orbits, size: 30)
+                            .allowsHitTesting(false)
+                    } else {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
                 }
                 .frame(width: 30, height: 30)
             }
@@ -354,49 +361,18 @@ struct MessageBubble: View {
                                 )
                             }
                         } else {
-                            // v2.0.65：AI 超长消息折叠（>800 字收成展开全文）
-                            // v2.0.128：折叠预览中 markdown 图片语法替换为 [图片] 占位（纯文本无法渲染图）
-                            if message.content.count > 800 && !expanded {
-                                let preview = Self.foldedPreview(message.content, limit: 800)
-                                SelectableTextLabel(
-                                    attributedText: NSAttributedString(string: preview, attributes: [
-                                        .font: UIFont.systemFont(ofSize: CGFloat(fontSize)),
-                                        .foregroundColor: UIColor.label
-                                    ]),
-                                    fallbackColor: .label,
-                                    lineSpacingFromSettings: true,   // v2.0.130：AI 折叠消息行距实时读设置
-                                    fillWidth: true,   // v3.0.11 fix：AI 消息满容器宽
-                                    onCopy: { UIPasteboard.general.string = message.content },
-                                    onQuote: onQuote,
-                                    onShare: onShare,
-                                    onBigBang: onBigBang,
-                                    onDelete: onDelete,
-                                    onRegenerate: onRegenerate,
-                                    onWithdraw: nil
-                                )
-                                Button {
-                                    withAnimation(.easeOut(duration: 0.2)) { expanded = true }
-                                } label: {
-                                    Text("展开全文（剩余 \(message.content.count - 800) 字）")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.top, 2)
-                            } else {
-                                // AI 消息：代码块分段渲染（等宽 + 深色背景），其余 markdown
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(0..<contentBlocks.count, id: \.self) { i in
-                                        MessageBlockView(block: contentBlocks[i],
-                                                        onCopy: { UIPasteboard.general.string = message.content },
-                                                        onQuote: onQuote,
-                                                        onShare: onShare,
-                                                        onBigBang: onBigBang,
-                                                        onDelete: onDelete,
-                                                        onRegenerate: onRegenerate,
-                                                        onWithdraw: nil,
-                                                        onImageTap: { url in onAIImageTap(url) })   // v2.0.128：AI 图片点击打开大图
-                                    }
+                            // v3.0.15：AI 消息全文展示（取消 v2.0.65 超长消息折叠）——代码块分段渲染（等宽 + 深色背景），其余 markdown
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(0..<contentBlocks.count, id: \.self) { i in
+                                    MessageBlockView(block: contentBlocks[i],
+                                                    onCopy: { UIPasteboard.general.string = message.content },
+                                                    onQuote: onQuote,
+                                                    onShare: onShare,
+                                                    onBigBang: onBigBang,
+                                                    onDelete: onDelete,
+                                                    onRegenerate: onRegenerate,
+                                                    onWithdraw: nil,
+                                                    onImageTap: { url in onAIImageTap(url) })   // v2.0.128：AI 图片点击打开大图
                                 }
                             }
                         }
@@ -593,21 +569,6 @@ struct MessageBubble: View {
             }
         }
         return result.isEmpty ? [.markdown(line)] : result
-    }
-
-    /// v2.0.128：折叠预览文本——markdown 图片语法替换为 [图片] 占位，截断到 limit 字
-    private static func foldedPreview(_ content: String, limit: Int) -> String {
-        var preview = content
-        if let re = try? NSRegularExpression(pattern: #"!\[[^\]]*\]\([^)]+\)"#) {
-            let ns = preview as NSString
-            preview = re.stringByReplacingMatches(
-                in: preview, range: NSRange(location: 0, length: ns.length),
-                withTemplate: "[图片]")
-        }
-        if preview.count > limit {
-            preview = String(preview.prefix(limit)) + "…"
-        }
-        return preview
     }
 
     /// v2.0.87d：表格行解析（首行表头，第二行 |---| 分隔则跳过）

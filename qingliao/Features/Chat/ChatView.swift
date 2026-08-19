@@ -662,6 +662,7 @@ struct ChatView: View {
                         if stream.isStreaming {
                             if stream.content.isEmpty {
                                 // 思考中动画（三点跳动，气泡加大版）
+                                // v3.0.15：恢复 v3.0.12 之前的原始三点动画（思考球 orbits 粒子已移除，改由输出头像承担粒子球）
                                 HStack(alignment: .top, spacing: 10) {
                                     ZStack {
                                         Circle()
@@ -671,29 +672,13 @@ struct ChatView: View {
                                             .foregroundStyle(.white)
                                     }
                                     .frame(width: 38, height: 38)
-                                    // v3.0.12/13：思考球——彩色光晕圆环外框 + 内部 orbits 粒子流动（v3.0.13 改小）
-                                    ZStack {
-                                        Circle()
-                                            .stroke(
-                                                AngularGradient(colors: [.blue, .indigo, .pink, .purple, .blue], center: .center),
-                                                lineWidth: 3
-                                            )
-                                            .frame(width: 50, height: 50)
-                                            .blur(radius: 3)
-                                        Circle()
-                                            .stroke(
-                                                AngularGradient(colors: [.blue, .indigo, .pink, .purple, .blue], center: .center),
-                                                lineWidth: 2
-                                            )
-                                            .frame(width: 46, height: 46)
-                                        // 内部粒子流动
-                                        OrbCanvasView(mode: .orbits, size: 34)
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                                    .background(Color(uiColor: .systemGray5))
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .frame(minHeight: 46)
+                                    // v2.0.35：去掉"思考中"文字（用户要求），保留三点跳动动画
+                                    TypingIndicator()
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 15)
+                                        .background(Color(uiColor: .systemGray5))
+                                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                        .frame(minHeight: 44)
                                     Spacer(minLength: 48)
                                 }
                                 .id("streaming")
@@ -701,6 +686,7 @@ struct ChatView: View {
                             } else {
                                 MessageBubble(
                                     message: ChatMessage(role: "assistant", content: stream.content, timestamp: nil, agent: stream.isAgent),
+                                    streamingAvatar: true,   // v3.0.15：AI 输出中头像 = 粒子球
                                     onAIImageTap: { url in openAIImage(url) }   // v2.0.128：流式中 AI 图片可点
                                 )
                                 .id("streaming")
