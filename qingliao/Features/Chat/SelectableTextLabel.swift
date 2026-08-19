@@ -63,7 +63,10 @@ struct SelectableTextLabel: UIViewRepresentable {
         // 复用 cell 时 SwiftUI 反复调 updateUIView，重设 attributedText + layoutIfNeeded
         // 是长记录滑动卡顿主因；同内容直接 return 保留现有布局）
         // v3.0.7 fix：字号加入指纹——设置改字号后同文本不再被指纹命中跳过（旧字大小不齐根因）
-        let key = "\(attributedText.string.hashValue)|\(spacing)|\(fallbackColor.cgColor)|\(uiFontSize)"
+        // v3.0.12 fix：宽度加入指纹——AI 长消息折叠/展开、旋转或气泡宽度变化时，即使文本
+        // 指纹未变，UITextView 的 NSTextContainer 宽度也须跟随刷新，否则字体被压进旧的小
+        // 容器宽里等比例变小（刷新窗口即恢复的现象根因）。宽度一变强制重排。
+        let key = "\(attributedText.string.hashValue)|\(spacing)|\(fallbackColor.cgColor)|\(uiFontSize)|\(Int(tv.bounds.width))"
         if context.coordinator.lastKey == key {
             return
         }
