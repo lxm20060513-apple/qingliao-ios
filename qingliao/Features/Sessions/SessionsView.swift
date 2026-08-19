@@ -245,7 +245,7 @@ struct SessionsView: View {
         // v2.0.102：切回会话列表立即刷新（聊天里新建/重命名后列表即时更新，原只有 .task 首刷）
         .onAppear {
             Task { await load() }
-            // v3.0.7：bot 列表加载（分组显示需要 bot 名；云端模式无 bot，跳过）
+            // v3.0.7：Bot 列表加载（节流版：5min 缓存内不重复请求，免切页触发网络+状态翻转）
             if !CloudConfig.shared.isCloudMode {
                 Task { await botStore.load(auth: auth) }
             }

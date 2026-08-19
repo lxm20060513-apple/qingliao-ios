@@ -96,7 +96,7 @@ struct BotManageSheet: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 18)
         }
-        .task { await botStore.load(auth: auth) }
+        .task { await botStore.load(auth: auth, force: true) }
         .sheet(isPresented: $showEdit) {
             BotEditSheet(bot: editingBot ?? QingliaoBot(id: "", name: "", systemPrompt: "", model: "", provider: "", avatar: ""),
                          isNew: isNew)

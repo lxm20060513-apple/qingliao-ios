@@ -718,7 +718,7 @@ struct ChatView: View {
             // 服务器连接状态检测（真实绿点）
             let r = await auth.testConnection(server: auth.serverURL)
             serverOnline = r.hasPrefix("✅")
-            // v3.0.7：Bot 列表加载（角色切换菜单/管理页共用；失败静默，管理页可重试）
+            // v3.0.7：Bot 列表加载（节流版：5min 缓存内不重复请求，免切页触发网络+状态翻转）
             if !CloudConfig.shared.isCloudMode {
                 await botStore.load(auth: auth)
             }
