@@ -168,6 +168,8 @@ func renderOrb(size: CGFloat, time: CGFloat, mode: OrbMode, dark: Bool, opts: Or
 struct OrbCanvasView: View {
     let mode: OrbMode
     let size: CGFloat
+    // v3.0.16：可传定制粒子参数（小尺寸场景默认参数粒子过小≈0.2pt 不可见，如 30pt 头像）
+    var opts: OrbOpts = OrbOpts()
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -175,7 +177,6 @@ struct OrbCanvasView: View {
         TimelineView(schedule) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let speed: CGFloat = mode == .orbits ? 1.885 : 3.24
-            let opts = OrbOpts()
             Canvas { gfx, sz in
                 let frame = renderOrb(size: size, time: t * speed, mode: mode, dark: colorScheme == .dark, opts: opts)
                 for dot in frame.dots {

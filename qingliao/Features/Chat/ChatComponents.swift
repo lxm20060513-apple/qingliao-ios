@@ -295,13 +295,17 @@ struct MessageBubble: View {
 
     /// v3.0.15：AI 头像——流式输出中 = 粒子球（渐变底 + orbits 粒子流动），否则脑形标
     /// 拆独立计算属性：防止 body 巨型表达式 type-check 超时（v3.0.15 CI 实测）
+    /// v3.0.16：头像粒子用定制大参数（默认参数按 300pt 基准缩放，30pt 下仅 ~0.2pt 不可见）
     @ViewBuilder
     private var aiAvatar: some View {
         ZStack {
             Circle()
                 .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
             if streamingAvatar {
-                OrbCanvasView(mode: .orbits, size: 30)
+                OrbCanvasView(mode: .orbits, size: 30,
+                              opts: OrbOpts(orbitN: 8, ghostN: 26, ghostR: 2.8, ghostA: 0.9,
+                                            particles: 4, partR: 3.4, partRDepth: 2.6,
+                                            rsPow: 0.6, rMin: 0.9))
                     .allowsHitTesting(false)
             } else {
                 Image(systemName: "brain.head.profile")
