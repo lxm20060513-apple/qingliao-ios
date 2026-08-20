@@ -78,6 +78,9 @@ struct MessageBlockView: View {
     var onWithdraw: (() -> Void)? = nil
     // v2.0.128：AI 图片点击打开大图（传图片 URL/data URL）
     var onImageTap: (String) -> Void = { _ in }
+    // v3.0.17：流式输出中用 SwiftUI Text 渲染（UITextView 在流式高频更新下有锁旧窄布局/字体缩放 bug 家族，
+    // 见 references/ui-textview-layout-shrink.md；流式中无需长按菜单，落库后恢复 SelectableTextLabel）
+    var useSwiftUIText = false
 
     // v3.0.2 性能：缓存 markdown 渲染结果——流式每段更新 parent.messages 会触发子视图重算，
     // 若每次 body 都 MarkdownRenderer.render() 重新解析，长文本/流式下是滚动+更新卡顿主因。
@@ -93,6 +96,11 @@ struct MessageBlockView: View {
             cachedAttr = NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize)))
         }
         return cachedAttr ?? NSAttributedString(string: text)
+    }
+
+    /// v3.0.17：流式 SwiftUI Text 用 —— 复用同一缓存转 AttributedString
+    private func cachedRenderText(_ text: String) -> AttributedString {
+        AttributedString(cachedRender(text))
     }
 
     /// 代码块/表格共用的 SwiftUI 长按菜单（与原气泡级菜单项一致）
@@ -142,22 +150,31 @@ struct MessageBlockView: View {
     var body: some View {
         switch block.kind {
         case .markdown(let text):
-            // v2.0.125：UITextView 渲染 —— 长按文字弹菜单，点「选择文本」从手按位置选中可拖动
-            // v3.0.2 性能：用 cachedRender 缓存 markdown 渲染结果（避免流式/滚动反复重解析）
-            SelectableTextLabel(
-                attributedText: cachedRender(text),
-                fallbackColor: .label,
-                lineSpacingFromSettings: true,   // v2.0.130：AI 消息行距实时读设置
-                fillWidth: true,   // v3.0.11 fix：AI 消息满容器宽（流式不跳变）
-                onCopy: onCopy,
-                onQuote: onQuote,
-                onShare: onShare,
-                onBigBang: onBigBang,
-                onDelete: onDelete,
-                onRegenerate: onRegenerate,
-                onWithdraw: onWithdraw
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if useSwiftUIText {
+                // v3.0.17：流式输出中的 AI 长文 —— SwiftUI Text 原生渲染，无 UITextView 布局锁/字体缩放问题
+                Text(cachedRenderText(text))
+                    .font(.system(size: CGFloat(fontSize)))
+                    .lineSpacing(aiLineSpacing)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // v2.0.125：UITextView 渲染 —— 长按文字弹菜单，点「选择文本」从手按位置选中可拖动
+                // v3.0.2 性能：用 cachedRender 缓存 markdown 渲染结果（避免流式/滚动反复重解析）
+                SelectableTextLabel(
+                    attributedText: cachedRender(text),
+                    fallbackColor: .label,
+                    lineSpacingFromSettings: true,   // v2.0.130：AI 消息行距实时读设置
+                    fillWidth: true,   // v3.0.11 fix：AI 消息满容器宽（流式不跳变）
+                    onCopy: onCopy,
+                    onQuote: onQuote,
+                    onShare: onShare,
+                    onBigBang: onBigBang,
+                    onDelete: onDelete,
+                    onRegenerate: onRegenerate,
+                    onWithdraw: onWithdraw
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         case .image(let url):
             // v2.0.128：AI 直接发图 —— URL 用 AsyncImage，data URL 本地解码；点击打开大图
             AIImageView(url: url)
@@ -217,6 +234,8 @@ struct MessageBubble: View {
     var onAIImageTap: (String) -> Void = { _ in }
     // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标
     var streamingAvatar: Bool = false
+    // v3.0.17：流式输出中 markdown 段用 SwiftUI Text 渲染（绕开 UITextView 流式锁窄布局 bug 家族）
+    var streamingText: Bool = false
     // v2.0.38：聊天字体大小（设置页可调，实时生效）
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.128：AI 输出行高（设置页滑条，实时生效）
@@ -302,10 +321,17 @@ struct MessageBubble: View {
             Circle()
                 .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
             if streamingAvatar {
+                // v3.0.17：彩色粒子（亮蓝/紫/粉/白，深浅色模式都醒目），大参数保证 30pt 可见
                 OrbCanvasView(mode: .orbits, size: 30,
                               opts: OrbOpts(orbitN: 8, ghostN: 26, ghostR: 2.8, ghostA: 0.9,
                                             particles: 4, partR: 3.4, partRDepth: 2.6,
-                                            rsPow: 0.6, rMin: 0.9))
+                                            rsPow: 0.6, rMin: 0.9),
+                              dotColors: [
+                                Color(red: 0.55, green: 0.72, blue: 1.0),
+                                Color(red: 0.65, green: 0.55, blue: 1.0),
+                                Color(red: 1.0, green: 0.60, blue: 0.85),
+                                .white
+                              ])
                     .allowsHitTesting(false)
             } else {
                 Image(systemName: "brain.head.profile")
@@ -381,7 +407,8 @@ struct MessageBubble: View {
                                                     onDelete: onDelete,
                                                     onRegenerate: onRegenerate,
                                                     onWithdraw: nil,
-                                                    onImageTap: { url in onAIImageTap(url) })   // v2.0.128：AI 图片点击打开大图
+                                                    onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
+                                                    useSwiftUIText: streamingText)   // v3.0.17：流式中 SwiftUI Text 渲染
                                 }
                             }
                         }

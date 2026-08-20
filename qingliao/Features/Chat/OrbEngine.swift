@@ -170,6 +170,8 @@ struct OrbCanvasView: View {
     let size: CGFloat
     // v3.0.16：可传定制粒子参数（小尺寸场景默认参数粒子过小≈0.2pt 不可见，如 30pt 头像）
     var opts: OrbOpts = OrbOpts()
+    // v3.0.17：可传彩色粒子（按 dot 索引循环取色、保留深度 alpha；nil = 默认灰白按深浅色适配）
+    var dotColors: [Color]? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -177,12 +179,18 @@ struct OrbCanvasView: View {
         TimelineView(schedule) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let speed: CGFloat = mode == .orbits ? 1.885 : 3.24
+            let colors = dotColors
             Canvas { gfx, sz in
                 let frame = renderOrb(size: size, time: t * speed, mode: mode, dark: colorScheme == .dark, opts: opts)
-                for dot in frame.dots {
-                    let gray = colorScheme == .dark ? (1 - dot.white) : dot.white
+                for (i, dot) in frame.dots.enumerated() {
                     let alpha = min(1, max(0, dot.alpha))
-                    let c = Color(white: Double(gray), opacity: Double(alpha))
+                    let c: Color
+                    if let colors, !colors.isEmpty {
+                        c = colors[i % colors.count].opacity(Double(alpha))
+                    } else {
+                        let gray = colorScheme == .dark ? (1 - dot.white) : dot.white
+                        c = Color(white: Double(gray), opacity: Double(alpha))
+                    }
                     let rect = CGRect(x: dot.x - dot.r, y: dot.y - dot.r, width: dot.r * 2, height: dot.r * 2)
                     gfx.fill(Path(ellipseIn: rect), with: .color(c))
                 }
