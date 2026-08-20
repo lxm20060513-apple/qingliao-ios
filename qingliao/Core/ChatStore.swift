@@ -167,10 +167,19 @@ final class ChatStore {
     /// 发送请求用的历史消息（payload 形态）
     /// 只保留最后一条带图消息的 imageDataURL（前面已发过的图片不进 payload，防 base64 全量重复膨胀）
     func historyPayload() -> [[String: Any]] {
-        // v3.0.4 fix：云端模式若当前厂商不支持视觉 → 图片消息降级为纯文本「[图片]」
-        //（否则 DeepSeek 等纯文本模型收到 `image_url` content 块会返回 400
-        //  "unknown variant image_url, expected text"——用户实测报错）
-        let visionOK = !CloudConfig.shared.isCloudMode || (CloudConfig.shared.activeConfig?.supportsVision ?? false)
+        // v3.0.10：图片保留条件（不降级为文本）
+        // 云端模式：当前厂商 supportsVision
+        // 本地模式：主模型支持视觉 OR 配置了视觉模型自动切换
+        let visionOK: Bool = {
+            if CloudConfig.shared.isCloudMode {
+                return CloudConfig.shared.activeConfig?.supportsVision ?? false
+            }
+            // 本地模式：主模型支持视觉 → 直接 OK
+            let mainModel = UserDefaults.standard.string(forKey: "qingliao_model") ?? ""
+            if CloudConfig.modelSupportsVision(mainModel) { return true }
+            // 主模型不支持 → 开关开 + 有视觉模型配置才保留图片，否则降级文本
+            return CloudConfig.visionFallbackEnabled && CloudConfig.localVisionModel != nil
+        }()
         return messages.map { m in
             var p = m.asPayload()
             if m.imageDataURL == nil {

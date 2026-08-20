@@ -1102,12 +1102,20 @@ struct ChatView: View {
         }
         let startSid = chat.sessionId
 
+        // v3.0.10：图片消息时，若主模型不支持视觉 → 自动切换视觉模型
+        let (useModel, useProvider): (String, String) = {
+            if msg.imageDataURL != nil, let vision = CloudConfig.effectiveVisionModel() {
+                return (vision.model, vision.provider)
+            }
+            return (modelName, provider)
+        }()
+
         Task {
             await stream.start(
                 auth: auth,
                 sessionId: chat.sessionId,
-                model: modelName,
-                provider: provider,
+                model: useModel,
+                provider: useProvider,
                 messages: history,
                 bot: effectiveBot
             ) { success, error in
@@ -1773,9 +1781,17 @@ struct ChatView: View {
               let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
         chat.messages.removeSubrange(idx...)
         let history = chat.historyPayload()
+        // v3.0.10：重新生成时，若最新用户消息含图片 → 使用视觉模型
+        let lastUserHasImage = chat.messages.last(where: { $0.isUser })?.imageDataURL != nil
+        let (useModel, useProvider): (String, String) = {
+            if lastUserHasImage, let vision = CloudConfig.effectiveVisionModel() {
+                return (vision.model, vision.provider)
+            }
+            return (modelName, provider)
+        }()
         Task {
-            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
-                               provider: provider, messages: history) { success, error in
+            await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
+                               provider: useProvider, messages: history) { success, error in
                 if !success {
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {

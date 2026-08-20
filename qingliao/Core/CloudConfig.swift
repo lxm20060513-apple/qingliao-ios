@@ -224,4 +224,54 @@ final class CloudConfig {
         }
         return false
     }
+
+    // MARK: - v3.0.10 本地视觉模型配置
+
+    /// 本地模式视觉模型 UserDefaults key
+    private static let visionModelKey = "qingliao_vision_model"
+    private static let visionProviderKey = "qingliao_vision_provider"
+    private static let visionEnabledKey = "qingliao_vision_fallback"
+
+    /// 当前配置的视觉模型名（nil = 未配置）
+    static var localVisionModel: String? {
+        UserDefaults.standard.string(forKey: visionModelKey)
+    }
+    /// 当前配置的视觉模型 provider
+    static var localVisionProvider: String {
+        UserDefaults.standard.string(forKey: visionProviderKey) ?? "opencode"
+    }
+    /// 视觉模型自动切换开关（默认开）
+    static var visionFallbackEnabled: Bool {
+        UserDefaults.standard.object(forKey: visionEnabledKey) as? Bool ?? true
+    }
+
+    /// 设置视觉模型
+    static func setVisionModel(_ model: String, provider: String) {
+        UserDefaults.standard.set(model, forKey: visionModelKey)
+        UserDefaults.standard.set(provider, forKey: visionProviderKey)
+    }
+
+    /// 清除视觉模型配置
+    static func clearVisionModel() {
+        UserDefaults.standard.removeObject(forKey: visionModelKey)
+        UserDefaults.standard.removeObject(forKey: visionProviderKey)
+    }
+
+    /// 设置视觉模型自动切换开关
+    static func setVisionFallbackEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: visionEnabledKey)
+    }
+
+    /// v3.0.10：判断发送图片时应使用哪个模型
+    /// - 如果主模型支持视觉 → 返回 nil（用主模型）
+    /// - 如果主模型不支持视觉且配置了视觉模型 → 返回视觉模型
+    /// - 否则 → 返回 nil（降级为文本，保持现有行为）
+    static func effectiveVisionModel() -> (model: String, provider: String)? {
+        guard visionFallbackEnabled else { return nil }
+        guard let visionModel = localVisionModel, !visionModel.isEmpty else { return nil }
+        // 如果主模型已支持视觉，无需切换
+        let mainModel = UserDefaults.standard.string(forKey: "qingliao_model") ?? ""
+        if modelSupportsVision(mainModel) { return nil }
+        return (visionModel, localVisionProvider)
+    }
 }

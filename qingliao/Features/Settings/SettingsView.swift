@@ -47,6 +47,8 @@ struct SettingsView: View {
     @State private var localChecking = false
     // v2.0.118：本地模型管理弹窗
     @State private var showLocalModels = false
+    // v3.0.10：视觉模型配置弹窗
+    @State private var showVisionModel = false
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
@@ -115,6 +117,11 @@ struct SettingsView: View {
             Divider().padding(.leading, 52)
             SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                 .onTapGesture { showModelSheet = true }
+            Divider().padding(.leading, 52)
+            // v3.0.10：视觉模型配置（主模型不支持视觉时自动切换备用模型）
+            SettingRow(icon: "eye.fill", iconColor: .purple, title: "视觉模型配置",
+                       value: visionModelDisplay, chevron: true)
+                .onTapGesture { showVisionModel = true }
             Divider().padding(.leading, 52)
             SettingRow(icon: "person.2.crop.square.stack.fill", iconColor: .teal, title: "Bot 管理",
                        value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
@@ -475,6 +482,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showLocalModels) {
             LocalModelsSheet()
         }
+        // v3.0.10：视觉模型配置弹窗
+        .sheet(isPresented: $showVisionModel) {
+            VisionModelSheet()
+        }
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }
         .task { await loadCounts() }
@@ -553,6 +564,14 @@ struct SettingsView: View {
     /// 当前默认模型（UserDefaults）
     private var currentModel: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
+    }
+
+    /// v3.0.10：视觉模型显示文案
+    private var visionModelDisplay: String {
+        guard CloudConfig.visionFallbackEnabled else { return "已关闭" }
+        if CloudConfig.modelSupportsVision(currentModel) { return "主模型支持" }
+        guard let vm = CloudConfig.localVisionModel, !vm.isEmpty else { return "未配置" }
+        return vm
     }
 
     /// v3.0.19：微信通道当前模型（UserDefaults 缓存，进弹窗时刷新）
