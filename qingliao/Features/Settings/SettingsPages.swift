@@ -412,36 +412,9 @@ struct TasksView: View {
     @State private var loading = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("定时任务")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Text("\(tasks.count) 个")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Button {
-                    showNewTask = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 8)
-
-            if loading {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if loading {
                 Spacer()
                 ProgressView().tint(.secondary)
                 Spacer()
@@ -541,10 +514,26 @@ struct TasksView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
+        .navigationTitle("定时任务")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showNewTask = true
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
         .task { await load() }
         .sheet(isPresented: $showNewTask) {
             NewTaskSheet()
                 .presentationDetents([.medium])
+        }
         }
     }
 
@@ -610,50 +599,9 @@ struct LogsView: View {
     @State private var showExporter = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("日志")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = logs.joined(separator: "\n")
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button {
-                    exportText = logs.joined(separator: "\n")
-                    showExporter = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button {
-                    Task { await load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 8)
-
-            if loading {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if loading {
                 Spacer()
                 ProgressView().tint(.secondary)
                 Spacer()
@@ -683,11 +631,42 @@ struct LogsView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
+        .navigationTitle("日志")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 16) {
+                    Button {
+                        UIPasteboard.general.string = logs.joined(separator: "\n")
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Button {
+                        exportText = logs.joined(separator: "\n")
+                        showExporter = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+            }
+        }
         .task { await load() }
         .fileExporter(isPresented: $showExporter,
                       document: LogDocument(text: exportText),
                       contentType: .plainText,
                       defaultFilename: "qingliao-logs") { _ in }
+        }
     }
 
     /// 日志导出文档

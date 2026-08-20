@@ -16,21 +16,9 @@ struct BotManageSheet: View {
     @State private var deleting = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 标题栏
-            HStack {
-                Text("Bot 管理")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button("完成") { dismiss() }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 10)
-
-            if botStore.isLoading && botStore.bots.isEmpty {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if botStore.isLoading && botStore.bots.isEmpty {
                 Spacer()
                 ProgressView().tint(.secondary)
                 Spacer()
@@ -125,6 +113,14 @@ struct BotManageSheet: View {
             if deleting {
                 ProgressView().tint(.secondary)
             }
+        }
+        .navigationTitle("Bot 管理")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
         }
     }
 

@@ -74,35 +74,9 @@ struct SecretsView: View {
     }
 
     private var content: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("🔐 密码管理")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button {
-                    editing = SecretEntry(id: "", name: "", type: "nas", address: "", username: "", hasPassword: false)
-                    showEdit = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
-            if loading {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if loading {
                 Spacer()
                 ProgressView().tint(.secondary)
                 Spacer()
@@ -146,6 +120,23 @@ struct SecretsView: View {
                     .padding(.bottom, 20)
                     .transition(.opacity)
             }
+        }
+        .navigationTitle("密码管理")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editing = SecretEntry(id: "", name: "", type: "nas", address: "", username: "", hasPassword: false)
+                    showEdit = true
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
         }
     }
 

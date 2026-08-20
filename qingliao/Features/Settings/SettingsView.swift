@@ -164,9 +164,9 @@ struct SettingsView: View {
                                    value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
                             .onTapGesture { showBotManage = true }
                         Divider().padding(.leading, 52)
-                        // v3.0.19：微信窗通道模型设置（方案B——独立 profile，只影响微信通道）
+                        // v3.0.19：微信通道模型设置（方案B——独立 profile，只影响微信通道）
                         SettingRow(icon: "bubble.left.and.bubble.right.fill", iconColor: .blue,
-                                   title: "微信窗通道模型", value: wechatChannelModel, chevron: true)
+                                   title: "微信通道模型", value: wechatChannelModel, chevron: true)
                             .onTapGesture { showWechatChannel = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
@@ -731,7 +731,7 @@ struct SettingsView: View {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
     }
 
-    /// v3.0.19：微信窗通道当前模型（UserDefaults 缓存，进弹窗时刷新）
+    /// v3.0.19：微信通道当前模型（UserDefaults 缓存，进弹窗时刷新）
     private var wechatChannelModel: String {
         UserDefaults.standard.string(forKey: "qingliao_wechat_channel_model") ?? "跟随默认"
     }
@@ -792,22 +792,9 @@ struct ServerSheet: View {
     @State private var saved = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("服务器地址")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
-            Text("修改后需重新登录")
+        NavigationStack {
+            VStack(spacing: 0) {
+                Text("修改后需重新登录")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -856,9 +843,17 @@ struct ServerSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
+        .navigationTitle("服务器地址")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
         .onAppear {
             server = auth.serverURL.replacingOccurrences(of: "http://", with: "")
                 .replacingOccurrences(of: "https://", with: "")
+        }
         }
     }
 }
@@ -876,22 +871,9 @@ struct PasswordSheet: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("修改密码")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
-            SecureField("当前密码", text: $oldPassword)
+        NavigationStack {
+            VStack(spacing: 0) {
+                SecureField("当前密码", text: $oldPassword)
                 .font(.system(size: 14))
                 .padding(12)
                 .background(Color(uiColor: .secondarySystemGroupedBackground))
@@ -948,6 +930,14 @@ struct PasswordSheet: View {
             Spacer()
         }
         .background(Color(uiColor: .systemBackground))
+        .navigationTitle("修改密码")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
+        }
     }
 
     private func changePassword() {
@@ -1049,10 +1039,9 @@ struct SessionLocSheet: View {
     @State private var saving = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("会话存储位置")
-                .font(.system(size: 17, weight: .bold))
-            Text("设置 NAS 上存储会话记录的目录（需为服务器可写路径）")
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("设置 NAS 上存储会话记录的目录（需为服务器可写路径）")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             TextField("如 /volume1/docker/轻聊数据/sessions", text: $path)
@@ -1085,7 +1074,15 @@ struct SessionLocSheet: View {
             Spacer()
         }
         .padding(20)
+        .navigationTitle("会话存储位置")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
         .onAppear { path = currentPath }
+        }
     }
 
     private func save() {
@@ -1195,33 +1192,10 @@ struct ModelSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // 头部：🧠 模型管理 + 刷新 + 同步列表 + 在线状态
-            HStack(spacing: 8) {
-                Text("🧠").font(.system(size: 18))
-                Text("模型管理").font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button { syncList() } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button { syncList() } label: {
-                    Text("同步列表")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22)).foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            // 在线状态 + 同步结果
-            HStack(spacing: 5) {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 10) {
+                // 在线状态 + 同步结果
+                HStack(spacing: 5) {
                 Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)
                 Text(syncing ? "同步中..." : "OpenCode Go 在线")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -1284,6 +1258,19 @@ struct ModelSheet: View {
             }
         }
         .padding(18)
+        .navigationTitle("模型管理")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { syncList() } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
         .onAppear {
             selected = current
             // v2.0.118：动态拉取本地已装模型（自主选择）
@@ -1318,6 +1305,7 @@ struct ModelSheet: View {
             if allProviders.isEmpty {
                 Task { await loadAllProviders() }
             }
+        }
         }
     }
 
@@ -1595,7 +1583,7 @@ struct AboutView: View {
     }
 }
 
-// MARK: - v3.0.19 微信窗通道模型设置（方案B：读写 Hermes wechat-profile，微信通道专属模型）
+// MARK: - v3.0.19 微信通道模型设置（方案B：读写 Hermes wechat-profile，微信通道专属模型）
 
 struct WechatChannelSheet: View {
     @Environment(AuthStore.self) private var auth
@@ -1609,38 +1597,25 @@ struct WechatChannelSheet: View {
     @State private var loaded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // 头部
-            HStack(spacing: 8) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.blue)
-                Text("微信窗通道模型").font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22)).foregroundStyle(.tertiary)
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 10) {
+                // 当前模型 + 说明
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Circle().fill(loaded ? Color.green : Color.orange).frame(width: 7, height: 7)
+                        Text("当前微信通道模型")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Text(currentModel)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("设置后重启 Hermes 生效（约 10-30 秒），只影响微信通道，其他通道不受影响。")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
-            }
-
-            // 当前模型 + 说明
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle().fill(loaded ? Color.green : Color.orange).frame(width: 7, height: 7)
-                    Text("当前微信通道模型")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Text(currentModel)
-                    .font(.system(size: 15, weight: .semibold))
-                Text("设置后重启 Hermes 生效（约 10-30 秒），只影响微信通道，其他通道不受影响。")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             if let saveResult {
                 Text(saveResult)
@@ -1714,7 +1689,15 @@ struct WechatChannelSheet: View {
             }
         }
         .padding(14)
+        .navigationTitle("微信通道模型")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
         .task { await load() }
+        }
     }
 
     /// 拉当前微信通道模型 + 全部 provider 模型列表

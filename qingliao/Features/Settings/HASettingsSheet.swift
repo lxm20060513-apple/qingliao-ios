@@ -13,19 +13,9 @@ struct HASettingsSheet: View {
     @State private var toast = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("🏠 HA 设置")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22)).foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            Text("Home Assistant 连接配置，保存后看板「智能家居」卡片自动使用新配置")
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Home Assistant 连接配置，保存后看板「智能家居」卡片自动使用新配置")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
@@ -76,11 +66,19 @@ struct HASettingsSheet: View {
             Spacer()
         }
         .padding(18)
+        .navigationTitle("HA 设置")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
         .task {
             if let j = try? await auth.json("/api/ha/config") {
                 address = j["address"] as? String ?? ""
                 hasToken = (j["has_token"] as? Bool) ?? false
             }
+        }
         }
     }
 
