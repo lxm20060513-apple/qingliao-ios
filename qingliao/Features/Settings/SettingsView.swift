@@ -47,8 +47,7 @@ struct SettingsView: View {
     @State private var localChecking = false
     // v2.0.118：本地模型管理弹窗
     @State private var showLocalModels = false
-    // v3.0.10：视觉模型配置弹窗
-    @State private var showVisionModel = false
+    // v3.0.10：视觉模型配置弹窗（已移至模型管理弹窗内）
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
     // v2.0.87ax：输入框流光光效开关
@@ -117,11 +116,6 @@ struct SettingsView: View {
             Divider().padding(.leading, 52)
             SettingRow(icon: "cpu.fill", iconColor: .orange, title: "模型管理", value: currentModel, chevron: true)
                 .onTapGesture { showModelSheet = true }
-            Divider().padding(.leading, 52)
-            // v3.0.10：视觉模型配置（主模型不支持视觉时自动切换备用模型）
-            SettingRow(icon: "eye.fill", iconColor: .purple, title: "视觉模型配置",
-                       value: visionModelDisplay, chevron: true)
-                .onTapGesture { showVisionModel = true }
             Divider().padding(.leading, 52)
             SettingRow(icon: "person.2.crop.square.stack.fill", iconColor: .teal, title: "Bot 管理",
                        value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
@@ -483,10 +477,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showLocalModels) {
             LocalModelsSheet()
         }
-        // v3.0.10：视觉模型配置弹窗
-        .sheet(isPresented: $showVisionModel) {
-            VisionModelSheet()
-        }
         // v2.0.102：切回设置页刷新计数（密码管理/记忆增删后行尾数字即时更新，原只有 .task 首刷）
         .onAppear { Task { await loadCounts() } }
         .task { await loadCounts() }
@@ -567,15 +557,7 @@ struct SettingsView: View {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
     }
 
-    /// v3.0.10：视觉模型显示文案
-    private var visionModelDisplay: String {
-        guard CloudConfig.visionFallbackEnabled else { return "已关闭" }
-        if CloudConfig.modelSupportsVision(currentModel) { return "主模型支持" }
-        guard let vm = CloudConfig.localVisionModel, !vm.isEmpty else { return "未配置" }
-        return vm
-    }
-
-    /// v3.0.19：微信通道当前模型（UserDefaults 缓存，进弹窗时刷新）
+    // v3.0.19：微信通道当前模型（UserDefaults 缓存，进弹窗时刷新）
     private var wechatChannelModel: String {
         UserDefaults.standard.string(forKey: "qingliao_wechat_channel_model") ?? "跟随默认"
     }
@@ -1013,8 +995,10 @@ struct ModelSheet: View {
     @State private var hiddenModels: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
-    // v2.0.118：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
+    // v3.0.18：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
     @State private var localInstalled: [String] = []
+    // v3.0.10：视觉模型配置弹窗（模型管理内导航）
+    @State private var showVisionModelSheet = false
 
     /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）——v2.0.131 起改为同步优先
     /// 注：官方端点已可用（Go 订阅 26 个模型），本地列表仅作同步失败时的兜底
@@ -1135,6 +1119,39 @@ struct ModelSheet: View {
                         .buttonStyle(.plain)
                         .padding(.top, 4)
                     }
+                    // v3.0.10：视觉模型配置（模型管理内导航）
+                    Divider()
+                        .padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("视觉模型")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 4)
+                        HStack(spacing: 10) {
+                            Image(systemName: "eye.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(visionModelDisplay)
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("主模型不支持视觉时自动切换")
+                                    .font(.system(size: 10.5)).foregroundStyle(.tertiary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(11)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(Color.purple.opacity(0.3), lineWidth: 0.8)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { showVisionModelSheet = true }
+                    }
                 }
                 .padding(.bottom, 8)
             }
@@ -1187,6 +1204,10 @@ struct ModelSheet: View {
             if allProviders.isEmpty {
                 Task { await loadAllProviders() }
             }
+        }
+        // v3.0.10：视觉模型配置弹窗（模型管理内导航）
+        .sheet(isPresented: $showVisionModelSheet) {
+            VisionModelSheet()
         }
         }
     }
@@ -1361,6 +1382,15 @@ struct ModelSheet: View {
             result.append((id: id, models: m))
         }
         allProviders = result
+    }
+
+    /// v3.0.10：视觉模型显示文案（模型管理内导航行）
+    private var visionModelDisplay: String {
+        let mainModel = UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
+        guard CloudConfig.visionFallbackEnabled else { return "视觉模型 · 已关闭" }
+        if CloudConfig.modelSupportsVision(mainModel) { return "视觉模型 · 主模型支持" }
+        guard let vm = CloudConfig.localVisionModel, !vm.isEmpty else { return "视觉模型 · 未配置" }
+        return "视觉模型 · \(vm)"
     }
 }
 

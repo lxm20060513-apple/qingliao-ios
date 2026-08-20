@@ -26,6 +26,13 @@ struct VisionModelSheet: View {
         CloudConfig.modelSupportsVision(mainModel)
     }
 
+    // v3.0.22：微信通道视觉模型（读写 wechat-profile auxiliary.vision）
+    @State private var wechatVisionProvider: String?
+    @State private var wechatVisionModel: String?
+    @State private var wechatVisionLoaded = false
+    @State private var wechatSaving = false
+    @State private var wechatSaveResult: String?
+
     var body: some View {
         NavigationStack {
             List {
@@ -66,62 +73,104 @@ struct VisionModelSheet: View {
                             }
                         }
                     }
+                }
 
-                    // MARK: - 已选视觉模型
-                    if !selectedModel.isEmpty {
-                        Section("当前视觉模型") {
-                            HStack(spacing: 10) {
-                                Image(systemName: "eye.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.purple)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(selectedModel)
-                                        .font(.system(size: 14, weight: .medium))
-                                    Text(providerDisplayName(selectedProvider))
-                                        .font(.system(size: 11)).foregroundStyle(.tertiary)
-                                }
-                                Spacer()
-                                Button("清除") {
-                                    selectedModel = ""
-                                    selectedProvider = "opencode"
-                                    CloudConfig.clearVisionModel()
-                                }
+                // MARK: - 微信通道视觉模型（v3.0.22：读写 wechat-profile auxiliary.vision）
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "message.fill")
                                 .font(.system(size: 12))
+                                .foregroundStyle(.blue)
+                            Text("微信通道视觉模型")
+                                .font(.system(size: 13, weight: .medium))
+                            Spacer()
+                            if wechatSaving {
+                                ProgressView().controlSize(.mini)
+                            }
+                        }
+                        Text(wechatVisionDisplay)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Text("微信/香农通道收到图片时生效：主模型支持视觉→用主模型；主模型不支持→用下方选中的视觉模型（写入 wechat-profile，改完自动重启 gateway）")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.tertiary)
+                        if let wechatSaveResult {
+                            Text(wechatSaveResult)
+                                .font(.system(size: 11))
+                                .foregroundStyle(wechatSaveResult.hasPrefix("✅") ? Color.green : Color.orange)
+                        }
+                        if wechatVisionModel != nil {
+                            HStack(spacing: 8) {
+                                Button("清除配置") {
+                                    clearWechatVision()
+                                }
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.red)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Color.red.opacity(0.1), in: Capsule())
                             }
                         }
                     }
+                    .padding(.vertical, 2)
+                } header: {
+                    Text("微信通道")
+                }
 
-                    // MARK: - 模型列表选择
-                    Section("选择视觉模型") {
-                        if opencodeModels.isEmpty && deepseekModels.isEmpty && localInstalled.isEmpty && allProviders.isEmpty {
-                            Text("暂无可用模型\n请先在「模型管理」中同步模型列表")
-                                .font(.system(size: 12)).foregroundStyle(.secondary)
-                        } else {
-                            // opencode 模型
-                            if !opencodeModels.isEmpty {
-                                modelGroup("opencode（google）", provider: "opencode", models: opencodeModels)
+                // MARK: - 已选视觉模型
+                if !selectedModel.isEmpty {
+                    Section("当前视觉模型") {
+                        HStack(spacing: 10) {
+                            Image(systemName: "eye.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(selectedModel)
+                                    .font(.system(size: 14, weight: .medium))
+                                Text(providerDisplayName(selectedProvider))
+                                    .font(.system(size: 11)).foregroundStyle(.tertiary)
                             }
-                            if !opencodeAppleModels.isEmpty {
-                                modelGroup("opencode（apple）", provider: "opencode-apple", models: opencodeAppleModels)
+                            Spacer()
+                            Button("清除") {
+                                selectedModel = ""
+                                selectedProvider = "opencode"
+                                CloudConfig.clearVisionModel()
                             }
-                            if !deepseekModels.isEmpty {
-                                modelGroup("deepseek（官方）", provider: "deepseek", models: deepseekModels)
-                            }
-                            if !stepfunModels.isEmpty {
-                                modelGroup("stepfun", provider: "stepfun", models: stepfunModels)
-                            }
-                            if !sensenovaModels.isEmpty {
-                                modelGroup("sensenova（商汤）", provider: "sensenova", models: sensenovaModels)
-                            }
-                            if !localInstalled.isEmpty {
-                                modelGroup("本地模型", provider: "local", models: localInstalled)
-                            }
-                            // 通用 provider
-                            let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
-                            ForEach(allProviders.filter { !hardcoded.contains($0.id) && !$0.models.isEmpty }, id: \.id) { p in
-                                modelGroup(providerDisplayName(p.id), provider: p.id, models: p.models)
-                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                        }
+                    }
+                }
+
+                // MARK: - 模型列表选择
+                Section("选择视觉模型") {
+                    if opencodeModels.isEmpty && deepseekModels.isEmpty && localInstalled.isEmpty && allProviders.isEmpty {
+                        Text("暂无可用模型\n请先在「模型管理」中同步模型列表")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                    } else {
+                        // opencode 模型
+                        if !opencodeModels.isEmpty {
+                            modelGroup("opencode（google）", provider: "opencode", models: opencodeModels)
+                        }
+                        if !opencodeAppleModels.isEmpty {
+                            modelGroup("opencode（apple）", provider: "opencode-apple", models: opencodeAppleModels)
+                        }
+                        if !deepseekModels.isEmpty {
+                            modelGroup("deepseek（官方）", provider: "deepseek", models: deepseekModels)
+                        }
+                        if !stepfunModels.isEmpty {
+                            modelGroup("stepfun", provider: "stepfun", models: stepfunModels)
+                        }
+                        if !sensenovaModels.isEmpty {
+                            modelGroup("sensenova（商汤）", provider: "sensenova", models: sensenovaModels)
+                        }
+                        if !localInstalled.isEmpty {
+                            modelGroup("本地模型", provider: "local", models: localInstalled)
+                        }
+                        // 通用 provider
+                        let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
+                        ForEach(allProviders.filter { !hardcoded.contains($0.id) && !$0.models.isEmpty }, id: \.id) { p in
+                            modelGroup(providerDisplayName(p.id), provider: p.id, models: p.models)
                         }
                     }
                 }
@@ -154,6 +203,7 @@ struct VisionModelSheet: View {
                 .padding(.vertical, 4)
             ForEach(models, id: \.self) { model in
                 let isSelected = selectedModel == model && selectedProvider == provider
+                let isWechat = wechatVisionModel == model && wechatVisionProvider == provider
                 let name = modelDisplayName(provider: provider, model: model)
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -167,6 +217,20 @@ struct VisionModelSheet: View {
                         }
                     }
                     Spacer()
+                    // v3.0.22：微信通道视觉模型快捷设置
+                    if isWechat {
+                        Image(systemName: "message.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.blue)
+                    } else {
+                        Button("微信") {
+                            setWechatVision(provider: provider, model: model)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(Color.blue.opacity(0.1), in: Capsule())
+                    }
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 14))
@@ -196,6 +260,13 @@ struct VisionModelSheet: View {
         if mainModelSupportsVision { return "主模型支持视觉，无需配置" }
         if selectedModel.isEmpty { return "未配置视觉模型" }
         return "已配置：\(selectedModel)"
+    }
+
+    /// v3.0.22：微信通道视觉模型显示文案
+    private var wechatVisionDisplay: String {
+        if !wechatVisionLoaded { return "读取中…" }
+        guard let m = wechatVisionModel, !m.isEmpty else { return "未配置（主模型支持视觉时直接用主模型；不支持时用 Hermes 默认视觉兜底）" }
+        return "\(m)（\(providerDisplayName(wechatVisionProvider ?? ""))）"
     }
 
     private func modelDisplayName(provider: String, model: String) -> String {
@@ -241,6 +312,8 @@ struct VisionModelSheet: View {
     }
 
     private func loadCachedModels() async {
+        // v3.0.22：微信通道当前视觉模型
+        await loadWechatVision()
         // 从 UserDefaults 恢复缓存的模型列表
         if let s = UserDefaults.standard.array(forKey: "qingliao_models_stepfun") as? [String] { stepfunModels = s }
         if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] { deepseekModels = d }
@@ -267,9 +340,71 @@ struct VisionModelSheet: View {
         }
     }
 
+    /// v3.0.22：读取微信通道当前视觉模型（GET /api/channel/vision-model）
+    /// 后端将 local 归一化为 ollama 存储，回读时还原为 local 以便与模型列表匹配
+    private func loadWechatVision() async {
+        if let j = try? await auth.json("/api/channel/vision-model") {
+            if (j["ok"] as? Bool) == true {
+                let prov = j["provider"] as? String
+                wechatVisionProvider = prov == "ollama" ? "local" : prov
+                wechatVisionModel = j["model"] as? String
+            } else {
+                wechatSaveResult = "⚠️ 读取失败：\(j["error"] as? String ?? "未知错误")"
+            }
+        } else {
+            wechatSaveResult = "⚠️ 读取失败（后端需 v3.0.22）"
+        }
+        wechatVisionLoaded = true
+    }
+
+    /// v3.0.22：设置微信通道视觉模型（POST /api/channel/vision-model → 后端改 wechat-profile + 重启 gateway）
+    private func setWechatVision(provider: String, model: String) {
+        guard !wechatSaving else { return }
+        wechatSaving = true
+        wechatSaveResult = nil
+        Task {
+            defer { wechatSaving = false }
+            do {
+                let j = try await auth.json("/api/channel/vision-model", method: "POST",
+                                            body: ["provider": provider, "model": model])
+                if (j["ok"] as? Bool) == true {
+                    wechatVisionProvider = provider
+                    wechatVisionModel = model
+                    wechatSaveResult = "✅ 已设置：\(model)（gateway 重启后生效，约 10-30 秒）"
+                } else {
+                    wechatSaveResult = "⚠️ 设置失败：\(j["error"] as? String ?? "未知错误")"
+                }
+            } catch {
+                wechatSaveResult = "⚠️ 设置失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// v3.0.22：清除微信通道视觉模型（DELETE /api/channel/vision-model）
+    private func clearWechatVision() {
+        guard !wechatSaving else { return }
+        wechatSaving = true
+        wechatSaveResult = nil
+        Task {
+            defer { wechatSaving = false }
+            do {
+                let j = try await auth.json("/api/channel/vision-model", method: "DELETE")
+                if (j["ok"] as? Bool) == true {
+                    wechatVisionProvider = nil
+                    wechatVisionModel = nil
+                    wechatSaveResult = "✅ 已清除（gateway 重启后生效，约 10-30 秒）"
+                } else {
+                    wechatSaveResult = "⚠️ 清除失败：\(j["error"] as? String ?? "未知错误")"
+                }
+            } catch {
+                wechatSaveResult = "⚠️ 清除失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
     private func syncModels() async {
         // 复用后端 sync-models 接口
-        async func fetch(_ provider: String) -> [String]? {
+        func fetch(_ provider: String) async -> [String]? {
             guard let j = try? await auth.json("/api/stream/sync-models?provider=\(provider)"),
                   (j["ok"] as? Bool) == true,
                   let list = j["models"] as? [String] else { return nil }
