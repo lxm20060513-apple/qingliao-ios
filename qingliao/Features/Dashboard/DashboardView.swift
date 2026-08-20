@@ -160,19 +160,21 @@ struct DashboardView: View {
                     // v2.0.104：自动化（AI 生成"X分钟后执行Y"，倒计时到点自动执行后消失）
                     sectionTitle("自动化")
                     if automations.isEmpty {
-                        Button {
-                            Task { await refresh() }
-                        } label: {
-                            Text("暂无自动化——点此刷新，或在聊天里说「5分钟后关闭排气扇」")
+                        HStack(spacing: 6) {
+                            Image(systemName: "timer")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                            Text("暂无自动化")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            Spacer()
+                            Button("刷新") { Task { await refresh() } }
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .dashboardCard(cornerRadius: 10)
                     } else {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                             ForEach(automations) { a in
@@ -201,9 +203,9 @@ struct DashboardView: View {
 
                     sectionTitle("NAS 面板")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        MeterCard(name: "CPU", icon: "cpu.fill", value: String(format: "%.1f%%", nas.cpu), sub: nil, ratio: nas.cpu / 100.0, color: .blue)
+                        MeterCard(name: "CPU", icon: "cpu.fill", value: nas.cpuText, sub: nil, ratio: nas.cpu / 100.0, color: .blue)
                         MeterCard(name: "内存", icon: "memorychip.fill", value: nas.memUsedText, sub: "/ \(nas.memTotalText)", ratio: nas.memPct, color: .green)
-                        MeterCard(name: "磁盘", icon: "internaldrive.fill", value: String(format: "%.0f%%", nas.maxDiskPct), sub: "\(nas.disks.count) 个分区 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
+                        MeterCard(name: "磁盘", icon: "internaldrive.fill", value: nas.maxDiskPctText, sub: "\(nas.disks.count) 个分区 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
                             .onTapGesture { activeSheet = .disks }
                         ServiceCard(name: "轻聊后端", icon: "server.rack", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
                             .onTapGesture { activeSheet = .service }
@@ -1298,11 +1300,11 @@ struct DiskTile: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                Text(String(format: "%.0f%%", disk.pct))
+                Text(disk.pctText)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(disk.pct > 90 ? .red : (disk.pct > 75 ? .orange : .primary))
             }
-            Text(String(format: "%.0f%%", disk.pct))
+            Text(disk.pctText)
                 .font(.system(size: 18, weight: .bold))
                 .padding(.top, 6)
             GeometryReader { geo in

@@ -239,6 +239,8 @@ struct NASStatus {
     var memTotalText: String { byteText(memTotal) }
     var qingliaoMemText: String { byteText(qingliaoMem) }
     var hermesMemText: String { byteText(hermesMem) }
+    var cpuText: String { String(format: "%.1f%%", cpu) }
+    var maxDiskPctText: String { String(format: "%.0f%%", maxDiskPct) }
 
     private func byteText(_ b: Double) -> String {
         if b >= 1_073_741_824 { return String(format: "%.1fG", b / 1_073_741_824) }
@@ -259,6 +261,7 @@ struct NASDisk: Identifiable {
     var id: String { mnt }
     var usedText: String { byteText(used) }
     var totalText: String { byteText(total) }
+    var pctText: String { String(format: "%.0f%%", pct) }
 
     static func parse(_ d: [String: Any]) -> NASDisk? {
         guard let mnt = d["mnt"] as? String else { return nil }
