@@ -252,14 +252,11 @@ struct MessageBubble: View {
 
     /// 用户气泡蓝：深色用深蓝，浅色用亮蓝（对比度适配）
     private var userBubbleColor: Color {
-        isHighlighted
-            ? (scheme == .dark ? Color(red: 0.20, green: 0.32, blue: 0.62) : Color(red: 0.38, green: 0.55, blue: 0.92))
-            : (scheme == .dark ? Color(red: 0.13, green: 0.22, blue: 0.45) : Color(red: 0.27, green: 0.47, blue: 0.88))
+        BubbleTheme.userBubble(scheme: scheme, highlighted: isHighlighted)
     }
     /// AI 气泡灰：浅色模式更浅
     private var aiBubbleColor: Color {
-        isHighlighted ? Color.accentColor.opacity(0.14)
-            : (scheme == .dark ? Color(uiColor: .systemGray5) : Color(uiColor: .systemGray6))
+        BubbleTheme.aiBubble(scheme: scheme, highlighted: isHighlighted)
     }
 
     /// v2.0.125：撤回条件（自己的消息 + 10 秒内 + 未撤回 + 未失败），菜单项按此显隐

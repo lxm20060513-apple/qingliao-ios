@@ -122,19 +122,21 @@ struct DashboardView: View {
                     // v2.0.96c：空态可点击刷新（TabView 切 tab 不触发 onAppear 的 iOS 版本差异兜底）
                     sectionTitle("智慧场景")
                     if scenes.isEmpty {
-                        Button {
-                            Task { await refresh() }
-                        } label: {
-                            Text("暂无场景——点此刷新，或在聊天里说「帮我生成离家模式：关灯、关空调、布防」")
+                        HStack(spacing: 6) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                            Text("暂无场景")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            Spacer()
+                            Button("刷新") { Task { await refresh() } }
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .dashboardCard(cornerRadius: 10)
                     } else {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                             ForEach(scenes) { s in
@@ -1319,12 +1321,7 @@ struct DiskTile: View {
                 .padding(.top, 3)
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .dashboardCard()
     }
 
     /// 挂载点短名（/dev/mapper/... → volume1）
@@ -1342,8 +1339,6 @@ struct DeviceCard: View {
     let value: String
     let sub: String
     let status: DeviceStatus
-    // v3.0.9：背景毛玻璃化（浅色白底0.85带通透感/深色毛玻璃，防纯material灰蒙板）
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1369,13 +1364,7 @@ struct DeviceCard: View {
                 .padding(.top, 2)
         }
         .padding(12)
-        // v3.0.9 reverted：恢复原版白底卡片
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .dashboardCard()
     }
 
     private var color: Color {
@@ -1394,7 +1383,6 @@ struct MeterCard: View {
     let sub: String?
     let ratio: Double
     let color: Color
-    @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1426,13 +1414,7 @@ struct MeterCard: View {
         // v2.0.83：NAS 面板卡片等高（与 ServiceCard 同高，进度条自适应剩余空间）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.9 reverted：恢复原版白底卡片
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .dashboardCard()
     }
 }
 
@@ -1441,7 +1423,6 @@ struct ServiceCard: View {
     let icon: String   // v2.0.85c 图标
     let running: Bool
     let detail: String
-    @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1462,13 +1443,7 @@ struct ServiceCard: View {
         // v2.0.83：NAS 面板卡片等高（与 MeterCard 同高）
         // v2.0.86b：卡片统一再矮一点
         .frame(height: 88, alignment: .top)
-        // v3.0.9 reverted：恢复原版白底卡片
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .dashboardCard()
     }
 }
 

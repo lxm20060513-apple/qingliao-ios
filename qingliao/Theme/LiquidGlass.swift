@@ -38,12 +38,50 @@ struct GlassListCard: ViewModifier {
     }
 }
 
+// MARK: - 聊天气泡色值（集中管理，消除 ChatComponents.swift 内硬编码 RGB）
+
+struct BubbleTheme {
+    /// 用户气泡蓝色（深色/浅色模式 × 正常/高亮状态）
+    static func userBubble(scheme: ColorScheme, highlighted: Bool = false) -> Color {
+        highlighted
+            ? (scheme == .dark ? Color(red: 0.20, green: 0.32, blue: 0.62) : Color(red: 0.38, green: 0.55, blue: 0.92))
+            : (scheme == .dark ? Color(red: 0.13, green: 0.22, blue: 0.45) : Color(red: 0.27, green: 0.47, blue: 0.88))
+    }
+
+    /// AI 气泡灰色（深色 systemGray5 / 浅色 systemGray6）
+    static func aiBubble(scheme: ColorScheme, highlighted: Bool = false) -> Color {
+        highlighted
+            ? Color.accentColor.opacity(0.14)
+            : (scheme == .dark ? Color(uiColor: .systemGray5) : Color(uiColor: .systemGray6))
+    }
+}
+
+// MARK: - 看板卡片统一样式（DeviceCard / MeterCard / ServiceCard 共用）
+// 背景 + 0.8pt 描边 + 圆角裁剪，一处定义三处复用
+
+struct DashboardCardStyle: ViewModifier {
+    var cornerRadius: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
 extension View {
     func glassCard(cornerRadius: CGFloat = 18) -> some View {
         modifier(GlassCard(cornerRadius: cornerRadius))
     }
     func glassListCard() -> some View {
         modifier(GlassListCard())
+    }
+    func dashboardCard(cornerRadius: CGFloat = 16) -> some View {
+        modifier(DashboardCardStyle(cornerRadius: cornerRadius))
     }
 }
 
