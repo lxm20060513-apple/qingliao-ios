@@ -76,6 +76,27 @@ struct CloudSettingsView: View {
                     }
                     .glassListCard()
 
+                    // v3.0.18：本地工具（云端 function calling 手机工具集）
+                    SectionHeader("本地工具")
+                    VStack(spacing: 0) {
+                        Toggle(isOn: Binding(
+                            get: { UserDefaults.standard.object(forKey: "qingliao_cloud_tools") as? Bool ?? true },
+                            set: { UserDefaults.standard.set($0, forKey: "qingliao_cloud_tools") }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("云端 AI 使用本地工具")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Text("日历 / 提醒 / 计时器 / 天气 / 剪贴板 / 计算器 / 通知")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
+                    .glassListCard()
+
                     // 外观与显示（对齐本地分组名）
                     SectionHeader("外观与显示")
                     VStack(spacing: 0) {

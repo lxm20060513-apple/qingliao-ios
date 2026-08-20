@@ -89,6 +89,54 @@ private struct PendingSend {
     let imageData: String?
 }
 
+// MARK: - v3.0.18 云端工具调用 UI 数据
+
+/// v3.0.18：工具循环 escaping 闭包内的文本累积器（Swift 6 并发：闭包不能改捕获的局部 var）
+@MainActor
+final class CloudTextAccumulator {
+    var text = ""
+}
+
+/// v3.0.18：工具确认弹窗状态门（@Observable @MainActor——pending 变化驱动 confirmationDialog 出现；60s 超时 @Sendable 闭包只捕获它）
+@MainActor
+@Observable
+final class ToolConfirmGate {
+    var pending: PendingToolConfirm?
+    var onConfirm: ((Bool) -> Void)?
+}
+
+/// 工具执行结果卡片（显示在消息区，AI 气泡上方）
+struct ToolCardItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let ok: Bool
+}
+
+/// 工具卡片视图（绿勾/红叉 + 标题）
+struct ToolCardView: View {
+    let item: ToolCardItem
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: item.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(item.ok ? .green : .red)
+            Text(item.title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+        )
+    }
+}
+
 struct ChatView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
@@ -141,6 +189,9 @@ struct ChatView: View {
     @State private var pendingQueue: [PendingSend] = []
     // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
     @State private var showFullBurst = false
+    // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
+    @State private var toolCards: [ToolCardItem] = []
+    @State private var toolGate = ToolConfirmGate()
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -501,6 +552,16 @@ struct ChatView: View {
         } message: {
             Text("AI 正在回答，稍等片刻再发送文件。")
         }
+        // v3.0.18：云端工具写操作确认（日历/提醒/计时器）
+        .confirmationDialog("确认执行？", isPresented: Binding(
+            get: { toolGate.pending != nil },
+            set: { if !$0 { toolGate.onConfirm?(false) } }
+        ), titleVisibility: .visible) {
+            Button("执行") { toolGate.onConfirm?(true) }
+            Button("取消", role: .cancel) { toolGate.onConfirm?(false) }
+        } message: {
+            Text(toolGate.pending?.summary ?? "")
+        }
         // v2.0.61：杀后台流式恢复（幂等——无持久化任务时静默返回）
         .task {
             await stream.restoreIfNeeded(auth: auth) { success, err in
@@ -671,17 +732,36 @@ struct ChatView: View {
                             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
                                                     removal: .opacity))
                         }
+                        // v3.0.18：云端工具执行卡片（显示在流式气泡上方）
+                        if !toolCards.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(toolCards) { card in
+                                    ToolCardView(item: card)
+                                }
+                            }
+                            .padding(.horizontal, 44)   // 左侧留出 AI 头像位
+                            .transition(.opacity)
+                        }
                         if stream.isStreaming {
                             if stream.content.isEmpty {
                                 // 思考中动画（三点跳动，气泡加大版）
                                 // v3.0.15：恢复 v3.0.12 之前的原始三点动画（思考球 orbits 粒子已移除，改由输出头像承担粒子球）
+                                // v3.0.18：思考期头像也改为粒子球（38pt，用户要求全程粒子球头像）
                                 HStack(alignment: .top, spacing: 10) {
                                     ZStack {
                                         Circle()
                                             .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        Image(systemName: "brain.head.profile")
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundStyle(.white)
+                                        OrbCanvasView(mode: .orbits, size: 38,
+                                                      opts: OrbOpts(orbitN: 8, ghostN: 26, ghostR: 2.8, ghostA: 0.9,
+                                                                    particles: 4, partR: 3.4, partRDepth: 2.6,
+                                                                    rsPow: 0.6, rMin: 0.9),
+                                                      dotColors: [
+                                                        Color(red: 0.55, green: 0.72, blue: 1.0),
+                                                        Color(red: 0.65, green: 0.55, blue: 1.0),
+                                                        Color(red: 1.0, green: 0.60, blue: 0.85),
+                                                        .white
+                                                      ])
+                                            .allowsHitTesting(false)
                                     }
                                     .frame(width: 38, height: 38)
                                     // v2.0.35：去掉"思考中"文字（用户要求），保留三点跳动动画
@@ -747,6 +827,7 @@ struct ChatView: View {
             // v2.0.88：切换/新建会话 → 清空待发队列（避免排队消息发到别的会话）
             .onChange(of: chat.sessionId) {
                 clearPendingQueue()
+                toolCards = []   // v3.0.18：工具卡片跨会话残留清理
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
@@ -1038,53 +1119,70 @@ struct ChatView: View {
     // MARK: - v3.0 云端流式直连（SSE 增量拼接，UI 与本地模式一致）
 
     /// 云端模式回答：直连 OpenAI 兼容端点，逐段追加 assistant 内容
+    /// v3.0.18：改用 stream.content 驱动 streamingBubble（粒子头像 + SwiftUI Text 渲染），结束落库；
+    ///         接入 CloudToolLoop 本地工具调用（function calling：日历/提醒/计时器/天气/剪贴板/计算器/通知）
     private func startCloudStream(for msg: ChatMessage) {
         let startSid = chat.sessionId
+        // v3.0.18：启用流式气泡（三点 / 粒子头像 / Text 渲染）
+        stream.isStreaming = true
+        stream.isDone = false
+        stream.content = ""
+        stream.isAgent = false
+        toolCards = []
         CloudBackend.shared.isStreaming = true   // v3.0.2：标记云端流式进行中（驱动 Siri 发光）
         Task {
-            // v3.0.1 fix：defer 保证任何完成/失败/队列路径都释放发送锁
-            // （原实现漏释放 → 第二次发送被 sendingLock 拦截，无法发送）
             defer {
                 sendingLock = false
-                CloudBackend.shared.isStreaming = false   // v3.0.2：流结束复位
+                stream.isStreaming = false
+                stream.isDone = true
+                CloudBackend.shared.isStreaming = false
             }
             do {
                 let history = chat.historyPayload()
-                var accumulated = ""
-                for try await chunk in CloudBackend.shared.streamChat(messages: history) {
-                    guard chat.sessionId == startSid else { return }
-                    if !chunk.error.isEmpty {
-                        chat.markFailed(id: msg.id)
-                        chat.upsertAssistant(accumulated.isEmpty ? "⚠️ \(chunk.error)" : accumulated + "\n\n⚠️ \(chunk.error)")
-                        CloudSessionStore.shared.saveChat(store: chat)
-                        finishCloudQueue()
-                        return
+                // v3.0.18：工具循环内 escaping 闭包修改局部 var 触发 Swift 6 并发错误 → 用 @MainActor 容器
+                let acc = CloudTextAccumulator()
+                // v3.0.18：工具循环（确认弹窗 → 执行 → 回传 → 最终文本）
+                // 注：ChatView 是 struct，闭包直接捕获 self（值捕获；@State 底层是引用存储，修改仍生效）
+                let finalText = await CloudToolLoop.shared.run(
+                    messages: history,
+                    confirmHandler: { [self] pending in
+                        // v3.0.18 review：确认弹窗期间切了会话 → 拒绝执行（防日历/提醒建到别的会话场景）
+                        guard self.chat.sessionId == startSid else { return false }
+                        return await self.confirmToolRun(pending)
+                    },
+                    events: { [self, acc] event in
+                        guard self.chat.sessionId == startSid else { return }
+                        switch event {
+                        case .text(let delta):
+                            acc.text += delta
+                            self.stream.content = acc.text
+                        case .toolCard(let title, let ok):
+                            self.toolCards.append(ToolCardItem(title: title, ok: ok))
+                        case .done(let full):
+                            acc.text = full
+                            self.stream.content = full
+                        case .error(let err):
+                            // v3.0.18 review fix #3：错误同时拼入 acc——run 返回 nil 后落库走 acc.text 路径，真实错误不丢失
+                            let errText = acc.text.isEmpty ? "⚠️ " + err : acc.text + "\n\n⚠️ " + err
+                            acc.text = errText
+                            self.stream.content = errText
+                        }
                     }
-                    accumulated += chunk.contentDelta
-                    // v3.0.2 性能：节流更新——每积累 ~40 字符才刷新一次气泡（cloudUpsertDelta 替换
-                    // messages 数组元素会触发 LazyVStack 整列 diff，英文每字刷新 = 高速抖动卡顿主因），
-                    // 流结束（done）时必定强制刷新。
-                    if !chunk.contentDelta.isEmpty && (accumulated.count % 40 < chunk.contentDelta.count || chunk.done) {
-                        cloudUpsertDelta(accumulated)   // 流式增量：更新最后一条 assistant（非追加）
-                    }
-                    if chunk.done {
-                        break
-                    }
-                }
+                )
                 guard chat.sessionId == startSid else { return }
-                // v3.0.2 性能：flow 结束（finish_reason break 可能漏掉最后节流段）→ 强制刷新完整内容
-                if !accumulated.isEmpty {
-                    cloudUpsertDelta(accumulated)
-                }
-                if accumulated.isEmpty {
-                    chat.markFailed(id: msg.id)
-                    chat.upsertAssistant("⚠️ 云端未返回内容")
-                } else {
+                if let finalText, !finalText.isEmpty {
+                    // 落库 assistant 消息（替换掉 streamingBubble）
+                    chat.upsertAssistant(finalText)
                     showSentOK()
                     if UIApplication.shared.applicationState != .active {
                         NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
                                                   sessionId: chat.sessionId)
                     }
+                } else if acc.text.isEmpty {
+                    chat.markFailed(id: msg.id)
+                    chat.upsertAssistant("⚠️ 云端未返回内容")
+                } else {
+                    chat.upsertAssistant(acc.text)
                 }
                 CloudSessionStore.shared.saveChat(store: chat)
                 finishCloudQueue()
@@ -1094,6 +1192,25 @@ struct ChatView: View {
                 chat.upsertAssistant("⚠️ \(error.localizedDescription)")
                 CloudSessionStore.shared.saveChat(store: chat)
                 finishCloudQueue()
+            }
+        }
+    }
+
+    /// v3.0.18：工具写操作确认弹窗（await 用户点确认/取消；60s 无响应自动取消防挂死）
+    /// 超时 @Sendable 闭包只捕获 toolGate（@MainActor 类），不捕获 ChatView struct
+    private func confirmToolRun(_ pending: PendingToolConfirm) async -> Bool {
+        await withCheckedContinuation { cont in
+            toolGate.pending = pending
+            toolGate.onConfirm = { ok in
+                cont.resume(returning: ok)
+                self.toolGate.pending = nil
+                self.toolGate.onConfirm = nil
+            }
+            // 兜底：60s 用户无操作 → 自动取消（防 continuation 永不 resume 挂死工具循环）
+            let gate = toolGate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+                guard gate.onConfirm != nil else { return }
+                gate.onConfirm?(false)
             }
         }
     }

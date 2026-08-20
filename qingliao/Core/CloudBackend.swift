@@ -22,8 +22,17 @@ enum CloudAPIError: LocalizedError {
 /// 云端流式结果
 struct CloudStreamChunk {
     var contentDelta: String = ""      // 增量文本
+    var toolCalls: [CloudToolCall] = []   // v3.0.18：本 chunk 的 tool_calls 增量（流式分片，需按 index 合并）
     var done: Bool = false
     var error: String = ""
+}
+
+/// v3.0.18：工具调用（流式分片增量，index 相同表示同一调用的分段 arguments）
+struct CloudToolCall {
+    var index: Int
+    var id: String = ""          // 分片只在首片带 id，后续片为空需沿用
+    var name: String = ""        // 同上
+    var arguments: String = ""   // JSON 字符串增量
 }
 
 /// CloudBackend：直连 OpenAI 兼容 /chat/completions 流式接口
@@ -80,7 +89,8 @@ final class CloudBackend {
     }
 
     /// SSE 流式对话（AsyncThrowingStream：逐 chunk 吐出增量文本，流结束 done=true）
-    func streamChat(messages: [[String: Any]]) -> AsyncThrowingStream<CloudStreamChunk, Error> {
+    /// v3.0.18：支持 tools（function calling）——请求带 tools 数组，响应解析 delta.tool_calls
+    func streamChat(messages: [[String: Any]], tools: [[String: Any]]? = nil) -> AsyncThrowingStream<CloudStreamChunk, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { [weak self] in
                 guard let self else {
@@ -102,11 +112,15 @@ final class CloudBackend {
                 req.timeoutInterval = 60
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-                req.httpBody = try? JSONSerialization.data(withJSONObject: [
+                var body: [String: Any] = [
                     "model": config.model,
                     "messages": messages,
                     "stream": true,
-                ])
+                ]
+                if let tools, !tools.isEmpty {
+                    body["tools"] = tools
+                }
+                req.httpBody = try? JSONSerialization.data(withJSONObject: body)
                 do {
                     let (bytes, resp) = try await session.bytes(for: req)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -141,12 +155,30 @@ final class CloudBackend {
                         }
                         if let choices = obj["choices"] as? [[String: Any]],
                            let first = choices.first {
-                            if let delta = first["delta"] as? [String: Any],
-                               let text = delta["text"] as? String, !text.isEmpty {
-                                continuation.yield(CloudStreamChunk(contentDelta: text))
-                            } else if let delta = first["delta"] as? [String: Any],
-                                      let content = delta["content"] as? String, !content.isEmpty {
-                                continuation.yield(CloudStreamChunk(contentDelta: content))
+                            if let delta = first["delta"] as? [String: Any] {
+                                // v3.0.18：tool_calls 增量（function calling 流式分片）
+                                if let tcArr = delta["tool_calls"] as? [[String: Any]] {
+                                    var calls: [CloudToolCall] = []
+                                    for tc in tcArr {
+                                        let idx = tc["index"] as? Int ?? 0
+                                        var c = CloudToolCall(index: idx)
+                                        if let id = tc["id"] as? String { c.id = id }
+                                        if let fn = tc["function"] as? [String: Any] {
+                                            if let name = fn["name"] as? String { c.name = name }
+                                            if let args = fn["arguments"] as? String { c.arguments = args }
+                                        }
+                                        calls.append(c)
+                                    }
+                                    if !calls.isEmpty {
+                                        continuation.yield(CloudStreamChunk(toolCalls: calls))
+                                    }
+                                }
+                                // 文本增量（text 兼容旧端点 / content 标准）
+                                if let text = delta["text"] as? String, !text.isEmpty {
+                                    continuation.yield(CloudStreamChunk(contentDelta: text))
+                                } else if let content = delta["content"] as? String, !content.isEmpty {
+                                    continuation.yield(CloudStreamChunk(contentDelta: content))
+                                }
                             }
                             if let finish = first["finish_reason"] as? String, !finish.isEmpty {
                                 break
@@ -163,6 +195,53 @@ final class CloudBackend {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// v3.0.18：非流式工具循环请求（执行工具后回传结果，等模型最终文本）
+    /// 返回 {content, toolCalls:[{id,name,arguments}]}；流式已在 streamChat 覆盖，此方法供工具循环第二+轮使用
+    func toolChat(messages: [[String: Any]], tools: [[String: Any]]?) async -> (content: String, toolCalls: [ParsedToolCall], error: String) {
+        guard let config = CloudConfig.shared.activeConfig, config.isValidForChat,
+              let url = URL(string: config.baseURL + "/chat/completions") else {
+            return ("", [], "云端模型未配置")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": messages,
+            "stream": false,
+        ]
+        if let tools, !tools.isEmpty {
+            body["tools"] = tools
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, resp) = try await session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = obj["choices"] as? [[String: Any]],
+                  let first = choices.first,
+                  let msg = first["message"] as? [String: Any] else {
+                return ("", [], "云端返回异常 (HTTP \(code))")
+            }
+            let content = msg["content"] as? String ?? ""
+            var calls: [ParsedToolCall] = []
+            if let tcArr = msg["tool_calls"] as? [[String: Any]] {
+                for tc in tcArr {
+                    guard let fn = tc["function"] as? [String: Any] else { continue }
+                    calls.append(ParsedToolCall(id: tc["id"] as? String ?? "",
+                                               name: fn["name"] as? String ?? "",
+                                               arguments: fn["arguments"] as? String ?? "{}"))
+                }
+            }
+            return (content, calls, "")
+        } catch {
+            return ("", [], error.localizedDescription)
         }
     }
 

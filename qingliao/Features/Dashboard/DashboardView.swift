@@ -31,6 +31,12 @@ struct DashboardView: View {
     // v2.0.116：智能建议（天气/NAS/设备 → Agent 生成）
     @State private var smartSuggestion = ""
     @State private var smartLoading = false
+    // v3.0.18：设备一键体检（六维诊断：服务/磁盘/容器/负载/内存/温度）
+    @State private var diagnoseItems: [DiagnoseItem] = []
+    @State private var diagnoseLevel = ""
+    @State private var diagnoseSummary = ""
+    @State private var diagnoseError = ""
+    @State private var diagnosing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -209,6 +215,13 @@ struct DashboardView: View {
                         ServiceCard(name: "温度", icon: "thermometer", running: true, detail: hwDetail)
                     }
 
+                    // v3.0.18：设备一键体检（六维诊断：服务/磁盘/容器/负载/内存/温度）
+                    sectionTitle("设备体检")
+                    DiagnoseCard(items: diagnoseItems, level: diagnoseLevel, summary: diagnoseSummary,
+                                 error: diagnoseError, diagnosing: diagnosing) {
+                        Task { await runDiagnose() }
+                    }
+
                     sectionTitle("路由器")
                     RouterPanel(router: router,
                                 onStart: { clashAction("start") },
@@ -376,6 +389,31 @@ struct DashboardView: View {
                 router = RouterStatus.merge(router, with: j)
             }
             await loadRouter()
+        }
+    }
+
+    /// v3.0.18：设备一键体检——GET /api/nas/diagnose 六维诊断（服务/磁盘/容器/负载/内存/温度）
+    private func runDiagnose() async {
+        guard !diagnosing else { return }
+        diagnosing = true
+        diagnoseError = ""
+        defer { diagnosing = false }
+        if let j = try? await auth.json("/api/nas/diagnose") {
+            if let items = j["items"] as? [[String: Any]] {
+                diagnoseItems = items.map { d in
+                    DiagnoseItem(id: d["id"] as? String ?? UUID().uuidString,
+                                 name: d["name"] as? String ?? "?",
+                                 status: d["status"] as? String ?? "warn",
+                                 detail: d["detail"] as? String ?? "",
+                                 advice: d["advice"] as? String ?? "")
+                }
+                diagnoseLevel = j["level"] as? String ?? ""
+                diagnoseSummary = j["summary"] as? String ?? ""
+            } else if let err = j["error"] as? String {
+                diagnoseError = err
+            }
+        } else {
+            diagnoseError = "体检请求失败"
         }
     }
 

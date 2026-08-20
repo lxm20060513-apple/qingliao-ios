@@ -152,11 +152,14 @@ struct MessageBlockView: View {
         case .markdown(let text):
             if useSwiftUIText {
                 // v3.0.17：流式输出中的 AI 长文 —— SwiftUI Text 原生渲染，无 UITextView 布局锁/字体缩放问题
+                // v3.0.18：AI 消息落库后也保持 SwiftUI Text（不再切回 UITextView）——根治"字挤小框"
+                // 长按菜单用 contextMenu 提供（复制/引用/分享/大爆炸/重新生成/撤回/删除，与 UITextView 编辑菜单一致）
                 Text(cachedRenderText(text))
                     .font(.system(size: CGFloat(fontSize)))
                     .lineSpacing(aiLineSpacing)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contextMenu { bubbleMenu }
             } else {
                 // v2.0.125：UITextView 渲染 —— 长按文字弹菜单，点「选择文本」从手按位置选中可拖动
                 // v3.0.2 性能：用 cachedRender 缓存 markdown 渲染结果（避免流式/滚动反复重解析）
@@ -408,7 +411,7 @@ struct MessageBubble: View {
                                                     onRegenerate: onRegenerate,
                                                     onWithdraw: nil,
                                                     onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
-                                                    useSwiftUIText: streamingText)   // v3.0.17：流式中 SwiftUI Text 渲染
+                                                    useSwiftUIText: true)   // v3.0.18：AI 消息（含落库后）恒用 SwiftUI Text——根治"字挤小框"（UITextView 流式锁窄 bug 家族，v3.0.17 只修流式中、落库后切回仍复现）
                                 }
                             }
                         }
