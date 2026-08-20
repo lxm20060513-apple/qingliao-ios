@@ -28,8 +28,7 @@ struct SettingsView: View {
     @State private var secretCount = 0
     @State private var showHASettings = false
     @State private var haAddress = ""
-    // v2.0.38：聊天字体大小（12-20，默认 14；Double 供 Slider 绑定）
-    @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
+    // v3.0.17：聊天字体大小从一级菜单移除（外观二级菜单持有），fontSize 声明一并清理
     // v3.0.9：外观下天气城市已移除（天气城市设定在看板 WeatherBadge 点按处），相关状态一并清理
     // v2.0.101：Agent 使用说明内联展开
     @State private var showAgentHelp = false
@@ -64,7 +63,6 @@ struct SettingsView: View {
     // v2.0.92：App 锁开关（启动时 Face ID 验证）
     @AppStorage("qingliao_app_lock") private var appLockOn = false
     @State private var appLockAuthFailed = false
-    @State private var showFontOptions = false
     // v2.0.128：AI 输出行高（0-6 步进 0.5，默认 1.0 = 紧凑；滑条控制）
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
     @State private var showLineSpacingOptions = false
@@ -527,20 +525,8 @@ struct SettingsView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                         }
+                        // v3.0.17：聊天字体大小已移除——外观二级菜单已有同款（避免重复入口）
                         // v3.0.9：外观下天气城市已移除——「天气城市」设定在设置页独立项（看板右上角天气用）
-                        // v2.0.38：聊天字体大小（内联滑条，外观同款交互）
-                        SettingRow(icon: "textformat.size", iconColor: .blue, title: "聊天字体大小", value: "\(Int(fontSize))", chevron: false)
-                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showFontOptions.toggle() } }
-                        if showFontOptions {
-                            HStack(spacing: 10) {
-                                Text("小").font(.system(size: 12)).foregroundStyle(.secondary)
-                                Slider(value: $fontSize, in: 12...20, step: 1)
-                                    .tint(Color.accentColor)
-                                Text("大").font(.system(size: 16)).foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 10)
-                        }
                     }
                     .glassListCard()
 
