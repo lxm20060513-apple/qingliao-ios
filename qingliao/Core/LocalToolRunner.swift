@@ -32,8 +32,12 @@ struct LocalToolDef {
 
 /// 本地工具集：注册表 + 执行
 /// v3.0.18：@MainActor——工具都涉及 UIKit/EventKit/UserNotifications，须主线程
+/// v3.0.19：control_ha/control_docker 需要后端 API → 经注入的 AuthStore 发请求（App 启动/登录后注入）
 @MainActor
 enum LocalToolRunner {
+    /// v3.0.19：后端 API 访问器（HA/Docker 工具用）。App 启动时注入（QingliaoApp 或 RootView）
+    static weak var authStore: AuthStore?
+
     /// 所有工具定义（OpenAI tools 数组格式）
     static let allDefs: [LocalToolDef] = [
         createReminderDef,
@@ -43,6 +47,8 @@ enum LocalToolRunner {
         setClipboardDef,
         calculateDef,
         sendNotificationDef,
+        controlHADef,
+        controlDockerDef,
     ]
 
     /// OpenAI 协议 tools 数组（传给 /chat/completions）
@@ -85,6 +91,18 @@ enum LocalToolRunner {
             }
             let city = (args["city"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
             return await fetchWeatherAsync(city: city)
+        }
+        // v3.0.19：HA/Docker 控制——经 AuthStore 调后端 API（async 网络）
+        if name == "control_ha" || name == "control_docker" {
+            var args: [String: Any] = [:]
+            if let data = argumentsJSON.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                args = obj
+            }
+            if name == "control_ha" {
+                return await executeHA(args)
+            }
+            return await executeDocker(args)
         }
         // 权限预检（iOS 17+ API；部署目标 26 无兼容问题）
         switch name {
@@ -442,6 +460,50 @@ enum LocalToolRunner {
         }
     )
 
+    /// 🏠 HA 设备控制（灯/空调/开关等）——实际执行在 executeHA（async 走 AuthStore 后端 API）
+    static let controlHADef = LocalToolDef(
+        name: "control_ha",
+        description: "控制智能家居设备（Home Assistant）。用户说「打开/关闭客厅灯」「空调调到26度」「打开空调制热」时使用。"
+            + "action 支持 toggle（开关）/turn_on（开）/turn_off（关）/set_temperature（空调设温度）/set_hvac_mode（空调模式 cool/heat/dry/fan_only/auto）。"
+            + "entity 用设备名称（如 客厅灯/主卧空调），或直接给 entity_id（如 light.living_room）。"
+            + "操作前会确认。",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "entity": ["type": "string", "description": "设备名称或 entity_id，如 客厅灯 / light.living_room"],
+                "action": ["type": "string", "description": "操作：toggle / turn_on / turn_off / set_temperature / set_hvac_mode"],
+                "temperature": ["type": "number", "description": "set_temperature 时的目标温度（摄氏度）"],
+                "hvac_mode": ["type": "string", "description": "set_hvac_mode 时的模式：cool/heat/dry/fan_only/auto"],
+            ],
+            "required": ["entity", "action"],
+        ],
+        needsConfirm: true,
+        run: { _ in
+            // 实际由 execute() 的 executeHA 分支处理（async 后端请求）
+            ToolResult(success: false, summary: "执行中…", detail: #"{"ok": false, "async": true}"#)
+        }
+    )
+
+    /// 🐳 Docker 容器控制——实际执行在 executeDocker（async 走 AuthStore 后端 API）
+    static let controlDockerDef = LocalToolDef(
+        name: "control_docker",
+        description: "控制 NAS 上的 Docker 容器。用户说「启动XX容器」「停止XX」「重启XX」时使用。"
+            + "action 支持 start/stop/restart。name 用容器名（如 ollama、qingliao 相关容器）。操作前会确认。",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "name": ["type": "string", "description": "容器名，如 ollama"],
+                "action": ["type": "string", "description": "操作：start / stop / restart"],
+            ],
+            "required": ["name", "action"],
+        ],
+        needsConfirm: true,
+        run: { _ in
+            // 实际由 execute() 的 executeDocker 分支处理（async 后端请求）
+            ToolResult(success: false, summary: "执行中…", detail: #"{"ok": false, "async": true}"#)
+        }
+    )
+
     // MARK: - 辅助
 
     /// 宽松时间解析（支持 "2026-08-21 15:00:00" / "2026-08-21T15:00:00" / "2026-08-21 15:00" /
@@ -491,6 +553,123 @@ enum LocalToolRunner {
         case 85, 86: return "阵雪"
         case 95, 96, 99: return "雷暴"
         default: return ""
+        }
+    }
+
+    // MARK: - v3.0.19 HA / Docker 控制（经 AuthStore 调后端 API）
+
+    /// 🏠 执行 HA 设备控制：POST /api/ha/services/{domain}/{service}
+    static func executeHA(_ args: [String: Any]) async -> ToolResult {
+        guard let auth = authStore else {
+            return ToolResult(success: false, summary: "未连接后端（请先登录）", detail: #"{"error": "no auth"}"#)
+        }
+        guard let entity = args["entity"] as? String, !entity.isEmpty,
+              let action = args["action"] as? String else {
+            return ToolResult(success: false, summary: "缺少设备或操作", detail: #"{"error": "missing entity/action"}"#)
+        }
+        // 设备名 → entity_id：先拉 /api/ha/states 匹配 friendly_name 或直接当 entity_id 用
+        var entityID = entity
+        var nameMatched = entity.contains(".")
+        if !entity.contains(".") {
+            // 按名称匹配 HA 实体
+            if let states = try? await auth.jsonArray("/api/ha/states") {
+                for s in states {
+                    guard let d = s as? [String: Any],
+                          let eid = d["entity_id"] as? String else { continue }
+                    let fn = (d["attributes"] as? [String: Any])?["friendly_name"] as? String ?? ""
+                    if fn == entity || fn.hasPrefix(entity) {
+                        entityID = eid
+                        nameMatched = true
+                        break
+                    }
+                }
+            }
+            // v3.0.19 review fix #6：名称匹配失败 → 友好提示（防裸 HA 404 用户看不懂）
+            if !nameMatched {
+                return ToolResult(success: false,
+                                  summary: "未找到设备「\(entity)」（支持灯/空调/指定插座，试试完整名称）",
+                                  detail: #"{"error": "entity not found"}"#)
+            }
+        }
+        // action → domain/service
+        let (domain, service, extra): (String, String, [String: Any]?)
+        switch action {
+        case "toggle": (domain, service, extra) = ("homeassistant", "toggle", nil)
+        case "turn_on": (domain, service, extra) = ("homeassistant", "turn_on", nil)
+        case "turn_off": (domain, service, extra) = ("homeassistant", "turn_off", nil)
+        case "set_temperature":
+            guard let t = args["temperature"] as? Double else {
+                return ToolResult(success: false, summary: "缺少目标温度", detail: #"{"error": "missing temperature"}"#)
+            }
+            // v3.0.19 review fix #4：set_temperature 仅 climate/water_heater 域支持
+            // （homeassistant 域无 set_temperature 服务，旧 fallback 必 404）
+            guard entityID.hasPrefix("climate.") || entityID.hasPrefix("water_heater.") else {
+                return ToolResult(success: false,
+                                  summary: "该设备不支持设置温度（仅空调/热水器等温控设备可用）",
+                                  detail: #"{"error": "entity not temperature-controllable"}"#)
+            }
+            let dom = entityID.hasPrefix("water_heater.") ? "water_heater" : "climate"
+            (domain, service, extra) = (dom, "set_temperature", ["temperature": t])
+        case "set_hvac_mode":
+            guard let m = args["hvac_mode"] as? String else {
+                return ToolResult(success: false, summary: "缺少空调模式", detail: #"{"error": "missing hvac_mode"}"#)
+            }
+            (domain, service, extra) = ("climate", "set_hvac_mode", ["hvac_mode": m])
+        default:
+            return ToolResult(success: false, summary: "不支持的操作：\(action)", detail: #"{"error": "unsupported action"}"#)
+        }
+        var body: [String: Any] = ["entity_id": entityID]
+        if let extra { body.merge(extra) { _, new in new } }
+        do {
+            let j = try await auth.json("/api/ha/services/\(domain)/\(service)", method: "POST", body: body)
+            // HA 服务调用成功一般返回空对象或 ok
+            if let err = j["error"] as? String, !err.isEmpty {
+                return ToolResult(success: false, summary: "HA 操作失败：\(err)", detail: #"{"error": "\#(err)"}"#)
+            }
+            return ToolResult(success: true,
+                              summary: "已执行：\(action) \(entity)",
+                              detail: #"{"ok": true, "entity": "\#(entityID)", "action": "\#(action)"}"#)
+        } catch {
+            return ToolResult(success: false, summary: "HA 请求失败：\(error.localizedDescription)",
+                              detail: #"{"error": "\#(error.localizedDescription)"}"#)
+        }
+    }
+
+    /// 🐳 执行 Docker 容器控制：POST /api/docker/{action} {name}
+    static func executeDocker(_ args: [String: Any]) async -> ToolResult {
+        guard let auth = authStore else {
+            return ToolResult(success: false, summary: "未连接后端（请先登录）", detail: #"{"error": "no auth"}"#)
+        }
+        guard let name = args["name"] as? String, !name.isEmpty,
+              let action = args["action"] as? String,
+              ["start", "stop", "restart"].contains(action) else {
+            return ToolResult(success: false, summary: "缺少容器名或操作（start/stop/restart）",
+                              detail: #"{"error": "missing name/action"}"#)
+        }
+        do {
+            let j = try await auth.json("/api/docker/\(action)", method: "POST", body: ["name": name])
+            let ok = (j["ok"] as? Bool) ?? false
+            let msg = j["message"] as? String ?? ""
+            if ok {
+                return ToolResult(success: true,
+                                  summary: "已\(actionName(action))容器：\(name)",
+                                  detail: #"{"ok": true, "name": "\#(name)", "action": "\#(action)"}"#)
+            }
+            return ToolResult(success: false, summary: "Docker \(action) 失败：\(msg)",
+                              detail: #"{"error": "\#(msg)"}"#)
+        } catch {
+            return ToolResult(success: false, summary: "Docker 请求失败：\(error.localizedDescription)",
+                              detail: #"{"error": "\#(error.localizedDescription)"}"#)
+        }
+    }
+
+    /// action 英文 → 中文（播报/卡片用）
+    static func actionName(_ a: String) -> String {
+        switch a {
+        case "start": return "启动"
+        case "stop": return "停止"
+        case "restart": return "重启"
+        default: return a
         }
     }
 }

@@ -84,6 +84,12 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v3.0.19，2026-08-20）
+
+- **⭐ 语音指令闭环**：长按智能球从"语音转文字"改为**语音指令**——按住说话"打开客厅灯"→ 松手自动识别 → 直接执行（不确认）→ TTS 播报结果（"客厅灯已打开"）。工具类指令播结果、闲聊播回复摘要；执行中球转圈；语音指令消息带 🎤 标记；**输入框内语音按钮保留原"语音转文字"功能**（两条入口独立）。云端模式新增 **control_ha**（灯/空调/开关控制：toggle/turn_on/turn_off/设温度/切模式，按设备名自动匹配实体）和 **control_docker**（容器启停/重启）两个工具，写操作走确认弹窗
+- **⭐ 微信窗通道模型设置**：本地 AI 设置 →「连接与模型」新增"微信窗通道模型"——可为 **Hermes 微信通道单独选择模型**（模型列表与模型管理一致），设置后重启 gateway 生效，**只影响微信通道，其他通道不受影响**。实现：独立 wechat-profile + profile_routes 路由 + 后端 channel API（9152）
+- **限流友好提示**：本地模式流式中途遇到 429/tpm exhausted（sensenova 等免费额度爆了）时，消息内直接提示"额度限流，请到模型管理换 provider 路由"，不再只显示裸错误
+
 ## 🆕 近期变更（v3.0.18，2026-08-20）
 
 - **AI 消息"字挤小框"彻底根治**：v3.0.17 只把**流式中**的 AI 长文改成 SwiftUI Text 渲染（落库后切回 UITextView 仍复现锁窄 bug）——v3.0.18 AI 消息**全程**（含落库后）用 SwiftUI Text 渲染，长按菜单改用 contextMenu 提供（复制/引用/分享/大爆炸/重新生成/删除），`.textSelection(.enabled)` 保系统原生选词复制；用户消息保持 UITextView（短文本无此问题）

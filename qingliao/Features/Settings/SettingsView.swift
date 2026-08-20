@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var scrollPos = ScrollPosition()
     @State private var showModelSheet = false
     @State private var showBotManage = false   // v3.0.7：Bot 管理
+    @State private var showWechatChannel = false   // v3.0.19：微信窗通道模型设置
     @State private var showAbout = false
     @State private var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
     @State private var secretCount = 0
@@ -162,6 +163,11 @@ struct SettingsView: View {
                         SettingRow(icon: "person.2.crop.square.stack.fill", iconColor: .teal, title: "Bot 管理",
                                    value: CloudConfig.shared.isCloudMode ? "仅本地模式" : nil, chevron: true)
                             .onTapGesture { showBotManage = true }
+                        Divider().padding(.leading, 52)
+                        // v3.0.19：微信窗通道模型设置（方案B——独立 profile，只影响微信通道）
+                        SettingRow(icon: "bubble.left.and.bubble.right.fill", iconColor: .blue,
+                                   title: "微信窗通道模型", value: wechatChannelModel, chevron: true)
+                            .onTapGesture { showWechatChannel = true }
                         Divider().padding(.leading, 52)
                         SettingRow(icon: "house.fill", iconColor: .purple, title: "HA 设置", value: nil, chevron: true)
                             .onTapGesture { showHASettings = true }
@@ -598,6 +604,10 @@ struct SettingsView: View {
             ModelSheet(current: currentModel)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showWechatChannel) {
+            WechatChannelSheet()
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showBotManage) {
             // v3.0.7：Bot 管理（云端模式下 BotStore 拉取会失败，入口标注「仅本地模式」）
             BotManageSheet()
@@ -719,6 +729,11 @@ struct SettingsView: View {
     /// 当前默认模型（UserDefaults）
     private var currentModel: String {
         UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
+    }
+
+    /// v3.0.19：微信窗通道当前模型（UserDefaults 缓存，进弹窗时刷新）
+    private var wechatChannelModel: String {
+        UserDefaults.standard.string(forKey: "qingliao_wechat_channel_model") ?? "跟随默认"
     }
 
     /// v2.0.89f：打开 Face ID 开关时立即申请系统权限（用户实测"点开关没有权限申请"）
@@ -1576,6 +1591,186 @@ struct AboutView: View {
             Text(content)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
+        }
+    }
+}
+
+// MARK: - v3.0.19 微信窗通道模型设置（方案B：读写 Hermes wechat-profile，微信通道专属模型）
+
+struct WechatChannelSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var currentModel = "读取中…"
+    @State private var currentProvider = ""
+    @State private var allProviders: [(id: String, models: [String])] = []
+    @State private var saving = false
+    @State private var saveResult: String?
+    @State private var loaded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // 头部
+            HStack(spacing: 8) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.blue)
+                Text("微信窗通道模型").font(.system(size: 17, weight: .bold))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 当前模型 + 说明
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Circle().fill(loaded ? Color.green : Color.orange).frame(width: 7, height: 7)
+                    Text("当前微信通道模型")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Text(currentModel)
+                    .font(.system(size: 15, weight: .semibold))
+                Text("设置后重启 Hermes 生效（约 10-30 秒），只影响微信通道，其他通道不受影响。")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if let saveResult {
+                Text(saveResult)
+                    .font(.system(size: 11))
+                    .foregroundStyle(saveResult.hasPrefix("✅") ? Color.green : Color.orange)
+            }
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    if allProviders.isEmpty {
+                        ProgressView()
+                            .padding(.top, 30)
+                        Text("正在加载模型列表…")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                    } else {
+                        // v3.0.19 review：全部 provider 模型为空 → 空态提示（防白屏）
+                        let hasAnyModel = allProviders.contains { !$0.models.isEmpty }
+                        if !hasAnyModel {
+                            VStack(spacing: 8) {
+                                Image(systemName: "tray")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.tertiary)
+                                Text("暂无可用模型\n（后端未配置 provider key，请到「模型管理」检查）")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.top, 40)
+                        }
+                        ForEach(allProviders, id: \.id) { p in
+                            if !p.models.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(providerName(p.id))
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+                                    ForEach(p.models, id: \.self) { m in
+                                        Button {
+                                            saveModel(provider: p.id, model: m)
+                                        } label: {
+                                            HStack {
+                                                Text(m)
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                                // 当前选中标记（model+provider 都匹配）
+                                                if m == currentModel && p.id == currentProvider {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .font(.system(size: 13))
+                                                        .foregroundStyle(Color.accentColor)
+                                                } else {
+                                                    Image(systemName: "chevron.right")
+                                                        .font(.system(size: 10))
+                                                        .foregroundStyle(.tertiary)
+                                                }
+                                            }
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 7)
+                                            .background(Color(uiColor: .secondarySystemGroupedBackground))
+                                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .task { await load() }
+    }
+
+    /// 拉当前微信通道模型 + 全部 provider 模型列表
+    private func load() async {
+        if let j = try? await auth.json("/api/channel/model") {
+            currentModel = (j["model"] as? String) ?? "未设置"
+            currentProvider = (j["provider"] as? String) ?? ""
+            loaded = true
+        } else {
+            currentModel = "读取失败（后端需 v3.0.19）"
+        }
+        if let j = try? await auth.json("/api/stream/model-providers?with_models=1"),
+           let arr = j["providers"] as? [[String: Any]] {
+            allProviders = arr.compactMap { d in
+                guard let id = d["id"] as? String else { return nil }
+                let models = (d["models"] as? [String]) ?? []
+                return (id, models)
+            }
+        }
+    }
+
+    /// 保存微信通道模型（POST /api/channel/model → 后端改 wechat-profile + 重启 gateway）
+    private func saveModel(provider: String, model: String) {
+        guard !saving else { return }
+        saving = true
+        saveResult = nil
+        Task {
+            defer { saving = false }
+            do {
+                let j = try await auth.json("/api/channel/model", method: "POST",
+                                            body: ["model": model, "provider": provider])
+                if (j["ok"] as? Bool) == true {
+                    currentModel = model
+                    currentProvider = provider
+                    UserDefaults.standard.set(model, forKey: "qingliao_wechat_channel_model")
+                    saveResult = "✅ 已设置：\(model)（gateway 重启后生效，约 10-30 秒）"
+                } else {
+                    saveResult = "⚠️ 设置失败：\(j["error"] as? String ?? "未知错误")"
+                }
+            } catch {
+                saveResult = "⚠️ 设置失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// provider 显示名
+    private func providerName(_ id: String) -> String {
+        switch id {
+        case "opencode": return "opencode（google）"
+        case "opencode-apple": return "opencode（apple）"
+        case "deepseek": return "deepseek（官方）"
+        case "stepfun": return "stepfun"
+        case "sensenova": return "sensenova（商汤）"
+        case "xiaomi": return "xiaomi"
+        case "ollama": return "本地模型（Ollama）"
+        default: return id
         }
     }
 }

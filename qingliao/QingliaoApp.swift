@@ -25,6 +25,8 @@ struct QingliaoApp: App {
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）
                     NotificationHelper.requestAuth()
+                    // v3.0.19：注入 AuthStore 到本地工具执行器（云端 HA/Docker 工具用）
+                    LocalToolRunner.authStore = auth
                 }
                 // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）
                 .onChange(of: scenePhase) { _, phase in

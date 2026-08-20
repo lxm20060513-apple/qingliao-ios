@@ -182,6 +182,14 @@ struct ChatView: View {
     @State private var transcribing = false   // v2.0.100：语音转文字转换中（动画）
     @State private var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
     @State private var voiceAuthFailed = false
+    // v3.0.19：语音指令闭环——长按智能球 = 语音指令（ASR 后自动发送执行 + TTS 播报），
+    // 输入框语音按钮保持原"语音转文字"（voiceCommandMode=false 时走原路径）
+    @State private var voiceCommandMode = false
+    // v3.0.19：待播报会话（语音指令触发，回复完成后 TTS 播报摘要）
+    // 生命周期：uploadAndTranscribe 置位 → sendCore 消费（标记 🎤 + 转 pendingVoiceSpeak）→ 清空
+    @State private var pendingVoiceSpeakSid: String?
+    // v3.0.19：一次性播报意图（sendCore 置 true，完成回调消费后清空；失败/停止路径自然不播）
+    @State private var pendingVoiceSpeak = false
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
     @State private var voiceTooShort = false   // v2.0.102：录音太短提示
@@ -505,7 +513,9 @@ struct ChatView: View {
                         onVoiceModeToggle: { toggleVoiceMode(keyboardWasUp: kb.isVisible) },   // v2.0.109b：长按发送键保持键盘状态
                         transcribing: transcribing,   // v2.0.100：转换中动画
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
+                        // v3.0.19：长按输入框 = 原语音转文字；长按智能球 = 语音指令（走 startVoiceCommand）
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
+                        onBallLongPress: { startVoiceCommand() },
                         // v3.0.4：云端模式无后端 ASR → 关闭全部语音入口
                         voiceEnabled: !CloudConfig.shared.isCloudMode,
                         // v2.0.132：点击智能球 → 全屏粒子爆发（v2.0.133b：粒子寿命延至 1.2s 放烟花闪烁，特效层同步延长）
@@ -1015,6 +1025,13 @@ struct ChatView: View {
     /// v2.0.102：sendingLock 同步置位——防极快双击时 isStreaming 尚未置位导致双流竞态
     private func sendCore(text: String, imageData: String?) {
         guard !text.isEmpty || imageData != nil else { return }
+        // v3.0.19 review fix #1：语音指令标志在此一次性消费——标记本消息 + 转播报意图 + 清空 sid
+        // （原实现只在主路径标记，排队/失败/切会话路径会悬挂 → 误标下一条 + 无故 TTS）
+        let isVoiceCommandSend = pendingVoiceSpeakSid == chat.sessionId
+        if isVoiceCommandSend {
+            pendingVoiceSpeakSid = nil
+            pendingVoiceSpeak = true
+        }
         // v2.0.126：蜂窝 relay 3.5KB 限制自动分段（粘贴长文本不丢内容）
         // relay payload = base64url(JSON{m,p,h,b}) 进 URL；限制 ~3.5KB；WiFi 直连无限制不走此分支
         if imageData == nil, NetworkMonitor.shared.isCellular, text.count > 200 {
@@ -1041,6 +1058,10 @@ struct ChatView: View {
             // 排队路径：消息立即显示（标记排队中），回答结束后自动发送
             var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
             msg.queued = true
+            // v3.0.19 review fix #5：排队路径也应用 🎤 标记（sendCore 开头已消费标志）
+            if isVoiceCommandSend {
+                msg.voiceCommand = true
+            }
             withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
                 chat.append(msg)
             }
@@ -1053,7 +1074,11 @@ struct ChatView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // v2.0.65：发送通知 → Dock 聊天图标轻跳
         NotificationCenter.default.post(name: .qingliaoSent, object: nil)
-        let msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
+        var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
+        // v3.0.19：语音指令触发的消息打 🎤 标记（sendCore 开头已消费标志）
+        if isVoiceCommandSend {
+            msg.voiceCommand = true
+        }
         // v2.0.59：单条插入动效（批量移除才崩，插入安全）
         withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
             chat.append(msg)
@@ -1090,10 +1115,14 @@ struct ChatView: View {
                 guard chat.sessionId == startSid else { return }   // 已切换会话 → 本次结果丢弃
                 if !success {
                     chat.markFailed(id: msg.id)   // v2.0.59 失败标记 → 重试按钮
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
+                    // v3.0.19：限流错误友好提示（sensenova 等免费额度 tpm 爆了 → 提示换路由）
+                    let friendly = Self.friendlyStreamError(error)
+                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(friendly)" : stream.content + "\n\n⚠️ \(friendly)", agent: stream.isAgent)
                 } else {
                     chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
+                    // v3.0.19：语音指令回复完成 → TTS 播报摘要
+                    speakVoiceResultIfNeeded(stream.content)
                     // v2.0.36：App 退后台时 AI 回复完成发本地通知（v2.0.60 携带会话 id）
                     if UIApplication.shared.applicationState != .active {
                         NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
@@ -1163,7 +1192,9 @@ struct ChatView: View {
                             self.stream.content = full
                         case .error(let err):
                             // v3.0.18 review fix #3：错误同时拼入 acc——run 返回 nil 后落库走 acc.text 路径，真实错误不丢失
-                            let errText = acc.text.isEmpty ? "⚠️ " + err : acc.text + "\n\n⚠️ " + err
+                            // v3.0.19：限流错误友好提示（与本地模式一致）
+                            let friendly = Self.friendlyStreamError(err)
+                            let errText = acc.text.isEmpty ? "⚠️ " + friendly : acc.text + "\n\n⚠️ " + friendly
                             acc.text = errText
                             self.stream.content = errText
                         }
@@ -1174,6 +1205,8 @@ struct ChatView: View {
                     // 落库 assistant 消息（替换掉 streamingBubble）
                     chat.upsertAssistant(finalText)
                     showSentOK()
+                    // v3.0.19：语音指令回复完成 → TTS 播报摘要
+                    speakVoiceResultIfNeeded(finalText)
                     if UIApplication.shared.applicationState != .active {
                         NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
                                                   sessionId: chat.sessionId)
@@ -1381,6 +1414,7 @@ struct ChatView: View {
 
     /// v2.0.96：退出语音转文字模式（按钮/空白点击共用）
     /// v2.0.96c：停止录音 → 上传转写 → 文字回填输入框
+    /// v3.0.19：语音指令模式退出 → 停止录音 → 转写 → 自动发送（uploadAndTranscribe 内分支）
     private func exitVoiceMode() {
         guard voiceMode else { return }
         voiceRecorder.stop()
@@ -1388,10 +1422,56 @@ struct ChatView: View {
         uploadAndTranscribe()
     }
 
+    /// v3.0.19：长按智能球 → 语音指令（ASR 后自动发送执行 + TTS 播报结果）
+    /// 复用 toggleVoiceMode 的录音/震动/键盘逻辑，仅置 voiceCommandMode 标记区分去向
+    private func startVoiceCommand() {
+        voiceCommandMode = true
+        toggleVoiceMode(keyboardWasUp: false)
+    }
+
+    /// v3.0.19：限流/服务错误 → 用户友好提示（429/rate limit/tpm exhausted → 建议换模型路由）
+    static func friendlyStreamError(_ error: String) -> String {
+        // v3.0.19 review：截断过长原始错误（防消息里塞整页错误日志）
+        let brief = error.count > 160 ? String(error.prefix(160)) + "…" : error
+        let low = error.lowercased()
+        if low.contains("429") || low.contains("rate limit") || low.contains("tpm") ||
+           low.contains("exhausted") || low.contains("too many request") {
+            return "\(brief)\n\n💡 当前模型的额度限流了（tpm 用尽）。请到「设置 → 模型管理」换一个 provider 的模型（如官方 DeepSeek 或 opencode），稍后再试。"
+        }
+        if low.contains("timeout") || low.contains("timed out") {
+            return "\(brief)\n\n💡 请求超时，可能网络波动或服务繁忙，请重试。"
+        }
+        return brief
+    }
+
+    /// v3.0.19：语音指令回复完成 → TTS 播报摘要（工具类播结果，闲聊播开头；前台/后台都播）
+    /// 仅当本次回复是语音指令触发（sendCore 已置 pendingVoiceSpeak）时播报；播报后清空意图
+    private func speakVoiceResultIfNeeded(_ text: String) {
+        guard pendingVoiceSpeak, !text.isEmpty else { return }
+        pendingVoiceSpeak = false
+        // 播报摘要：去 markdown + 截断（工具类结果如"客厅灯已打开"很短，闲聊长回复截 ~100 字）
+        var clean = text
+            .replacingOccurrences(of: #"[*#`>_~\[\]()!|\-]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\n+", with: "。", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.count > 100 {
+            clean = String(clean.prefix(100)) + "。"
+        }
+        guard !clean.isEmpty else { return }
+        // 后台播报：确保音频会话在 playback 模式（VoiceRecorder.stop 已恢复 playback）
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(true)
+        SpeechManager.shared.toggle(clean, id: "voice-command")
+    }
+
     /// v2.0.96c：上传录音转写（服务器 faster-whisper）
     /// v2.0.100：transcribing 动画（输入框「语音转换中…」+ 按钮转圈）+ 完成/失败震动
     /// v2.0.101：停止按钮（transcribeToken 代次——停止/重录使旧 Task 结果作废，杜绝竞态回填）
     private func uploadAndTranscribe() {
+        // v3.0.19 review fix #2：voiceCommandMode 在最顶部消费（guard/录音太短早退也不泄漏）
+        let isVoiceCommand = voiceCommandMode
+        voiceCommandMode = false
         guard let url = voiceRecorder.stop(),
               FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url) else { return }
@@ -1409,10 +1489,15 @@ struct ChatView: View {
                 transcribing = false
                 guard token == transcribeToken else { return }   // 已停止/已重录 → 丢弃结果
                 if !text.isEmpty {
-                    if inputText.isEmpty {
+                    if isVoiceCommand {
+                        // v3.0.19：语音指令闭环——转文字后直接发送执行（不确认，说→干）
+                        pendingVoiceSpeakSid = chat.sessionId   // 回复完成后 TTS 播报
+                        sendCore(text: text, imageData: nil)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else if inputText.isEmpty {
                         inputText = text   // v2.0.102：用户已在输入时不覆盖（保留正在打的内容）
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)   // 转换完成轻反馈
                     }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)   // 转换完成轻反馈
                 } else {
                     // v2.0.107：转写无结果 = 录音太短/没听清——提示「录音太短」（原误用 voiceAuthFailed「不可用」，
                     // 那是麦克风权限/服务故障的提示，与太短场景不匹配）
@@ -1458,6 +1543,8 @@ struct ChatView: View {
                 }
                 withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
             } else {
+                // v3.0.19 review fix #2：麦克风失败 → 重置语音指令标志（防残留劫持下次转文字）
+                voiceCommandMode = false
                 voiceAuthFailed = true   // 麦克风权限被拒
             }
         }

@@ -433,6 +433,12 @@ struct MessageBubble: View {
                     // v2.0.88：排队中的消息显示 ⏳ 排队中（AI 回答完自动发送）
                     if message.isUser && !message.failed && !message.withdrawn {
                         HStack(spacing: 2.5) {
+                            // v3.0.19：语音指令触发的消息带 🎤 小标记
+                            if message.voiceCommand {
+                                Image(systemName: "mic.fill")
+                                    .font(.system(size: 7.5))
+                                    .foregroundStyle(.tertiary)
+                            }
                             Image(systemName: message.queued ? "hourglass" : "checkmark")
                                 .font(.system(size: 7.5, weight: .bold))
                             Text(message.queued ? "排队中" : "已送达")
@@ -742,6 +748,8 @@ struct ChatInputBar: View {
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
     // v2.0.109b：onChanged 记录按下瞬间键盘可见状态（down 时键盘未弹/已弹，比时间戳推断可靠）
     var onLongPressInput: (Bool) -> Void = { _ in }
+    // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
+    var onBallLongPress: () -> Void = {}
     // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
@@ -779,7 +787,7 @@ struct ChatInputBar: View {
                                                                                                       }
                                                                                                   },
                                  onLongPress: {
-                                     // 长按 = 语音转文字（球保持特效，不展开输入框）
+                                     // v3.0.19：长按球 = 语音指令（ASR 后自动发送执行 + TTS 播报）
                                      // v3.0.4：云端模式无语音 → 长按球展开输入框（等同点击）
                                      guard voiceEnabled else {
                                          onFullBurst()
@@ -789,7 +797,7 @@ struct ChatInputBar: View {
                                          return
                                      }
                                      guard !transcribing else { return }
-                                     onLongPressInput(kbEnv.isVisible)
+                                     onBallLongPress()
                                  })
                     Spacer(minLength: 0)
                 }
