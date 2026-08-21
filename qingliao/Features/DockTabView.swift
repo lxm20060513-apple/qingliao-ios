@@ -30,7 +30,7 @@ struct DockTabView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
     @Environment(StreamClient.self) private var stream
-    @Environment(\\.horizontalSizeClass) private var hSize
+    @Environment(\.horizontalSizeClass) private var hSize
     @State private var dockVisibility = DockVisibility.shared
 
     var body: some View {
@@ -116,7 +116,7 @@ struct DockTabView: View {
 
 struct DockBar: View {
     @Binding var selected: DockTab
-    @Environment(\\.colorScheme) private var scheme
+    @Environment(\.colorScheme) private var scheme
     @State private var bounce = false
 
     var body: some View {
