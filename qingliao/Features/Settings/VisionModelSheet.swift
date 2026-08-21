@@ -1,15 +1,24 @@
 import SwiftUI
 
-// MARK: - v3.0.10 视觉模型配置（本地 AI 设置：模型管理下新增）
+// MARK: - v3.0.28 视觉模型配置（统一：App 与微信通道共用同一份配置）
+//
+// v3.0.28 重构：原先「App 本地视觉模型」与「微信通道视觉模型」是两份独立配置，
+// 现在统一为一份「共享视觉模型」——在下方模型列表点选打勾即同时写入：
+//   1) App 本地（CloudConfig，App 内发图走 effectiveVisionModel）
+//   2) 微信通道（后端 /api/channel/vision-model → wechat-profile auxiliary.vision，Hermes 微信通道用）
+// 选择动作 = 直接在对应模型后面点选打勾（checkmark），无需额外按钮。
 
-/// 从模型管理列表中选择视觉模型——主模型不支持视觉时自动切换
 struct VisionModelSheet: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
     @State private var enabled = CloudConfig.visionFallbackEnabled
+    /// 当前共享视觉模型（App 本地 + 微信通道共用的那份配置）
     @State private var selectedModel: String = CloudConfig.localVisionModel ?? ""
     @State private var selectedProvider: String = CloudConfig.localVisionProvider
+
+    @State private var syncing = false
+    @State private var syncResult: String?
 
     // 同步的模型列表（复用 ModelSheet 的数据源）
     @State private var allProviders: [(id: String, models: [String])] = []
@@ -25,13 +34,6 @@ struct VisionModelSheet: View {
     private var mainModelSupportsVision: Bool {
         CloudConfig.modelSupportsVision(mainModel)
     }
-
-    // v3.0.22：微信通道视觉模型（读写 wechat-profile auxiliary.vision）
-    @State private var wechatVisionProvider: String?
-    @State private var wechatVisionModel: String?
-    @State private var wechatVisionLoaded = false
-    @State private var wechatSaving = false
-    @State private var wechatSaveResult: String?
 
     var body: some View {
         NavigationStack {
@@ -64,46 +66,46 @@ struct VisionModelSheet: View {
                             Image(systemName: mainModelSupportsVision ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                                 .foregroundStyle(mainModelSupportsVision ? .green : .orange)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("主模型：\(mainModel)")
+                                Text("主模型：\\(mainModel)")
                                     .font(.system(size: 13, weight: .medium))
                                 Text(mainModelSupportsVision
                                      ? "已支持视觉，无需配置备用模型"
-                                     : "不支持视觉，发送图片时将使用下方配置的视觉模型")
+                                     : "不支持视觉，发送图片时将使用下方点选的共享视觉模型")
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
 
-                // MARK: - 微信通道视觉模型（v3.0.22：读写 wechat-profile auxiliary.vision）
+                // MARK: - 共享视觉模型（App + 微信通道共用）说明
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
-                            Image(systemName: "message.fill")
+                            Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(.blue)
-                            Text("微信通道视觉模型")
+                                .foregroundStyle(.purple)
+                            Text("共享视觉模型（App + 微信通道）")
                                 .font(.system(size: 13, weight: .medium))
                             Spacer()
-                            if wechatSaving {
+                            if syncing {
                                 ProgressView().controlSize(.mini)
                             }
                         }
-                        Text(wechatVisionDisplay)
+                        Text(sharedVisionDisplay)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-                        Text("微信/香农通道收到图片时生效：主模型支持视觉→用主模型；主模型不支持→用下方选中的视觉模型（写入 wechat-profile，改完自动重启 gateway）")
+                        Text("点选下方任一模型即设置：App 内发图 与 微信通道收图 共用的视觉模型（写入 wechat-profile，改完自动重启 gateway）。")
                             .font(.system(size: 10.5))
                             .foregroundStyle(.tertiary)
-                        if let wechatSaveResult {
-                            Text(wechatSaveResult)
+                        if let syncResult {
+                            Text(syncResult)
                                 .font(.system(size: 11))
-                                .foregroundStyle(wechatSaveResult.hasPrefix("✅") ? Color.green : Color.orange)
+                                .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
                         }
-                        if wechatVisionModel != nil {
+                        if !selectedModel.isEmpty {
                             HStack(spacing: 8) {
                                 Button("清除配置") {
-                                    clearWechatVision()
+                                    clearSharedVision()
                                 }
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.red)
@@ -114,38 +116,13 @@ struct VisionModelSheet: View {
                     }
                     .padding(.vertical, 2)
                 } header: {
-                    Text("微信通道")
+                    Text("共享配置")
                 }
 
-                // MARK: - 已选视觉模型
-                if !selectedModel.isEmpty {
-                    Section("当前视觉模型") {
-                        HStack(spacing: 10) {
-                            Image(systemName: "eye.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.purple)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(selectedModel)
-                                    .font(.system(size: 14, weight: .medium))
-                                Text(providerDisplayName(selectedProvider))
-                                    .font(.system(size: 11)).foregroundStyle(.tertiary)
-                            }
-                            Spacer()
-                            Button("清除") {
-                                selectedModel = ""
-                                selectedProvider = "opencode"
-                                CloudConfig.clearVisionModel()
-                            }
-                            .font(.system(size: 12))
-                            .foregroundStyle(.red)
-                        }
-                    }
-                }
-
-                // MARK: - 模型列表选择
-                Section("选择视觉模型") {
+                // MARK: - 模型列表选择（点选打勾 = 设为共享视觉模型）
+                Section("选择视觉模型（点选打勾）") {
                     if opencodeModels.isEmpty && deepseekModels.isEmpty && localInstalled.isEmpty && allProviders.isEmpty {
-                        Text("暂无可用模型\n请先在「模型管理」中同步模型列表")
+                        Text("暂无可用模型\\n请先在「模型管理」中同步模型列表")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                     } else {
                         // opencode 模型
@@ -192,7 +169,7 @@ struct VisionModelSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    // MARK: - 子视图
+    // MARK: - 模型行（点选打勾）
 
     private func modelGroup(_ group: String, provider: String, models: [String]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -203,7 +180,6 @@ struct VisionModelSheet: View {
                 .padding(.vertical, 4)
             ForEach(models, id: \.self) { model in
                 let isSelected = selectedModel == model && selectedProvider == provider
-                let isWechat = wechatVisionModel == model && wechatVisionProvider == provider
                 let name = modelDisplayName(provider: provider, model: model)
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -217,56 +193,34 @@ struct VisionModelSheet: View {
                         }
                     }
                     Spacer()
-                    // v3.0.22：微信通道视觉模型快捷设置
-                    if isWechat {
-                        Image(systemName: "message.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.blue)
-                    } else {
-                        Button("微信") {
-                            setWechatVision(provider: provider, model: model)
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .background(Color.blue.opacity(0.1), in: Capsule())
-                    }
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.accentColor)
-                    } else {
-                        Button("选择") {
-                            selectedModel = model
-                            selectedProvider = provider
-                            CloudConfig.setVisionModel(model, provider: provider)
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color.accentColor.opacity(0.12), in: Capsule())
-                    }
+                    // 点选打勾：选中显示实心对勾，未选显示空心圈
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
                 .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectSharedVision(provider: provider, model: model)
+                }
             }
         }
     }
 
-    // MARK: - 数据加载
+    // MARK: - 状态文案
 
     private var statusText: String {
         if !enabled { return "已关闭" }
         if mainModelSupportsVision { return "主模型支持视觉，无需配置" }
         if selectedModel.isEmpty { return "未配置视觉模型" }
-        return "已配置：\(selectedModel)"
+        return "已配置：\\(selectedModel)"
     }
 
-    /// v3.0.22：微信通道视觉模型显示文案
-    private var wechatVisionDisplay: String {
-        if !wechatVisionLoaded { return "读取中…" }
-        guard let m = wechatVisionModel, !m.isEmpty else { return "未配置（主模型支持视觉时直接用主模型；不支持时用 Hermes 默认视觉兜底）" }
-        return "\(m)（\(providerDisplayName(wechatVisionProvider ?? ""))）"
+    /// 共享视觉模型显示文案
+    private var sharedVisionDisplay: String {
+        if selectedModel.isEmpty { return "未配置（主模型支持视觉时直接用主模型；主模型不支持时发图会降级为纯文本）" }
+        return "\\(selectedModel)（\\(providerDisplayName(selectedProvider))）"
     }
 
     private func modelDisplayName(provider: String, model: String) -> String {
@@ -311,9 +265,11 @@ struct VisionModelSheet: View {
         }
     }
 
+    // MARK: - 数据加载
+
     private func loadCachedModels() async {
-        // v3.0.22：微信通道当前视觉模型
-        await loadWechatVision()
+        // 读取共享配置：微信通道为源（持久），App 本地镜像
+        await loadSharedVision()
         // 从 UserDefaults 恢复缓存的模型列表
         if let s = UserDefaults.standard.array(forKey: "qingliao_models_stepfun") as? [String] { stepfunModels = s }
         if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] { deepseekModels = d }
@@ -340,72 +296,98 @@ struct VisionModelSheet: View {
         }
     }
 
-    /// v3.0.22：读取微信通道当前视觉模型（GET /api/channel/vision-model）
+    /// 读取共享视觉模型：后端为源（持久），回读后同步到 App 本地 CloudConfig
     /// 后端将 local 归一化为 ollama 存储，回读时还原为 local 以便与模型列表匹配
-    private func loadWechatVision() async {
+    private func loadSharedVision() async {
+        var fromBackend = false
         if let j = try? await auth.json("/api/channel/vision-model") {
             if (j["ok"] as? Bool) == true {
                 let prov = j["provider"] as? String
-                wechatVisionProvider = prov == "ollama" ? "local" : prov
-                wechatVisionModel = j["model"] as? String
+                let model = j["model"] as? String
+                if let m = model, !m.isEmpty {
+                    let p = prov == "ollama" ? "local" : prov
+                    selectedProvider = p ?? "opencode"
+                    selectedModel = m
+                    fromBackend = true
+                    // 同步到 App 本地：让 App 发图与微信通道共用同一份
+                    CloudConfig.setVisionModel(m, provider: p ?? "opencode")
+                }
+            }
+        }
+        // 后端无配置 → 用 App 本地已配置的（保持一份配置的语义）
+        if !fromBackend {
+            selectedModel = CloudConfig.localVisionModel ?? ""
+            selectedProvider = CloudConfig.localVisionProvider
+            if !selectedModel.isEmpty {
+                // 把本地配置推给微信通道，保证两边一致
+                _ = await pushToBackendAsync(provider: selectedProvider, model: selectedModel)
+            }
+        }
+    }
+
+    /// 点选打勾 = 设置共享视觉模型（App 本地 + 微信通道）
+    private func selectSharedVision(provider: String, model: String) {
+        guard !syncing else { return }
+        selectedModel = model
+        selectedProvider = provider
+        // 1) App 本地（立即生效）
+        CloudConfig.setVisionModel(model, provider: provider)
+        // 2) 微信通道（异步，自动重启 gateway）
+        syncResult = "正在同步微信通道…"
+        Task {
+            let ok = await pushToBackendAsync(provider: provider, model: model)
+            if ok {
+                syncResult = "✅ 已共享：\\(model)（App + 微信通道，gateway 重启后生效，约 10-30 秒）"
             } else {
-                wechatSaveResult = "⚠️ 读取失败：\(j["error"] as? String ?? "未知错误")"
-            }
-        } else {
-            wechatSaveResult = "⚠️ 读取失败（后端需 v3.0.22）"
-        }
-        wechatVisionLoaded = true
-    }
-
-    /// v3.0.22：设置微信通道视觉模型（POST /api/channel/vision-model → 后端改 wechat-profile + 重启 gateway）
-    private func setWechatVision(provider: String, model: String) {
-        guard !wechatSaving else { return }
-        wechatSaving = true
-        wechatSaveResult = nil
-        Task {
-            defer { wechatSaving = false }
-            do {
-                let j = try await auth.json("/api/channel/vision-model", method: "POST",
-                                            body: ["provider": provider, "model": model])
-                if (j["ok"] as? Bool) == true {
-                    wechatVisionProvider = provider
-                    wechatVisionModel = model
-                    wechatSaveResult = "✅ 已设置：\(model)（gateway 重启后生效，约 10-30 秒）"
-                } else {
-                    wechatSaveResult = "⚠️ 设置失败：\(j["error"] as? String ?? "未知错误")"
-                }
-            } catch {
-                wechatSaveResult = "⚠️ 设置失败：\(error.localizedDescription)"
+                syncResult = "⚠️ 微信通道同步失败（App 本地已生效，可稍后重试）"
             }
         }
     }
 
-    /// v3.0.22：清除微信通道视觉模型（DELETE /api/channel/vision-model）
-    private func clearWechatVision() {
-        guard !wechatSaving else { return }
-        wechatSaving = true
-        wechatSaveResult = nil
+    /// 清除共享视觉模型（App 本地 + 微信通道）
+    private func clearSharedVision() {
+        guard !syncing else { return }
+        selectedModel = ""
+        selectedProvider = "opencode"
+        CloudConfig.clearVisionModel()
+        syncResult = "正在清除微信通道…"
         Task {
-            defer { wechatSaving = false }
-            do {
-                let j = try await auth.json("/api/channel/vision-model", method: "DELETE")
-                if (j["ok"] as? Bool) == true {
-                    wechatVisionProvider = nil
-                    wechatVisionModel = nil
-                    wechatSaveResult = "✅ 已清除（gateway 重启后生效，约 10-30 秒）"
-                } else {
-                    wechatSaveResult = "⚠️ 清除失败：\(j["error"] as? String ?? "未知错误")"
-                }
-            } catch {
-                wechatSaveResult = "⚠️ 清除失败：\(error.localizedDescription)"
+            let ok = await pushDeleteBackendAsync()
+            if ok {
+                syncResult = "✅ 已清除共享视觉模型（gateway 重启后生效，约 10-30 秒）"
+            } else {
+                syncResult = "⚠️ 微信通道清除失败（App 本地已清除）"
             }
+        }
+    }
+
+    /// POST 共享视觉模型到微信通道（返回是否成功）
+    @discardableResult
+    private func pushToBackendAsync(provider: String, model: String) async -> Bool {
+        do {
+            let j = try await auth.json("/api/channel/vision-model", method: "POST",
+                                        body: ["provider": provider, "model": model])
+            return (j["ok"] as? Bool) == true
+        } catch {
+            return false
+        }
+    }
+
+    /// DELETE 微信通道视觉模型（返回是否成功）
+    @discardableResult
+    private func pushDeleteBackendAsync() async -> Bool {
+        do {
+            let j = try await auth.json("/api/channel/vision-model", method: "DELETE")
+            return (j["ok"] as? Bool) == true
+        } catch {
+            return false
         }
     }
 
     private func syncModels() async {
         // 复用后端 sync-models 接口
         func fetch(_ provider: String) async -> [String]? {
-            guard let j = try? await auth.json("/api/stream/sync-models?provider=\(provider)"),
+            guard let j = try? await auth.json("/api/stream/sync-models?provider=\\(provider)"),
                   (j["ok"] as? Bool) == true,
                   let list = j["models"] as? [String] else { return nil }
             return list
