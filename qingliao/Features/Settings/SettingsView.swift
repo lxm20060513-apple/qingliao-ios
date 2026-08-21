@@ -418,6 +418,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showAppearance) {
             // v3.0.4：外观弹窗（与云端共用同一组件，样式统一）
             AppearanceSheet()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showTasks) {
             TasksView()

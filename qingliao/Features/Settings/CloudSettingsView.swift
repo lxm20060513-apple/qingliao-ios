@@ -153,6 +153,7 @@ struct CloudSettingsView: View {
         }
         .sheet(isPresented: $showAppearance) {
             AppearanceSheet()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showCloudModels) {
             CloudModelsSheet()
