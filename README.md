@@ -84,6 +84,24 @@ Theme/LiquidGlass.swift  玻璃主题 + SiriGlowOverlay（参数化发光）
 - **崩溃上报**：signal handler 只允许 POSIX open/write/close/getenv/strcpy + C 字符串字面量直写（任何 Swift String 构造都非 signal-safe）；完整栈走 NSException handler；崩溃信息下次启动 flush 上传
 - **列表崩溃三连排查**：①从有到无同帧 → VStack+分帧两步走；②TabView 隐藏页清空 → 换掉 .scrollPosition（PreferenceKey 方案）；③数组就地 removeAll + ForEach diff → 后端驱动 + load() 整体替换
 
+## 🆕 近期变更（v3.0.27，2026-08-21）
+
+- **⑧长文目录/大纲导航**：MarkdownRenderer 提取标题生成目录，ChatView 新增 TOC Sheet，长对话可快速跳转到指定章节
+- **⑨会话文件夹/标签**：CategoryStore + SessionsView 分类菜单，会话支持按文件夹分组管理
+- **⑦图片持久化**：ChatStore.uploadImage 将图片上传到服务器，云端对话图片不再丢失
+- **⑩用量统计**：CloudDashboardView 新增 UsageStatsCard 显示消息/Token/会话数
+- **Dock胶囊高亮修复**：DockTabView ultraThinMaterial 改用 View modifier（Shape 方法在 iOS 27 不生效）
+- **ChatView底部间距补回**：v3.0.24 丢失的底部 76pt padding 已恢复
+
+## 🆕 近期变更（v3.0.20~26，2026-08-20~21）
+
+- **视觉模型配置（v3.0.21）**：CloudConfig 新增视觉模型 UserDefaults 存储 + VisionModelSheet 选择弹窗；ChatStore 自动切换视觉模型（主模型支持视觉→用主模型；不支持→用配置视觉模型；未配置→降级文本）
+- **看板重构（v3.0.20）**：卡片统一 dashboardCard() 修饰符；空态折叠；SettingsView 拆分 500 行 body → 8 个 @ViewBuilder + 共用组件；模型层格式化搬到 NASStatus/NASDisk
+- **统一弹窗风格**：所有设置弹窗统一 NavigationStack + toolbar 完成按钮，移除手动 header + xmark
+- **v3.0.22 cherry-pick**：ServerSheet URL/端口校验、主题切换过渡动画、hwCpuText/hwSsdText 预格式化、exportMarkdown 导出、txt/md/pdf 三选导出菜单
+- **v3.0.25**：视觉模型配置移入模型管理弹窗 + 微信通道视觉模型
+- **v3.0.26**：DockTabView @Environment 转义修复
+
 ## 🆕 近期变更（v3.0.19，2026-08-20）
 
 - **⭐ 语音指令闭环**：长按智能球从"语音转文字"改为**语音指令**——按住说话"打开客厅灯"→ 松手自动识别 → 直接执行（不确认）→ TTS 播报结果（"客厅灯已打开"）。工具类指令播结果、闲聊播回复摘要；执行中球转圈；语音指令消息带 🎤 标记；**输入框内语音按钮保留原"语音转文字"功能**（两条入口独立）。云端模式新增 **control_ha**（灯/空调/开关控制：toggle/turn_on/turn_off/设温度/切模式，按设备名自动匹配实体）和 **control_docker**（容器启停/重启）两个工具，写操作走确认弹窗
