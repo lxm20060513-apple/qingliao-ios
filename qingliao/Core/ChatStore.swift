@@ -331,7 +331,7 @@ final class ChatStore {
     /// 上传图片到服务器，返回可访问的 URL
     func uploadImage(_ imageData: Data, auth: AuthStore) async -> String? {
         guard let config = CloudConfig.shared.activeConfig else { return nil }
-        var base = config.server
+        var base = config.baseURL
         if !base.hasPrefix("http") { base = "https://" + base }
         guard let url = URL(string: base + "/api/files/upload") else { return nil }
 
