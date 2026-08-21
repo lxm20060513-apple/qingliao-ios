@@ -25,8 +25,8 @@ targets:
       path: qingliao/Info.plist
       properties:
         CFBundleDisplayName: 轻聊
-        CFBundleShortVersionString: "3.0.29"
-        CFBundleVersion: "327"
+        CFBundleShortVersionString: "3.0.30"
+        CFBundleVersion: "328"
         NSLocationWhenInUseUsageDescription: 用于获取当前定位显示天气信息
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
