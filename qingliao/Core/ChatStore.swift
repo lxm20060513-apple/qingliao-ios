@@ -325,4 +325,34 @@ final class ChatStore {
             $0.role == role && $0.content.hasPrefix(prefix)
         }
     }
+
+    // MARK: - v3.0.27 图片持久化
+
+    /// 上传图片到服务器，返回可访问的 URL
+    func uploadImage(_ imageData: Data, auth: AuthStore) async -> String? {
+        guard let config = CloudConfig.shared.activeConfig else { return nil }
+        var base = config.server
+        if !base.hasPrefix("http") { base = "https://" + base }
+        guard let url = URL(string: base + "/api/files/upload") else { return nil }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(auth.token, forHTTPHeaderField: "X-Auth-Token")
+
+        let boundary = UUID().uuidString
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let fileURL = json["url"] as? String else { return nil }
+        return fileURL
+    }
 }

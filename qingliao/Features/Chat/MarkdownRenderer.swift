@@ -102,4 +102,32 @@ enum MarkdownRenderer {
         ])
         return AttributedString(ns)
     }
+
+    // MARK: - v3.0.27 大纲导航：提取 Markdown 标题
+
+    struct TOCItem: Identifiable {
+        let id = UUID()
+        let level: Int       // 1 = #, 2 = ##, 3 = ###
+        let title: String
+        let lineIndex: Int   // 在原文中的行号（0-based）
+    }
+
+    /// 从 Markdown 文本中提取标题列表（# / ## / ###）
+    static func extractHeaders(_ text: String) -> [TOCItem] {
+        var items: [TOCItem] = []
+        let lines = text.components(separatedBy: "\n")
+        for (i, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            for (mark, level) in [("### ", 3), ("## ", 2), ("# ", 1)] {
+                if trimmed.hasPrefix(mark) {
+                    let title = String(trimmed.dropFirst(mark.count))
+                    if !title.isEmpty {
+                        items.append(TOCItem(level: level, title: title, lineIndex: i))
+                    }
+                    break
+                }
+            }
+        }
+        return items
+    }
 }

@@ -6,6 +6,7 @@ struct SessionsView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
     @Environment(BotStore.self) private var botStore   // v3.0.7：bot 分组显示
+    @Environment(CategoryStore.self) private var categoryStore   // v3.0.27：会话分类
 
     @State private var sessions: [ChatSession] = []
     @State private var isLoading = false
@@ -32,6 +33,10 @@ struct SessionsView: View {
     @State private var selectedIds = Set<String>()
     // v3.0.7：会话列表加载节流（3s 内不重复拉，防快速滑动切 Tab 重复触发 isLoading 翻转）
     @State private var lastLoadAt: Date?
+    // v3.0.27：会话分类
+    @State private var showAddCategory = false
+    @State private var addCategoryForSession: String?
+    @State private var newCategoryName = ""
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -219,6 +224,25 @@ struct SessionsView: View {
                                                 } label: {
                                                     Label("重命名", systemImage: "pencil")
                                                 }
+                                                // v3.0.27：移动到文件夹
+                                                Menu("移动到…") {
+                                                    Button("无分类") {
+                                                        categoryStore.assignSession(s.id, to: nil)
+                                                    }
+                                                    ForEach(categoryStore.categories) { cat in
+                                                        Button {
+                                                            categoryStore.assignSession(s.id, to: cat.id)
+                                                        } label: {
+                                                            Label(cat.name, systemImage: cat.icon)
+                                                        }
+                                                    }
+                                                    Divider()
+                                                    Button("新建分类…") {
+                                                        addCategoryForSession = s.id
+                                                        newCategoryName = ""
+                                                        showAddCategory = true
+                                                    }
+                                                }
                                                 // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
                                                 Button(role: .destructive) {
                                                     confirmDelete = s
@@ -322,6 +346,21 @@ struct SessionsView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("将删除「\(confirmDelete?.title ?? "")」及其全部消息，此操作不可恢复")
+        }
+        // v3.0.27：新建分类
+        .alert("新建分类", isPresented: $showAddCategory) {
+            TextField("分类名称", text: $newCategoryName)
+            Button("创建") {
+                let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                let cat = SessionCategory(id: UUID().uuidString.prefix(8).description,
+                                          name: name, icon: "folder.fill", color: "#007AFF")
+                categoryStore.addCategory(cat)
+                if let sid = addCategoryForSession {
+                    categoryStore.assignSession(sid, to: cat.id)
+                }
+            }
+            Button("取消", role: .cancel) {}
         }
     }
 

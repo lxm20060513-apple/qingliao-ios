@@ -204,6 +204,8 @@ struct ChatView: View {
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
     @State private var toolCards: [ToolCardItem] = []
     @State private var toolGate = ToolConfirmGate()
+    // v3.0.27：长文目录
+    @State private var showTOCSheet = false
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -466,6 +468,10 @@ struct ChatView: View {
                 Button("AI 总结会话") {
                     summarizeSession()
                 }
+                // v3.0.27：长文目录
+                Button("长文目录") {
+                    showTOCSheet = true
+                }
                 Button("清空本会话消息", role: .destructive) {
                     // v2.0.40：两步走清空——先切欢迎页分支（列表立即卸载，数据未动），
                     // 下一帧再清数据。列表销毁与数据清空完全错开，杜绝同帧崩溃。
@@ -621,6 +627,13 @@ struct ChatView: View {
                 showAttachmentMenu = false
             }
             .presentationDetents([.medium, .large])
+        }
+        // v3.0.27：长文目录/大纲导航
+        .sheet(isPresented: $showTOCSheet) {
+            TOCSheet(headers: MarkdownRenderer.extractHeaders(
+                chat.messages.filter { $0.role == "assistant" }.map(\.content).joined(separator: "\n")
+            ))
+            .presentationDetents([.medium])
         }
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.data]) { result in
@@ -1935,5 +1948,35 @@ struct DealAttachmentButton: View {
 // MARK: - 消息气泡
 
 
+// MARK: - v3.0.27 长文目录弹窗
 
+struct TOCSheet: View {
+    let headers: [MarkdownRenderer.TOCItem]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(headers) { item in
+                    HStack(spacing: 8) {
+                        ForEach(0..<item.level, id: \.self) { _ in
+                            Color.clear.frame(width: 8)
+                        }
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.6))
+                            .frame(width: 6, height: 6)
+                        Text(item.title)
+                            .font(.system(size: item.level == 1 ? 16 : (item.level == 2 ? 14 : 13),
+                                          weight: item.level == 1 ? .bold : .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .navigationTitle("目录")
+            .navigationBarTitleDisplayMode(.inline)
+            .listStyle(.plain)
+        }
+    }
+}
 

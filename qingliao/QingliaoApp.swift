@@ -11,6 +11,8 @@ struct QingliaoApp: App {
     @State private var keyboard = KeyboardObserver()
     // v3.0.7：Bot Mode 数据（NAS bots.json 缓存 + 选中状态）
     @State private var botStore = BotStore.shared
+    // v3.0.27：会话分类
+    @State private var categoryStore = CategoryStore()
     @AppStorage("qingliao_appearance") private var appearance = "system"   // dark / light / system（v2.0.42 默认跟随系统，与 SettingsView 默认值一致）
 
     var body: some Scene {
@@ -21,6 +23,7 @@ struct QingliaoApp: App {
                 .environment(stream)
                 .environment(keyboard)
                 .environment(botStore)
+                .environment(categoryStore)
                 .preferredColorScheme(colorScheme)
                 // v3.0.22：主题切换过渡动画（深色/浅色切换平滑过渡）
                 .animation(.easeInOut(duration: 0.3), value: appearance)

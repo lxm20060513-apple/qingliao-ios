@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - v3.0 云端模式看板：只保留天气（直连 Open-Meteo，无需服务器）+ 其余待开发占位
 
 struct CloudDashboardView: View {
+    @Environment(ChatStore.self) private var chat
     @State private var temp: Double?
     @State private var code: Int?
     @State private var city = UserDefaults.standard.string(forKey: "qingliao_weather_city") ?? ""
@@ -29,21 +30,8 @@ struct CloudDashboardView: View {
                        ))
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    // 待开发占位（v3.0.1：天气已上移到右上角徽章，与本地 AI 看板一致；内容区暂无卡片）
-                    VStack(spacing: 12) {
-                        Image(systemName: "hammer.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(.tertiary)
-                        Text("更多功能待开发")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("云端模式当前提供天气与 AI 聊天，\n更多能力将在后续版本加入")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
+                    // v3.0.27：用量统计卡片
+                    UsageStatsCard(chat: chat)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -155,5 +143,73 @@ extension WeatherBadge {
         case 95...99: return .purple
         default: return .secondary
         }
+    }
+}
+
+// MARK: - v3.0.27 用量统计卡片
+
+struct UsageStatsCard: View {
+    let chat: ChatStore
+    @State private var sessionCount = 0
+    @State private var totalMessages = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .foregroundStyle(.blue)
+                Text("用量统计")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 10) {
+                StatCell(title: "当前消息", value: "\(chat.messages.count)", icon: "message.fill")
+                StatCell(title: "估算 Token", value: "\(chat.contextInfo.tokens)", icon: "cpu.fill")
+                StatCell(title: "历史会话", value: "\(sessionCount)", icon: "folder.fill")
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .task {
+            await loadStats()
+        }
+    }
+
+    private func loadStats() async {
+        // 从 CloudSessionStore 读取会话数和总消息数
+        let store = CloudSessionStore.shared
+        store.load()
+        sessionCount = store.sessions.count
+        totalMessages = store.sessions.reduce(0) { $0 + $1.messages.count }
+    }
+}
+
+private struct StatCell: View {
+    let title: String
+    let value: String
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

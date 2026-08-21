@@ -299,3 +299,73 @@ struct HAEntity: Identifiable {
         return HAEntity(entityID: eid, state: d["state"] as? String ?? "", friendlyName: fn, attributes: attrs)
     }
 }
+
+// MARK: - v3.0.27 会话文件夹/标签
+
+/// 会话分类（本地存储，UserDefaults JSON）
+struct SessionCategory: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var icon: String     // SF Symbol name
+    var color: String    // hex color string
+}
+
+/// 会话分类管理（UserDefaults 持久化）
+@MainActor
+@Observable
+final class CategoryStore {
+    var categories: [SessionCategory] = []
+    var sessionCategories: [String: String] = [:]  // sessionId → categoryId
+
+    private let categoriesKey = "qingliao_categories"
+    private let mappingKey = "qingliao_session_categories"
+
+    init() {
+        load()
+    }
+
+    func load() {
+        if let data = UserDefaults.standard.data(forKey: categoriesKey),
+           let cats = try? JSONDecoder().decode([SessionCategory].self, from: data) {
+            categories = cats
+        }
+        if let data = UserDefaults.standard.data(forKey: mappingKey),
+           let map = try? JSONDecoder().decode([String: String].self, from: data) {
+            sessionCategories = map
+        }
+    }
+
+    func save() {
+        if let data = try? JSONEncoder().encode(categories) {
+            UserDefaults.standard.set(data, forKey: categoriesKey)
+        }
+        if let data = try? JSONEncoder().encode(sessionCategories) {
+            UserDefaults.standard.set(data, forKey: mappingKey)
+        }
+    }
+
+    func addCategory(_ cat: SessionCategory) {
+        categories.append(cat)
+        save()
+    }
+
+    func removeCategory(_ id: String) {
+        categories.removeAll { $0.id == id }
+        sessionCategories = sessionCategories.filter { $0.value != id }
+        save()
+    }
+
+    func assignSession(_ sessionId: String, to categoryId: String?) {
+        if let catId = categoryId {
+            sessionCategories[sessionId] = catId
+        } else {
+            sessionCategories.removeValue(forKey: sessionId)
+        }
+        save()
+    }
+
+    func categoryForSession(_ sessionId: String) -> SessionCategory? {
+        guard let catId = sessionCategories[sessionId] else { return nil }
+        return categories.first { $0.id == catId }
+    }
+}
