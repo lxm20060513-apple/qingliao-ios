@@ -673,10 +673,16 @@ struct BotCard: View {
     @State private var cloudConfig = CloudConfig.shared
 
     // 按模式取当前模型：云端读 CloudConfig.activeConfig，本地读 qingliao_model
+    // v3.0.20：Agent 模型自定义——agent 开启且配置了独立模型时显示 agent 模型
     private var displayModel: String {
         if CloudConfig.shared.isCloudMode {
             let c = CloudConfig.shared.activeConfig
             return "\(c?.name ?? "云端")/\(c?.model ?? "未选")"
+        }
+        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
+        let agentModel = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
+        if agentOn && !agentModel.isEmpty {
+            return "\(provider)/\(agentModel)"
         }
         return "\(provider)/\(modelName)"
     }

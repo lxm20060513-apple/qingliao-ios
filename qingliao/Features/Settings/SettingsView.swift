@@ -38,6 +38,10 @@ struct SettingsView: View {
     // v2.0.113：Agent 记忆弹窗 + 计数
     @State private var showAgentMemory = false
     @State private var agentRuleCount = 0
+    // v3.0.20：Agent 模型自定义（独立于主模型，可单独指定 Agent 使用的模型）
+    @State private var showAgentModelSheet = false
+    @AppStorage("qingliao_agent_model") private var agentModel = ""
+    @AppStorage("qingliao_agent_provider") private var agentProvider = ""
     // v2.0.116：执行历史弹窗
     @State private var showHistory = false
     // v2.0.117：本地模型（Ollama 断网兜底）
@@ -237,6 +241,11 @@ struct SettingsView: View {
                 Toggle("", isOn: $agentOn).labelsHidden().scaleEffect(0.8).tint(.green)
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
+            // v3.0.20：Agent 模型自定义（可单独指定 Agent 使用的模型，不依赖主模型）
+            Divider().padding(.leading, 52)
+            SettingRow(icon: "cpu.fill", iconColor: .indigo, title: "Agent 模型",
+                       value: agentModel.isEmpty ? "跟随主模型" : agentModel, chevron: true)
+                .onTapGesture { showAgentModelSheet = true }
             Divider().padding(.leading, 52)
             SettingRow(icon: "questionmark.circle.fill", iconColor: .gray, title: "使用说明", chevron: false)
                 .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showAgentHelp.toggle() } }
@@ -468,6 +477,11 @@ struct SettingsView: View {
         // v2.0.113：Agent 记忆弹窗（同 AI 记忆样式）
         .sheet(isPresented: $showAgentMemory) {
             AgentMemorySheet()
+        }
+        // v3.0.20：Agent 模型选择弹窗
+        .sheet(isPresented: $showAgentModelSheet) {
+            AgentModelSheet()
+                .presentationDetents([.medium, .large])
         }
         // v2.0.116：执行历史弹窗
         .sheet(isPresented: $showHistory) {
@@ -1667,5 +1681,271 @@ struct WechatChannelSheet: View {
         case "ollama": return "本地模型（Ollama）"
         default: return id
         }
+    }
+}
+
+// MARK: - v3.0.20 Agent 模型选择（独立于主模型，可单独指定 Agent 使用的模型）
+
+struct AgentModelSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("qingliao_agent_model") private var agentModel = ""
+    @AppStorage("qingliao_agent_provider") private var agentProvider = ""
+    @AppStorage("qingliao_model") private var mainModel = "deepseek-v4-flash"
+    @AppStorage("qingliao_provider") private var mainProvider = "opencode"
+
+    @State private var selected = ""
+    @State private var selectedProvider = ""
+    @State private var syncing = false
+    @State private var syncResult: String?
+    @State private var allProviders: [(id: String, models: [String])] = []
+    @State private var localInstalled: [String] = []
+
+    /// opencode 模型显示名映射
+    private let opencodeNames: [String: String] = [
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "deepseek-v4-flash-free": "DeepSeek V4 Flash Free",
+        "deepseek-v4-pro": "DeepSeek V4 Pro",
+        "kimi-k3": "Kimi K3",
+        "kimi-k2.7-code": "Kimi K2.7 Code",
+        "kimi-k2.6": "Kimi K2.6",
+        "kimi-k2.5": "Kimi K2.5",
+        "glm-5.3": "GLM 5.3",
+        "glm-5.2": "GLM 5.2",
+        "glm-5.1": "GLM 5.1",
+        "glm-5": "GLM 5",
+        "qwen3.8-max": "Qwen3.8 Max",
+        "qwen3.7-max": "Qwen3.7 Max",
+        "qwen3.7-plus": "Qwen3.7 Plus",
+        "qwen3.6-plus": "Qwen3.6 Plus",
+        "qwen3.5-plus": "Qwen3.5 Plus",
+        "minimax-m3": "MiniMax M3",
+        "minimax-m2.7": "MiniMax M2.7",
+        "minimax-m2.5": "MiniMax M2.5",
+        "mimo-v2.5-pro": "MiMo V2.5 Pro",
+        "mimo-v2.5": "MiMo V2.5",
+        "mimo-v2-pro": "MiMo V2 Pro",
+        "mimo-v2-omni": "MiMo V2 Omni",
+        "gpt-5.6-luna": "GPT-5.6 Luna",
+        "grok-4.5": "Grok 4.5",
+    ]
+
+    private let sensenovaNames: [String: String] = [
+        "sensenova-6.8-flash-lite": "SenseNova 6.8 Flash Lite",
+        "sensenova-6.7-flash-lite": "SenseNova 6.7 Flash Lite",
+        "sensenova-u1-fast": "SenseNova U1 Fast",
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "glm-5.2": "GLM 5.2",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 10) {
+                // 当前状态
+                HStack(spacing: 5) {
+                    Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)
+                    Text(syncing ? "同步中..." : "Agent 模型设置")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                if let syncResult {
+                    Text(syncResult)
+                        .font(.system(size: 11))
+                        .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
+                }
+
+                // 跟随主模型选项
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.merge")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.blue)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("跟随主模型")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("当前主模型：\(mainModel)")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        if selected.isEmpty {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding(11)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(selected.isEmpty ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
+                                          lineWidth: 0.8)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selected = ""
+                        selectedProvider = ""
+                    }
+                }
+
+                Divider()
+
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if allProviders.isEmpty && localInstalled.isEmpty {
+                            ProgressView()
+                                .padding(.top, 30)
+                            Text("正在加载模型列表…")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        } else {
+                            // 按 provider 分组显示
+                            ForEach(allProviders, id: \.id) { p in
+                                let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
+                                if !hardcoded.contains(p.id) && !p.models.isEmpty {
+                                    agentGroupSection(providerDisplayName(p.id),
+                                                      models: p.models.map { ($0, providerModelDisplayName(p.id, $0), p.id) })
+                                }
+                            }
+                            // 本地模型
+                            if !localInstalled.isEmpty {
+                                agentGroupSection("本地模型（断网兜底）",
+                                                  models: localInstalled.map { ($0, $0 + " · 本地", "local") })
+                            }
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
+            }
+            .padding(18)
+            .navigationTitle("Agent 模型")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        agentModel = selected
+                        agentProvider = selectedProvider
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await syncList() } } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+            }
+            .onAppear {
+                selected = agentModel
+                selectedProvider = agentProvider
+                Task { await loadAllProviders() }
+            }
+        }
+    }
+
+    /// 分组标题 + 模型行
+    private func agentGroupSection(_ group: String, models: [(String, String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(group)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            ForEach(models, id: \.0) { m in
+                agentModelRow(id: m.0, name: m.1, provider: m.2)
+            }
+        }
+    }
+
+    private func agentModelRow(id: String, name: String, provider: String) -> some View {
+        let isCur = selected == id && selectedProvider == provider
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(id)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isCur ? Color.accentColor : Color.primary)
+                Text(name)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isCur {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 14))
+                    Text("当前").font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(Color.accentColor)
+            } else {
+                Button {
+                    selected = id
+                    selectedProvider = provider
+                } label: {
+                    Text("选用")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(isCur ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08),
+                              lineWidth: 0.8)
+        )
+    }
+
+    private func providerDisplayName(_ id: String) -> String {
+        switch id {
+        case "opencode": return "opencode（google）"
+        case "opencode-apple": return "opencode（apple）"
+        case "stepfun": return "stepfun"
+        case "deepseek": return "deepseek（官方）"
+        case "sensenova": return "sensenova（商汤）"
+        case "xiaomi": return "xiaomi（小米）"
+        case "local": return "本地模型（断网兜底）"
+        default: return id
+        }
+    }
+
+    private func providerModelDisplayName(_ pid: String, _ model: String) -> String {
+        switch pid {
+        case "opencode", "opencode-apple": return opencodeNames[model] ?? model
+        case "sensenova": return sensenovaNames[model] ?? model
+        default: return model
+        }
+    }
+
+    /// 拉取所有 provider 的模型列表
+    private func loadAllProviders() async {
+        guard let j = try? await auth.json("/api/models/providers") else { return }
+        if let providers = j["providers"] as? [[String: Any]] {
+            var result: [(id: String, models: [String])] = []
+            for p in providers {
+                guard let id = p["id"] as? String,
+                      let models = p["models"] as? [String] else { continue }
+                result.append((id: id, models: models))
+            }
+            allProviders = result
+        }
+    }
+
+    /// 同步模型列表
+    private func syncList() async {
+        guard !syncing else { return }
+        syncing = true
+        syncResult = nil
+        await loadAllProviders()
+        // 本地模型
+        if let j = try? await auth.json("/api/local/models") {
+            localInstalled = (j["models"] as? [[String: Any]] ?? []).map { $0["name"] as? String ?? "" }
+        }
+        syncing = false
+        syncResult = "✅ 已刷新"
     }
 }

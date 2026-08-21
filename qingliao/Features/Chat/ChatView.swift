@@ -1139,9 +1139,18 @@ struct ChatView: View {
         let startSid = chat.sessionId
 
         // v3.0.10：图片消息时，若主模型不支持视觉 → 自动切换视觉模型
+        // v3.0.20：Agent 模型自定义——agent 开启且配置了独立模型时，优先使用 agent 模型
+        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
+        let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
+        let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
         let (useModel, useProvider): (String, String) = {
+            // 图片消息视觉模型优先级最高
             if msg.imageDataURL != nil, let vision = CloudConfig.effectiveVisionModel() {
                 return (vision.model, vision.provider)
+            }
+            // Agent 模型：agent 开启 + 已配置独立模型 → 使用 agent 模型
+            if agentOn && !agentModelName.isEmpty {
+                return (agentModelName, agentProviderName)
             }
             return (modelName, provider)
         }()
