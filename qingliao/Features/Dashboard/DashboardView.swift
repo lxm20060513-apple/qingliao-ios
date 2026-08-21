@@ -332,8 +332,12 @@ struct DashboardView: View {
     @State private var weatherCode: Int?
     @State private var weatherCity = UserDefaults.standard.string(forKey: "qingliao_weather_city") ?? ""   // v2.0.87am：手动城市
 
+    /// v3.0.22：硬件温度（保留 View 层因需 @State hwCpu/hwSsd 驱动刷新）
     private var hwDetail: String {
         let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
+        let s = hwSsd.map { String(format: "SSD %.0f°C", $0) } ?? "SSD --"
+        return "\(c) · \(s)"
+    } ?? "CPU --"
         let s = hwSsd.map { String(format: "SSD %.0f°C", $0) } ?? "SSD --"
         return "\(c) · \(s)"
     }

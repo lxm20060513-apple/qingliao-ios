@@ -22,6 +22,8 @@ struct QingliaoApp: App {
                 .environment(keyboard)
                 .environment(botStore)
                 .preferredColorScheme(colorScheme)
+                // v3.0.22：主题切换过渡动画（深色/浅色切换平滑过渡）
+                .animation(.easeInOut(duration: 0.3), value: appearance)
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）
                     NotificationHelper.requestAuth()

@@ -261,6 +261,34 @@ final class ChatStore {
         return lines.joined(separator: "\n")
     }
 
+    /// v3.0.22：导出为 Markdown 格式（保留结构化排版）
+    func exportMarkdown() -> String {
+        var lines: [String] = []
+        lines.append("# " + (title.isEmpty ? "未命名会话" : title))
+        lines.append("")
+        for m in messages {
+            let who = m.isUser ? "**我**" : "**AI**"
+            let t = m.timestamp.map { ts -> String in
+                let d = Date(timeIntervalSince1970: ts / 1000)
+                let f = DateFormatter()
+                f.dateFormat = "yyyy-MM-dd HH:mm"
+                return f.string(from: d)
+            } ?? ""
+            var content = m.content
+            if m.imageDataURL != nil {
+                let c = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                content = c.isEmpty ? "![图片]" : c + "\n![图片]"
+            }
+            lines.append("### \(who) · \(t)")
+            lines.append("")
+            lines.append(content)
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// 清空当前会话消息（保留会话 id 与标题）
     func clearMessages() {
         messages = []

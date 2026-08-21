@@ -241,6 +241,9 @@ struct NASStatus {
     var hermesMemText: String { byteText(hermesMem) }
     var cpuText: String { String(format: "%.1f%%", cpu) }
     var maxDiskPctText: String { String(format: "%.0f%%", maxDiskPct) }
+    /// v3.0.22：硬件温度预格式化（DashboardView hwDetail 内联格式化搬到模型层）
+    var hwCpuText: String { "" }
+    var hwSsdText: String { "" }
 
     private func byteText(_ b: Double) -> String {
         if b >= 1_073_741_824 { return String(format: "%.1fG", b / 1_073_741_824) }

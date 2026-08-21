@@ -633,39 +633,77 @@ struct ServerSheet: View {
 
     @State private var server = ""
     @State private var saved = false
+    @State private var validationError: String?
+
+    /// 校验服务器地址格式（host:port 或 URL；端口 1-65535）
+    private func validate(_ raw: String) -> String? {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return "请输入服务器地址" }
+        let stripped = s.replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+        let parts = stripped.split(separator: ":")
+        guard parts.count <= 2 else { return "格式错误，应为 host:port" }
+        let host = String(parts[0]).trimmingCharacters(in: .whitespaces)
+        guard !host.isEmpty else { return "主机名不能为空" }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
+        if host.unicodeScalars.contains(where: { !allowed.contains($0) }) {
+            return "主机名含非法字符"
+        }
+        if parts.count == 2 {
+            let portStr = String(parts[1]).trimmingCharacters(in: .whitespaces)
+            guard let port = Int(portStr), port >= 1, port <= 65535 else {
+                return "端口号须为 1-65535"
+            }
+        }
+        return nil
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 Text("修改后需重新登录")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.top, 4)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 4)
 
-            TextField("server.example.com:8080", text: $server)
-                .font(.system(size: 14))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .padding(12)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
+                TextField("server.example.com:8080", text: $server)
+                    .font(.system(size: 14))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(12)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .onChange(of: server) { _, _ in validationError = nil }
 
-            Button {
-                var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !s.hasPrefix("http") { s = "http://" + s }
-                auth.serverURL = s
-                UserDefaults.standard.set(s, forKey: "qingliao_server")
-                saved = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    auth.logout()
+                if let err = validationError {
+                    Text(err)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 4)
                 }
-            } label: {
-                Text("保存并重新登录")
+
+                Button {
+                    if let err = validate(server) {
+                        validationError = err
+                        return
+                    }
+                    var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !s.hasPrefix("http") { s = "http://" + s }
+                    auth.serverURL = s
+                    UserDefaults.standard.set(s, forKey: "qingliao_server")
+                    saved = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        auth.logout()
+                    }
+                } label: {
+                    Text("保存并重新登录")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

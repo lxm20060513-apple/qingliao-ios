@@ -1455,6 +1455,108 @@ struct ChatLogDocument: FileDocument {
     }
 }
 
+// MARK: - v3.0.22 会话导出文档（.md）
+
+struct ChatMarkdownDocument: FileDocument {
+    var text: String
+    static var readableContentTypes: [UTType] { [.plainText] }
+    init(text: String) { self.text = text }
+    init(configuration: ReadConfiguration) throws {
+        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+// MARK: - v3.0.22 会话导出文档（.pdf）
+
+struct ChatPDFDocument: FileDocument {
+    var data: Data
+    static var readableContentTypes: [UTType] { [.pdf] }
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+
+    /// 从消息列表生成 PDF（UIKit 排版 A4）
+    static func generate(title: String, messages: [ChatMessage]) -> Data {
+        let pageRect = CGRect(x: 0, y: 0, width: 595, height: 842) // A4
+        let margin: CGFloat = 50
+        let contentWidth = pageRect.width - margin * 2
+        let titleFont = UIFont.systemFont(ofSize: 18, weight: .bold)
+        let bodyFont = UIFont.systemFont(ofSize: 12)
+        let metaFont = UIFont.systemFont(ofSize: 10)
+
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { ctx in
+            var y: CGFloat = margin
+            func newPage() {
+                ctx.beginPage()
+                y = margin
+            }
+            func checkSpace(_ h: CGFloat) {
+                if y + h > pageRect.height - margin { newPage() }
+            }
+
+            newPage()
+
+            // 标题
+            let titleStr = title.isEmpty ? "轻聊会话导出" : title
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: titleFont, .foregroundColor: UIColor.label
+            ]
+            let titleSize = (titleStr as NSString).boundingRect(
+                with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
+                options: .usesLineFragmentOrigin, attributes: titleAttrs, context: nil
+            )
+            checkSpace(titleSize.height + 10)
+            (titleStr as NSString).draw(in: CGRect(x: margin, y: y, width: contentWidth, height: titleSize.height), withAttributes: titleAttrs)
+            y += titleSize.height + 16
+
+            for m in messages {
+                let who = m.isUser ? "我" : "AI"
+                let t = m.timestamp.map { ts -> String in
+                    let d = Date(timeIntervalSince1970: ts / 1000)
+                    let f = DateFormatter()
+                    f.dateFormat = "MM-dd HH:mm"
+                    return f.string(from: d)
+                } ?? ""
+                let metaStr = "[\(who) \(t)]"
+                let metaAttrs: [NSAttributedString.Key: Any] = [
+                    .font: metaFont, .foregroundColor: UIColor.secondaryLabel
+                ]
+                let metaSize = (metaStr as NSString).boundingRect(
+                    with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
+                    options: .usesLineFragmentOrigin, attributes: metaAttrs, context: nil
+                )
+                checkSpace(metaSize.height + 4)
+                (metaStr as NSString).draw(in: CGRect(x: margin, y: y, width: contentWidth, height: metaSize.height), withAttributes: metaAttrs)
+                y += metaSize.height + 4
+
+                var content = m.content
+                if m.imageDataURL != nil {
+                    let c = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    content = c.isEmpty ? "[图片]" : c + "\n[图片]"
+                }
+                let bodyAttrs: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont, .foregroundColor: UIColor.label
+                ]
+                let bodySize = (content as NSString).boundingRect(
+                    with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
+                    options: .usesLineFragmentOrigin, attributes: bodyAttrs, context: nil
+                )
+                checkSpace(bodySize.height + 12)
+                (content as NSString).draw(in: CGRect(x: margin, y: y, width: contentWidth, height: bodySize.height), withAttributes: bodyAttrs)
+                y += bodySize.height + 12
+            }
+        }
+    }
+}
+
 // MARK: - v2.0.87d markdown 表格视图（表头加粗 + 斑马纹 + 横向滚动）
 // v2.0.87m：统一列宽（按每列最大内容宽度，列对齐不再错位）
 

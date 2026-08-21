@@ -153,7 +153,11 @@ struct ChatView: View {
     @State private var viewerPayload: ImageViewPayload?
     @State private var showMoreMenu = false
     @State private var showExporter = false
+    @State private var showMarkdownExporter = false
+    @State private var showPDFExporter = false
     @State private var exportText = ""
+    @State private var exportMarkdown = ""
+    @State private var exportPDFData: Data?
     @State private var clearing = false          // v2.0.40 清空会话两步走标志
     // v2.0.43：快捷指令 / 搜索定位高亮
     @State private var showQuickPrompts = false
@@ -432,9 +436,20 @@ struct ChatView: View {
                        showStatus: true,
                        statusColor: headerColor)
             .confirmationDialog("聊天操作", isPresented: $showMoreMenu, titleVisibility: .visible) {
-                Button("导出会话记录") {
-                    exportText = chat.exportText()
-                    showExporter = true
+                Menu("导出会话记录") {
+                    Button("纯文本 (.txt)") {
+                        exportText = chat.exportText()
+                        showExporter = true
+                    }
+                    Button("Markdown (.md)") {
+                        exportMarkdown = chat.exportMarkdown()
+                        showMarkdownExporter = true
+                    }
+                    Button("PDF (.pdf)") {
+                        exportPDFData = ChatPDFDocument.generate(
+                            title: chat.title, messages: chat.messages)
+                        showPDFExporter = true
+                    }
                 }
                 // v2.0.92：会话分享卡片（渲染精美图片 → 系统分享/微信）
                 Button("分享会话卡片") {
@@ -918,6 +933,14 @@ struct ChatView: View {
         .fileExporter(isPresented: $showExporter,
                       document: ChatLogDocument(text: exportText),
                       contentType: .plainText,
+                      defaultFilename: "轻聊会话") { _ in }
+        .fileExporter(isPresented: $showMarkdownExporter,
+                      document: ChatMarkdownDocument(text: exportMarkdown),
+                      contentType: .plainText,
+                      defaultFilename: "轻聊会话") { _ in }
+        .fileExporter(isPresented: $showPDFExporter,
+                      document: ChatPDFDocument(data: exportPDFData ?? Data()),
+                      contentType: .pdf,
                       defaultFilename: "轻聊会话") { _ in }
         // v2.0.36：录音权限被拒提示
     }
