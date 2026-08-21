@@ -337,9 +337,6 @@ struct DashboardView: View {
         let c = hwCpu.map { String(format: "CPU %.0f°C", $0) } ?? "CPU --"
         let s = hwSsd.map { String(format: "SSD %.0f°C", $0) } ?? "SSD --"
         return "\(c) · \(s)"
-    } ?? "CPU --"
-        let s = hwSsd.map { String(format: "SSD %.0f°C", $0) } ?? "SSD --"
-        return "\(c) · \(s)"
     }
 
     private func loadHw() async {
