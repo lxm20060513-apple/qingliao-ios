@@ -1798,10 +1798,9 @@ struct AgentModelSheet: View {
                             Text("正在加载模型列表…")
                                 .font(.system(size: 12)).foregroundStyle(.secondary)
                         } else {
-                            // 按 provider 分组显示
+                            // 按 provider 分组显示（v3.0.29 fix：移除 hardcoded 过滤，所有 provider 均展示）
                             ForEach(allProviders, id: \.id) { p in
-                                let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
-                                if !hardcoded.contains(p.id) && !p.models.isEmpty {
+                                if !p.models.isEmpty {
                                     agentGroupSection(providerDisplayName(p.id),
                                                       models: p.models.map { ($0, providerModelDisplayName(p.id, $0), p.id) })
                                 }
@@ -1923,7 +1922,7 @@ struct AgentModelSheet: View {
 
     /// 拉取所有 provider 的模型列表
     private func loadAllProviders() async {
-        guard let j = try? await auth.json("/api/models/providers") else { return }
+        guard let j = try? await auth.json("/api/stream/model-providers?with_models=1") else { return }
         if let providers = j["providers"] as? [[String: Any]] {
             var result: [(id: String, models: [String])] = []
             for p in providers {

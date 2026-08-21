@@ -1796,8 +1796,18 @@ struct ChatView: View {
             }
             chat.append(.local(role: "user", content: content))
             let history = chat.historyPayload()
-            await stream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
-                               provider: provider, messages: history) { success, error in
+            // v3.0.29 fix：文件发送也走 agent 模型优先级链
+            let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
+            let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
+            let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
+            let (useModel, useProvider): (String, String) = {
+                if agentOn && !agentModelName.isEmpty {
+                    return (agentModelName, agentProviderName)
+                }
+                return (modelName, provider)
+            }()
+            await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
+                               provider: useProvider, messages: history) { success, error in
                 if !success {
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
                 } else {
@@ -1827,10 +1837,17 @@ struct ChatView: View {
         chat.messages.removeSubrange(idx...)
         let history = chat.historyPayload()
         // v3.0.10：重新生成时，若最新用户消息含图片 → 使用视觉模型
+        // v3.0.29 fix：重新生成也走 agent 模型优先级链
         let lastUserHasImage = chat.messages.last(where: { $0.isUser })?.imageDataURL != nil
+        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
+        let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
+        let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
         let (useModel, useProvider): (String, String) = {
             if lastUserHasImage, let vision = CloudConfig.effectiveVisionModel() {
                 return (vision.model, vision.provider)
+            }
+            if agentOn && !agentModelName.isEmpty {
+                return (agentModelName, agentProviderName)
             }
             return (modelName, provider)
         }()
