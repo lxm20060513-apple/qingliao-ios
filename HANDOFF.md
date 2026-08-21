@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-21
-> 最新版本：v3.0.29（native-3.0 分支，已发版）
+> 最新版本：v3.0.30（native-3.0 分支，已发版）
 
 ---
 
@@ -9,7 +9,7 @@
 
 **轻聊** 是一个 iOS 原生 AI 聊天 App，Swift 6 + SwiftUI 开发，支持本地 AI 和云端 AI 双模式。
 
-- **仓库**：https://github.com/lxm20060513-svg/qingliao
+- **仓库**：https://github.com/lxm20060513-svg/qingliao-ios
 - **主分支**：`native-3.0`（v3.x 开发线）
 - **旧分支**：`native-2.0`（v2.0.140 已冻结，带 tag `v2.0.140`）
 - **Tag 规范**：`v3.0.XX`，CI 自动触发构建
@@ -44,6 +44,14 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.30（Agent 模型修复，2026-08-21 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| Agent 模型列表加载不出来 | `SettingsView.swift` | AgentModelSheet 端点写错（用了不存在的 `/api/models/providers`，改为 `/api/stream/model-providers?with_models=1`）；hardcoded 过滤把 opencode/deepseek/stepfun/sensenova 全滤掉只剩空列表，已移除 |
+| 「跟随主模型」选了不生效 | `ChatView.swift` | `regenerate()` / `sendFile()` 两处流式入口直接读主模型未读 agent 设置；已统一优先级=视觉模型 > agent模型 > 主模型 |
+| 版本号 | `project.yml` | 3.0.29 → 3.0.30 |
 
 ### v3.0.29（Agent 模型自定义，2026-08-21 已发版）
 
