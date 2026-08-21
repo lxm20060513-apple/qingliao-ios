@@ -551,7 +551,7 @@ struct ChatView: View {
             // v2.0.133e：动画时长/曲线跟随键盘系统动画（观察器已记录），完全同步无跳变
             .padding(.bottom, kb.isVisible
                      ? max(0, UIScreen.main.bounds.height - kb.topY)
-                     : (hideDock ? 0 : 86))
+                     : (hideDock ? 0 : 76))
         }
         // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确算 bottom padding，
         // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注：让红线长度=0）
