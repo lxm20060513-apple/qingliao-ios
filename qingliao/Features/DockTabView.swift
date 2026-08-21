@@ -151,9 +151,7 @@ struct DockBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        .background {
-            Capsule().ultraThinMaterial
-        }
+        .background(.ultraThinMaterial)
         .clipShape(Capsule())
         .overlay {
             Capsule().strokeBorder(
