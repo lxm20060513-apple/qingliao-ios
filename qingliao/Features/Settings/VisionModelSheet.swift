@@ -22,7 +22,6 @@ struct VisionModelSheet: View {
 
     // 同步的模型列表（复用 ModelSheet 的数据源）
     @State private var allProviders: [(id: String, models: [String])] = []
-    @State private var opencodeModels: [String] = []
     @State private var opencodeAppleModels: [String] = []
     @State private var deepseekModels: [String] = []
     @State private var stepfunModels: [String] = []
@@ -121,14 +120,11 @@ struct VisionModelSheet: View {
 
                 // MARK: - 模型列表选择（点选打勾 = 设为共享视觉模型）
                 Section("选择视觉模型（点选打勾）") {
-                    if opencodeModels.isEmpty && deepseekModels.isEmpty && localInstalled.isEmpty && allProviders.isEmpty {
+                    if deepseekModels.isEmpty && localInstalled.isEmpty && allProviders.isEmpty {
                         Text("暂无可用模型\\n请先在「模型管理」中同步模型列表")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                     } else {
-                        // opencode 模型
-                        if !opencodeModels.isEmpty {
-                            modelGroup("opencode（google）", provider: "opencode", models: opencodeModels)
-                        }
+                        // opencode（apple）模型
                         if !opencodeAppleModels.isEmpty {
                             modelGroup("opencode（apple）", provider: "opencode-apple", models: opencodeAppleModels)
                         }
@@ -273,7 +269,6 @@ struct VisionModelSheet: View {
         // 从 UserDefaults 恢复缓存的模型列表
         if let s = UserDefaults.standard.array(forKey: "qingliao_models_stepfun") as? [String] { stepfunModels = s }
         if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] { deepseekModels = d }
-        if let o = UserDefaults.standard.array(forKey: "qingliao_models_opencode") as? [String] { opencodeModels = o }
         if let a = UserDefaults.standard.array(forKey: "qingliao_models_opencode_apple") as? [String] { opencodeAppleModels = a }
         if let sn = UserDefaults.standard.array(forKey: "qingliao_models_sensenova") as? [String] { sensenovaModels = sn }
         // 本地 Ollama 模型
@@ -399,10 +394,6 @@ struct VisionModelSheet: View {
         if let d = await fetch("deepseek") {
             deepseekModels = d
             UserDefaults.standard.set(d, forKey: "qingliao_models_deepseek")
-        }
-        if let o = await fetch("opencode") {
-            opencodeModels = o
-            UserDefaults.standard.set(o, forKey: "qingliao_models_opencode")
         }
         if let oa = await fetch("opencode-apple") {
             opencodeAppleModels = oa

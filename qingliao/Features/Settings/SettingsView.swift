@@ -995,9 +995,7 @@ struct ModelSheet: View {
     // 服务器同步的模型（分组展示）
     @State private var stepfunModels: [String] = []
     @State private var deepseekModels: [String] = []
-    // v2.0.131：opencode Go 订阅模型（同步拉取，本地预置作兜底——修复"刷新不全"）
-    @State private var opencodeModels: [String] = []
-    // v2.0.140：opencode-apple 第二组订阅（google/apple 双 key 共存，同步拉取）
+    // v2.0.140：opencode-apple 第二组订阅（同步拉取）
     @State private var opencodeAppleModels: [String] = []
     // v3.0.4：SenseNova（商汤）订阅模型（同步拉取）
     @State private var sensenovaModels: [String] = []
@@ -1013,18 +1011,6 @@ struct ModelSheet: View {
     @State private var localInstalled: [String] = []
     // v3.0.10：视觉模型配置弹窗（模型管理内导航）
     @State private var showVisionModelSheet = false
-
-    /// opencode 本地预置（官方 /v1/models 端点 403 不开放，本地维护）——v2.0.131 起改为同步优先
-    /// 注：官方端点已可用（Go 订阅 26 个模型），本地列表仅作同步失败时的兜底
-    private let localModels: [(String, String)] = [
-        ("deepseek-v4-flash", "DeepSeek V4 Flash"),
-        ("deepseek-v4-flash-free", "DeepSeek V4 Flash Free"),
-        ("deepseek-v4-pro", "DeepSeek V4 Pro"),
-        ("kimi-k3", "Kimi K3"),
-        ("kimi-k2.7-code", "Kimi K2.7 Code"),
-        ("kimi-k2.6", "Kimi K2.6"),
-        ("kimi-k2.5", "Kimi K2.5"),
-    ]
 
     /// v2.0.131：opencode 同步模型显示名映射（无映射的用 id 本身）
     private let opencodeNames: [String: String] = [
@@ -1063,21 +1049,13 @@ struct ModelSheet: View {
         "glm-5.2": "GLM 5.2",
     ]
 
-    /// v2.0.131：opencode 分组显示列表——同步结果优先，空则用本地预置兜底
-    private var opencodeDisplay: [(String, String)] {
-        if !opencodeModels.isEmpty {
-            return opencodeModels.map { ($0, opencodeNames[$0] ?? $0) }
-        }
-        return localModels
-    }
-
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 10) {
                 // 在线状态 + 同步结果
                 HStack(spacing: 5) {
                 Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)
-                Text(syncing ? "同步中..." : "OpenCode Go 在线")
+                Text(syncing ? "同步中..." : "模型服务在线")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             if let syncResult {
@@ -1089,7 +1067,6 @@ struct ModelSheet: View {
 
             ScrollView {
                 VStack(spacing: 12) {
-                    groupSection("opencode（google）", models: opencodeDisplay.map { ($0.0, $0.1, "opencode") })
                     if !opencodeAppleModels.isEmpty {
                         // v2.0.140：第二组 opencode 订阅（apple），同名模型按 provider 区分勾选
                         groupSection("opencode（apple）", models: opencodeAppleModels.map { ($0, opencodeNames[$0] ?? $0, "opencode-apple") })
@@ -1198,10 +1175,6 @@ struct ModelSheet: View {
             }
             if let d = UserDefaults.standard.array(forKey: "qingliao_models_deepseek") as? [String] {
                 deepseekModels = d
-            }
-            // v2.0.131：恢复 opencode 同步结果（修复"刷新不全"——之前从不拉取 opencode）
-            if let o = UserDefaults.standard.array(forKey: "qingliao_models_opencode") as? [String] {
-                opencodeModels = o
             }
             // v2.0.140：恢复第二组 opencode（apple）同步结果
             if let a = UserDefaults.standard.array(forKey: "qingliao_models_opencode_apple") as? [String] {
@@ -1338,9 +1311,7 @@ struct ModelSheet: View {
         Task {
             let s = await fetchModels("stepfun")
             let d = await fetchModels("deepseek")
-            // v2.0.132：同步 opencode Go 订阅模型（修复"刷新不全"——之前从不拉取）
-            let o = await fetchModels("opencode")
-            // v2.0.140：同步第二组 opencode（apple）订阅
+            // v2.0.140：同步 opencode（apple）订阅
             let oa = await fetchModels("opencode-apple")
             // v3.0.4：同步 SenseNova（商汤）订阅模型
             let sn = await fetchModels("sensenova")
@@ -1351,10 +1322,6 @@ struct ModelSheet: View {
             if let d {
                 deepseekModels = d
                 UserDefaults.standard.set(d, forKey: "qingliao_models_deepseek")
-            }
-            if let o {
-                opencodeModels = o
-                UserDefaults.standard.set(o, forKey: "qingliao_models_opencode")
             }
             if let oa {
                 opencodeAppleModels = oa
@@ -1367,7 +1334,7 @@ struct ModelSheet: View {
             // v3.0.4：通用拉取全部 provider（含新增，免改版）
             await loadAllProviders()
             // v3.0.4 fix：syncResult 放在所有赋值之后，计数才准确（原在 sn 赋值前显示=旧值0）
-            syncResult = "✅ 已同步（opencode \(opencodeModels.count) / apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
+            syncResult = "✅ 已同步（apple \(opencodeAppleModels.count) / stepfun \(stepfunModels.count) / deepseek \(deepseekModels.count) / sensenova \(sensenovaModels.count)）"
             syncing = false
         }
     }

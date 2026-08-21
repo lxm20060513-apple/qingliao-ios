@@ -1,6 +1,8 @@
 #!/bin/bash
 # 轻聊 2.0 本地 Swift 预检（无 Xcode 环境的替代验证）
 # 用法: ./check_swift.sh   （在 ql_ipa2 目录下）
+# HOME 固定为原路径：不同会话 HOME 变化会导致 clang 模块缓存路径错位（PCH path mismatch / missing SwiftShims）
+export HOME=/opt/data/home
 export LD_LIBRARY_PATH=/opt/data/swift-libs
 SWIFT=/opt/data/swift-toolchain/swift-6.0.3-RELEASE-ubuntu24.04/usr/bin
 
