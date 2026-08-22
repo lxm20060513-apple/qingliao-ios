@@ -210,7 +210,9 @@ final class CloudConfig {
     }
 
     /// v3.0.5 review fix：按模型名判断是否视觉模型（切模型后实时更新，避免预设默认模型脱钩）
-    /// 命中特征：gpt-4o / gpt-5 / -vision / -o（omni）/ 多模态 / minimax-m2.x / glm-4v / u1 / flash-lite(部分)
+    /// v3.0.32 fix：minimax-m3 / glm-5.x 误判为不支持视觉 → 发图被视觉模型顶替
+    /// （用户主模型选 M3/GLM-5 却生效视觉模型）——判定补全：minimax 全系 + glm-5 全系
+    /// 命中特征：gpt-4o / gpt-5 / -vision / -o（omni）/ 多模态 / minimax（M 系列全系）/ glm-4v / glm-5.x / u1 / flash-lite(部分)
     static func modelSupportsVision(_ model: String) -> Bool {
         let m = model.lowercased()
         if m.contains("gpt-4o") || m.contains("gpt-5") || m.contains("vision")
@@ -218,8 +220,12 @@ final class CloudConfig {
             || m.contains("u1") || m.contains("glm-4v") || m.contains("flash-lite") {
             return true
         }
-        // MiniMax 系列多数支持多模态（M2/M2.1+ 视觉）
-        if m.contains("minimax-") && (m.contains("m2") || m.contains("m2.")) {
+        // MiniMax M 系列（M1/M2/M2.x/M3 等）全系支持多模态视觉
+        if m.contains("minimax-") {
+            return true
+        }
+        // GLM-5.x 全系支持视觉（glm-5 / 5.1 / 5.2 / 5.3）
+        if m.contains("glm-5") {
             return true
         }
         return false
