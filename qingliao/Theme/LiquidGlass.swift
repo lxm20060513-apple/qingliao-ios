@@ -175,3 +175,53 @@ struct SiriGlowOverlay: View {
         .ignoresSafeArea(edges: .top)
     }
 }
+
+// MARK: - v3.0.36 灵动岛发光（AI 回答时灵动岛外一圈 Siri 同款光晕）
+
+/// 围绕灵动岛（顶部居中胶囊）的呼吸光晕；复用 Siri 发光 4 参数（外观统一）。
+/// 与 SiriGlowOverlay 同条件触发（streaming）且可独立开关（qingliao_island_glow）。
+struct IslandGlowOverlay: View {
+    @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
+    @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
+    @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
+
+    // 灵动岛胶囊近似尺寸（iPhone 14 Pro 系列 ~126×37，15 Pro 系列 ~121×37；取通用值光晕略大更醒目）
+    private let islandW: CGFloat = 132
+    private let islandH: CGFloat = 40
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // 呼吸（与 Siri 发光同公式，参数联动）
+            let breathe = (0.30 + glowAmp * (sin(t * glowFreq) + 1) / 2) * glowBrightness
+            GeometryReader { geo in
+                let top = geo.safeAreaInsets.top
+                // 灵动岛中心 X；Y = 状态栏内（顶部偏移 12pt 贴合胶囊）
+                let cx = geo.size.width / 2
+                let cy = top + islandH / 2 - 6
+                ZStack {
+                    // 外圈光晕（胶囊描边 + 渐变呼吸）
+                    RoundedRectangle(cornerRadius: islandH / 2, style: .continuous)
+                        .strokeBorder(
+                            AngularGradient(
+                                colors: [.blue.opacity(0.65 * breathe), .indigo.opacity(0.55 * breathe),
+                                         .pink.opacity(0.5 * breathe), .blue.opacity(0.65 * breathe)],
+                                center: .center
+                            ),
+                            lineWidth: 5
+                        )
+                        .frame(width: islandW + 8, height: islandH + 8)
+                        .blur(radius: 5)
+                    // 内层实心发光（贴近胶囊边缘）
+                    RoundedRectangle(cornerRadius: islandH / 2, style: .continuous)
+                        .strokeBorder(.white.opacity(0.28 * breathe), lineWidth: 2)
+                        .frame(width: islandW, height: islandH)
+                        .blur(radius: 2)
+                }
+                .position(x: cx, y: cy)
+                .allowsHitTesting(false)
+            }
+        }
+        .ignoresSafeArea(edges: .top)
+    }
+}

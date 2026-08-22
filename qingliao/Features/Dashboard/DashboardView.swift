@@ -1438,15 +1438,21 @@ struct DiskTile: View {
     }
 }
 
-// MARK: - v3.0.36 模型使用量卡片（与 MeterCard/ServiceCard 同款 HomeKit 卡片风格）
+/// v3.0.36 模型使用量卡片（与 MeterCard/ServiceCard 同款 HomeKit 卡片风格）
 
-/// 每 provider 一张：图标 + 名 + 余额/状态 + 副文本；余额低/失败亮警示色
+/// 每 provider 一张：图标 + 名 + 余额/用量 + 副文本 + 状态；plan 模式加用量进度条
 struct UsageCard: View {
     let usage: ProviderUsage
 
     private var statusColor: Color {
         if usage.unsupported { return .gray }
         if !usage.available { return .red }
+        if usage.mode == "plan" {
+            if let m = usage.usagePercent["monthly"] {
+                return m >= 90 ? .red : (m >= 60 ? .orange : .green)
+            }
+            return .green
+        }
         if usage.total <= 10 { return .orange }   // 余额低于 10 元预警
         return .green
     }
@@ -1460,6 +1466,12 @@ struct UsageCard: View {
         case "sensenova": return "s.square.fill"
         default: return "terminal.fill"
         }
+    }
+
+    /// plan 模式月用量进度（0-100；无数据返回 nil 不显示条）
+    private var planPercent: Double? {
+        guard usage.mode == "plan" else { return nil }
+        return usage.usagePercent["monthly"]
     }
 
     var body: some View {
@@ -1487,6 +1499,18 @@ struct UsageCard: View {
                 .foregroundStyle(usage.unsupported ? Color.secondary : statusColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            // v3.0.36 plan（opencode）：月用量进度条
+            if let pct = planPercent, usage.mode == "plan" {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color(uiColor: .systemGray5))
+                        Capsule()
+                            .fill(pct >= 90 ? Color.red : (pct >= 60 ? Color.orange : Color.green))
+                            .frame(width: geo.size.width * min(max(pct / 100.0, 0), 1))
+                    }
+                }
+                .frame(height: 4)
+            }
             Text(usage.detailText)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)

@@ -129,6 +129,11 @@ struct RootView: View {
                 SiriGlowOverlay()
                     .zIndex(20)
             }
+            // v3.0.36：灵动岛发光（同 streaming 条件，独立开关 qingliao_island_glow）
+            if streaming && UserDefaults.standard.bool(forKey: "qingliao_island_glow") {
+                IslandGlowOverlay()
+                    .zIndex(21)
+            }
         }
         // v3.0.1：模式切换驱动登录页过渡动画（ModeSwitchBar 点击 → mode 变化 → 平滑滑动淡入）
         .animation(.spring(duration: 0.35, bounce: 0.18), value: config.mode)

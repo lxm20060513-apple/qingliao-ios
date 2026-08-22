@@ -194,11 +194,13 @@ struct ChatSession: Identifiable {
 
 // MARK: - 模型使用量（/api/nas/providers-usage，v3.0.36）
 
-/// v3.0.36：看板「模型使用量」栏数据（DeepSeek/StepFun 官方余额；无接口 provider 标 unsupported）
+/// v3.0.36：看板「模型使用量」栏数据
+/// 三种形态：payg 余额（DeepSeek/StepFun total/granted/topped_up）、
+/// plan 百分比配额（OpenCode rolling/weekly/monthly percent）、unsupported（无公开接口）
 struct ProviderUsage: Identifiable {
     let provider: String
     let name: String
-    let mode: String          // payg=按量余额 / plan=订阅
+    let mode: String          // payg=按量余额 / plan=订阅配额
     let available: Bool
     let unsupported: Bool     // 官方无公开用量接口
     let total: Double
@@ -206,12 +208,18 @@ struct ProviderUsage: Identifiable {
     let toppedUp: Double
     let currency: String
     let error: String
+    // plan 百分比配额（opencode /zen/go/v1/usage）
+    let usagePercent: [String: Double]   // rolling/weekly/monthly → percent
+    let usageReset: [String: String]     // rolling/weekly/monthly → resetsAt ISO
 
     var id: String { provider }
 
-    /// 显示文案（余额卡片主文本）
+    /// 主文本：余额（payg）或当前用量百分比（plan）
     var balanceText: String {
         if unsupported { return "控制台查看" }
+        if mode == "plan", let monthly = usagePercent["monthly"] {
+            return String(format: "月用量 %.0f%%", monthly)
+        }
         if total > 0 {
             let sym = currency == "USD" ? "$" : "¥"
             return String(format: "%@%.2f", sym, total)
@@ -219,10 +227,16 @@ struct ProviderUsage: Identifiable {
         return "—"
     }
 
-    /// 副文本
+    /// 副文本：plan → 周/滚动百分比；payg → 充值/赠金明细
     var detailText: String {
         if unsupported { return error.isEmpty ? "无公开接口" : error }
         if !available { return error.isEmpty ? "不可用" : error }
+        if mode == "plan" {
+            var parts: [String] = []
+            if let w = usagePercent["weekly"] { parts.append(String(format: "周 %.0f%%", w)) }
+            if let r = usagePercent["rolling"] { parts.append(String(format: "滚动 %.0f%%", r)) }
+            return parts.isEmpty ? "订阅中" : parts.joined(separator: " · ")
+        }
         var parts: [String] = []
         if toppedUp > 0 { parts.append(String(format: "充值 %.2f", toppedUp)) }
         if granted > 0 { parts.append(String(format: "赠金 %.2f", granted)) }
@@ -231,6 +245,17 @@ struct ProviderUsage: Identifiable {
 
     static func parse(_ d: [String: Any]) -> ProviderUsage {
         let b = d["balance"] as? [String: Any] ?? [:]
+        var pct: [String: Double] = [:]
+        var reset: [String: String] = [:]
+        if let u = d["usage"] as? [String: Any] {
+            for k in ["rolling", "weekly", "monthly"] {
+                if let v = u[k] as? [String: Any] {
+                    if let p = v["percent"] as? Double { pct[k] = p }
+                    else if let p = v["percent"] as? String { pct[k] = Double(p) ?? 0 }
+                    if let r = v["resetsAt"] as? String { reset[k] = r }
+                }
+            }
+        }
         return ProviderUsage(
             provider: d["provider"] as? String ?? "",
             name: d["name"] as? String ?? d["provider"] as? String ?? "",
@@ -241,7 +266,9 @@ struct ProviderUsage: Identifiable {
             granted: (b["granted"] as? Double) ?? 0,
             toppedUp: (b["topped_up"] as? Double) ?? 0,
             currency: b["currency"] as? String ?? "CNY",
-            error: d["error"] as? String ?? ""
+            error: d["error"] as? String ?? "",
+            usagePercent: pct,
+            usageReset: reset
         )
     }
 }

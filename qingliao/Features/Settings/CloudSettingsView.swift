@@ -196,6 +196,8 @@ struct AppearanceSheet: View {
     @AppStorage("qingliao_font_size") private var fontSize = 15.0          // 12-20 聊天字体（对齐本地）
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0  // AI 输出行高
     @AppStorage("qingliao_siri_glow") private var siriGlow = false
+    // v3.0.36：灵动岛发光（独立开关，复用 Siri 发光 4 参数）
+    @AppStorage("qingliao_island_glow") private var islandGlow = false
     @AppStorage("qingliao_ball_input") private var ballInput = true
     @AppStorage("qingliao_hide_dock") private var hideDock = false
     @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
@@ -237,7 +239,9 @@ struct AppearanceSheet: View {
                 // AI 回答发光（对齐本地 Siri 发光 4 参数）
                 Section("AI 回答发光") {
                     Toggle("Siri 边框发光", isOn: $siriGlow)
-                    if siriGlow {
+                    // v3.0.36：灵动岛发光（独立开关）
+                    Toggle("灵动岛发光", isOn: $islandGlow)
+                    if siriGlow || islandGlow {
                         sliderRow("亮度", value: $glowBrightness, range: 0.2...1.5, suffix: { String(format: "%.0f%%", $0 * 100) })
                         sliderRow("呼吸频率", value: $glowFreq, range: 0.5...6.0, suffix: { String(format: "%.1f", $0) })
                         sliderRow("呼吸幅度", value: $glowAmp, range: 0...0.4, suffix: { String(format: "%.2f", $0) })
