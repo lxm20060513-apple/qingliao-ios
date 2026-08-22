@@ -947,7 +947,15 @@ struct ChatView: View {
                     inputText = ""   // v2.0.102：确认发送才清空（取消保留草稿）
                     pendingImage = nil
                     pendingImageData = nil
-                    sendCore(text: p.text, imageData: p.imageData)
+                    if p.imageData != nil {
+                        // v3.0.37：图片持久化
+                        Task {
+                            let persisted = await persistImageIfNeeded(p.imageData)
+                            sendCore(text: p.text, imageData: persisted)
+                        }
+                    } else {
+                        sendCore(text: p.text, imageData: nil)
+                    }
                 }
                 pendingSend = nil
             }
@@ -956,7 +964,15 @@ struct ChatView: View {
                     inputText = ""   // v2.0.102：确认发送才清空（取消保留草稿）
                     pendingImage = nil
                     pendingImageData = nil
-                    sendCore(text: p.text, imageData: p.imageData)
+                    if p.imageData != nil {
+                        // v3.0.37：图片持久化
+                        Task {
+                            let persisted = await persistImageIfNeeded(p.imageData)
+                            sendCore(text: p.text, imageData: persisted)
+                        }
+                    } else {
+                        sendCore(text: p.text, imageData: nil)
+                    }
                 }
                 pendingSend = nil
             }
@@ -1059,6 +1075,18 @@ struct ChatView: View {
         sendCore(text: "请用简洁的要点总结我们这次对话（分点列出，突出结论和待办）", imageData: nil)
     }
 
+    /// v3.0.37：图片持久化——base64 图片上传 NAS 换 URL（节省内存/跨设备可见/重启不丢）
+    /// 已是 http 或非数据 URL 原样返回；上传失败降级回 base64（保证发送不中断）
+    private func persistImageIfNeeded(_ imageDataURL: String?) async -> String? {
+        guard let img = imageDataURL, !img.hasPrefix("http") else { return imageDataURL }
+        var b64 = img
+        if let comma = img.firstIndex(of: ","), img[..<comma].hasPrefix("data:image/") {
+            b64 = String(img[img.index(after: comma)...])
+        }
+        guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else { return img }
+        return await chat.uploadImage(data, auth: auth) ?? img
+    }
+
     private func send() {
         var text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let img = pendingImageData
@@ -1079,7 +1107,15 @@ struct ChatView: View {
         inputText = ""
         pendingImage = nil
         pendingImageData = nil
-        sendCore(text: text, imageData: img)
+        if img != nil {
+            // v3.0.37：图片持久化——base64 先上传 NAS 换 URL 再发送（旧消息/失败仍走 base64）
+            Task {
+                let persisted = await persistImageIfNeeded(img)
+                sendCore(text: text, imageData: persisted)
+            }
+        } else {
+            sendCore(text: text, imageData: nil)
+        }
     }
 
     /// v2.0.59：发送核心（send / 失败重试共用）

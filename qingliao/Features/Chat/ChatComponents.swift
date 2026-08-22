@@ -359,16 +359,25 @@ struct MessageBubble: View {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 2)
-                    } else if let img = message.imageDataURL, let uiImg = dataURLImage(img) {
-                        Image(uiImage: uiImg)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: 200, maxHeight: 200)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            // v2.0.36：点击查看大图
-                            .onTapGesture { onImageTap() }
-                            // v2.0.125：图片长按菜单（原气泡级菜单移到这里，不抢占文字长按）
-                            .contextMenu { cardMenu }
+                    } else if let img = message.imageDataURL {
+                        if img.hasPrefix("http") {
+                            // v3.0.37：图片持久化 —— URL 图片（已上传 NAS）用 AsyncImage 加载
+                            AIImageView(url: img)
+                                .frame(maxWidth: 200, maxHeight: 200)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .onTapGesture { onImageTap() }
+                                .contextMenu { cardMenu }
+                        } else if let uiImg = dataURLImage(img) {
+                            Image(uiImage: uiImg)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: 200, maxHeight: 200)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                // v2.0.36：点击查看大图
+                                .onTapGesture { onImageTap() }
+                                // v2.0.125：图片长按菜单（原气泡级菜单移到这里，不抢占文字长按）
+                                .contextMenu { cardMenu }
+                        }
                     }
                     if !message.content.isEmpty {
                         if message.isUser {

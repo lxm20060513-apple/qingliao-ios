@@ -353,6 +353,10 @@ final class ChatStore {
         guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let fileURL = json["url"] as? String else { return nil }
+        // v3.0.37：后端返回相对路径 → 拼 baseURL 成完整可访问 URL（WiFi 直连 / 蜂窝中继均按各自 base）
+        if fileURL.hasPrefix("/") {
+            return base.rstrip("/") + fileURL
+        }
         return fileURL
     }
 }

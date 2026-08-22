@@ -196,9 +196,9 @@ struct IslandGlowOverlay: View {
             let breathe = (0.30 + glowAmp * (sin(t * glowFreq) + 1) / 2) * glowBrightness
             GeometryReader { geo in
                 let top = geo.safeAreaInsets.top
-                // 灵动岛中心 X；Y = 状态栏内（顶部偏移 12pt 贴合胶囊）
+                // 灵动岛中心 X；Y = 状态栏内（v3.0.37：下移 10pt 贴合真实灵动岛位置——原 -6 偏上）
                 let cx = geo.size.width / 2
-                let cy = top + islandH / 2 - 6
+                let cy = top + islandH / 2 + 4
                 ZStack {
                     // 外圈光晕（胶囊描边 + 渐变呼吸）
                     RoundedRectangle(cornerRadius: islandH / 2, style: .continuous)
