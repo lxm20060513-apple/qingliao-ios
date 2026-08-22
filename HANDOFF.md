@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-21
-> 最新版本：v3.0.30（native-3.0 分支，已发版）
+> 最后更新：2026-08-22
+> 最新版本：v3.0.31（native-3.0 分支，已发版）
 
 ---
 
@@ -44,6 +44,14 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.31（流式任务恢复，2026-08-22 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 流式任务恢复 | `StreamClient.swift` | poll 404 时 tryRecover 一次（换新 taskId / 磁盘内容续接 / done 即收尾），避免 qingliao 重启后长任务白等 |
+| recover 请求封装 | `AuthStore.swift` | 新增 streamRecover，poll 404 时抛 APIError.server(code) |
+| 版本号 | `project.yml` | 3.0.30 → 3.0.31（build 329） |
 
 ### v3.0.30（Agent 模型修复，2026-08-21 已发版）
 

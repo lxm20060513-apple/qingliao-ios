@@ -2,9 +2,9 @@
 # watch_ci_ship_ipa v3.0.30：盯 GitHub Actions → 成功下载 IPA → plistlib 校验 → 转存 NAS 微信文件夹
 set -u
 REPO="lxm20060513-svg/qingliao-ios"
-TAG_VER="v3.0.30"
-WANT_SHA="af5788a"
-OUT_NAME="qingliao-v3.0.30.ipa"
+TAG_VER="v3.0.31"
+WANT_SHA="fac1699"
+OUT_NAME="qingliao-v3.0.31.ipa"
 TOKEN=$(python3 -c "
 import subprocess, re
 url = subprocess.check_output(['git','-C','/opt/data/ql_ipa2','remote','get-url','origin']).decode().strip()
@@ -69,8 +69,8 @@ data = z.read(name)
 p = plistlib.loads(data)
 print(p.get('CFBundleShortVersionString', ''))
 ")
-echo "IPA 版本校验: $VER (期望 3.0.30)"
-if [ "$VER" != "3.0.30" ]; then echo "❌ 版本不匹配"; exit 1; fi
+echo "IPA 版本校验: $VER (期望 3.0.31)"
+if [ "$VER" != "3.0.31" ]; then echo "❌ 版本不匹配"; exit 1; fi
 
 # 转存 NAS 微信文件夹（paramiko 分块 + sudo PTY root 属主目录）
 /opt/data/paramiko_old/bin/python3 - "$IPA" "$OUT_NAME" <<PYEOF
