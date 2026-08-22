@@ -89,7 +89,7 @@ struct MarkdownToolbarInput: UIViewRepresentable {
         tv.showsVerticalScrollIndicator = false
         tv.scrollsToTop = false
         tv.text = text
-        parent.onChangeHeight(tv.contentSize.height)
+        context.coordinator.parent.onChangeHeight(tv.contentSize.height)
         return tv
     }
 

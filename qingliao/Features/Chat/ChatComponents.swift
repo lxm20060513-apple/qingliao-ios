@@ -874,7 +874,7 @@ struct ChatInputBar: View {
                         text = newText
                         editorSelRange = NSRange(location: cursor, length: 0)
                     }
-                    MarkdownToolbarInput(text: $text, selectedRange: $editorSelRange, isFocused: focused.wrappedValue) { h in
+                    MarkdownToolbarInput(text: $text, selectedRange: $editorSelRange, isFocused: focused) { h in
                         // v2.0.35：1行起（最小高）→ 6 行上限（对应原 lineLimit 1...6）
                         editorHeight = min(max(h, 44), 150)
                     }
