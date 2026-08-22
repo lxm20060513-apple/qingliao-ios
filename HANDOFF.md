@@ -45,12 +45,13 @@
 
 ## 二、版本历史
 
-### v3.0.37（图片持久化 + 灵动岛位置修正，2026-08-23 开发中未发版）
+### v3.0.37（图片持久化 + 灵动岛位置修正 + 富文本输入，2026-08-23 发版中）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
 | 图片持久化 | `ChatView.swift` + `ChatComponents.swift` + `ChatStore.swift` + 后端 `files_api.py` | 发送图片前 base64 自动上传 NAS → URL 替代 base64 入库（跨设备可见/重启不丢/省内存）；ChatComponents 用户图支持 http URL；后端 upload 返回相对 url + download 上传目录匿名可读；实测上传→匿名下载全链路通过 |
 | 灵动岛发光位置 | `LiquidGlass.swift` | 光晕下移 10pt（`-6 → +4`），贴合真实灵动岛位置 |
+| 富文本输入（路线 B） | `MarkdownToolbarInput.swift`（新）+ `ChatComponents.swift` | UITextView 桥接替代 TextField(axis:.vertical)（TextField 无选区 API）：支持选区读取 + 格式工具栏（B / I / `代码` / 链接 / 列表 / 引用），对选中文字包 Markdown 标记，发送仍走 Markdown 源码；placeholder/长按语音/焦点语义保留；应用格式后光标定位到标记内 |
 
 ### v3.0.36（看板大版本：磁盘系统盘+模型用量+Hermes重启+分段流式语音+灵动岛发光，2026-08-22 已发版）
 
