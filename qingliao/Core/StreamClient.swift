@@ -21,6 +21,7 @@ final class StreamClient {
     private var offset = 0
     private var failCount = 0
     private var idleStreak = 0
+    private var recoverTried = false   // v3.0.31：poll 404（任务丢失）时只尝试 recover 一次
     private var interval: TimeInterval = 0.8
     private var pollTask: Task<Void, Never>?
     private var onFinished: ((Bool, String) -> Void)?   // (success, errorMessage)
@@ -34,6 +35,7 @@ final class StreamClient {
         offset = 0
         failCount = 0
         idleStreak = 0
+        recoverTried = false
         interval = 0.8
         isStreaming = true
         isDone = false
@@ -104,11 +106,46 @@ final class StreamClient {
             if done {
                 finish(success: st != "error", error: err)
             }
+        } catch APIError.server(404) {
+            // v3.0.31：任务丢失（qingliao 重启/内存回收）→ 尝试 recover 续上，避免长任务白等
+            if !recoverTried {
+                recoverTried = true
+                if await tryRecover(auth: auth) { return }
+            }
+            failCount += 1
+            if failCount >= 10 {
+                finish(success: false, error: "连接中断，请重试")
+            }
         } catch {
             failCount += 1
             if failCount >= 10 {
                 finish(success: false, error: "连接中断，请重试")
             }
+        }
+    }
+
+    /// v3.0.31：poll 404 恢复——调 /api/stream/recover 找回任务（内存优先、磁盘 streams/*.json 兜底）。
+    /// 返回 true 表示已接管（继续轮询或已收尾），false = recover 请求本身失败（走 failCount）。
+    private func tryRecover(auth: AuthStore) async -> Bool {
+        do {
+            let (tid, rContent, done, st, err) = try await auth.streamRecover(sessionId: auth.currentStreamSessionId)
+            if let tid, !tid.isEmpty {
+                // 找回成功：换新 taskId；磁盘兜底内容可能比本地多最后一段（节流写盘延迟），取较长者续上
+                taskId = tid
+                if rContent.count > content.count {
+                    content = rContent
+                    offset = rContent.count
+                }
+                if done {
+                    finish(success: st != "error", error: err)
+                }
+                return true
+            }
+            // 服务器明确无此任务 → 立即收尾报错，不必等 10 次连败
+            finish(success: false, error: "连接中断，请重试")
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -154,6 +191,7 @@ final class StreamClient {
         taskId = tid
         offset = (d["offset"] as? Int) ?? 0
         content = (d["content"] as? String) ?? ""
+        recoverTried = false
         if let sid = d["sessionId"] as? String {
             auth.currentStreamSessionId = sid
         }

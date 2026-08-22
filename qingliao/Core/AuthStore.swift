@@ -359,7 +359,8 @@ final class AuthStore {
         }
         guard (200..<300).contains(code),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw APIError.badResponse
+            // v3.0.31：404 = 任务不存在（qingliao 重启/回收）→ 抛带码错误，StreamClient 据此走 recover
+            throw APIError.server(code)
         }
         let content = j["content"] as? String ?? ""
         let done = j["done"] as? Bool ?? false
@@ -367,6 +368,23 @@ final class AuthStore {
         let error = j["error"] as? String ?? ""
         let agent = j["agent"] as? Bool ?? false   // v2.0.96b：Agent 回复标记
         return (content, done, status, error, agent)
+    }
+
+    /// v3.0.31：流式任务恢复——qingliao 服务重启后内存任务丢失（poll 404），
+    /// 调 /api/stream/recover 找回：内存优先（返回可继续轮询的 taskId），
+    /// 磁盘兜底（streams/*.json 节流落盘，返回 done=true + 完整内容）。
+    func streamRecover(sessionId: String) async throws -> (String?, String, Bool, String, String) {
+        let enc = sessionId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sessionId
+        let (data, _) = try await request("/api/stream/recover?sessionId=" + enc)
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.badJSON
+        }
+        let tid = j["taskId"] as? String
+        let content = j["content"] as? String ?? ""
+        let done = j["done"] as? Bool ?? true
+        let status = j["status"] as? String ?? ""
+        let error = j["error"] as? String ?? ""
+        return (tid, content, done, status, error)
     }
 
     /// 流式停止：蜂窝 → CFStream 直连 POST（免弹窗），失败降级 relay；Wi-Fi → 直连
