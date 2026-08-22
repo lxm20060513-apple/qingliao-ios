@@ -983,6 +983,35 @@ struct SessionLocSheet: View {
     }
 }
 
+// MARK: - v3.0.35 provider 模型列表缓存（微信通道 / Agent / 模型管理共用同一份）
+//
+// 问题背景：WechatChannelSheet / AgentModelSheet 每次打开都从后端拉
+// /api/stream/model-providers，失败时 try? 静默吞错 → 列表永远显示"正在加载模型列表…"。
+// 方案：成功拉取结果写入 UserDefaults，打开时先显示缓存（免转圈），后台刷新成功后替换。
+
+enum ModelProvidersCache {
+    static let key = "qingliao_providers_cache"
+
+    /// 读取缓存（无缓存或解析失败返回空）
+    static func load() -> [(id: String, models: [String])] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return arr.compactMap { d in
+            guard let id = d["id"] as? String else { return nil }
+            return (id, (d["models"] as? [String]) ?? [])
+        }
+    }
+
+    /// 写缓存（空列表不覆盖旧缓存——防止后端临时故障把缓存刷空）
+    static func save(_ providers: [(id: String, models: [String])]) {
+        guard !providers.isEmpty else { return }
+        let arr: [[String: Any]] = providers.map { ["id": $0.id, "models": $0.models] }
+        if let data = try? JSONSerialization.data(withJSONObject: arr) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
 // MARK: - 模型管理（复刻 PWA/OpenCode Go 面板：分组 + 设为当前 + 同步列表）
 
 struct ModelSheet: View {
@@ -1215,6 +1244,10 @@ struct ModelSheet: View {
             hiddenModels = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
             // v3.0.4：首次打开自动拉取通用 provider 列表（免手动同步）
             if allProviders.isEmpty {
+                // v3.0.35：先展示缓存（有则免转圈/免空白），后台刷新替换
+                if !ModelProvidersCache.load().isEmpty {
+                    allProviders = ModelProvidersCache.load()
+                }
                 Task { await loadAllProviders() }
             }
         }
@@ -1388,6 +1421,8 @@ struct ModelSheet: View {
             result.append((id: id, models: models))
         }
         allProviders = result
+        // v3.0.35：写缓存（微信通道/Agent/视觉模型共用），下次打开任何入口先显示缓存
+        ModelProvidersCache.save(result)
     }
 
     /// v3.0.10：视觉模型显示文案（模型管理内导航行）
@@ -1513,6 +1548,10 @@ struct WechatChannelSheet: View {
     @State private var saving = false
     @State private var saveResult: String?
     @State private var loaded = false
+    // v3.0.35：模型列表加载失败（区别于"加载中"——失败时不再无限转圈）
+    @State private var loadFailed = false
+    // v3.0.35：当前展示的是缓存数据（顶部提示，避免误以为未刷新）
+    @State private var usingCache = false
 
     var body: some View {
         NavigationStack {
@@ -1546,11 +1585,48 @@ struct WechatChannelSheet: View {
             ScrollView {
                 VStack(spacing: 12) {
                     if allProviders.isEmpty {
-                        ProgressView()
+                        if loadFailed {
+                            // v3.0.35：加载失败态 + 重试（不再无限转圈）
+                            VStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(.orange)
+                                Text("模型列表加载失败")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("请检查网络或后端服务后重试")
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                                Button {
+                                    loadFailed = false
+                                    Task { await loadProviders() }
+                                } label: {
+                                    Text("重试")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .padding(.horizontal, 18).padding(.vertical, 6)
+                                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                            }
                             .padding(.top, 30)
-                        Text("正在加载模型列表…")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                        } else {
+                            ProgressView()
+                                .padding(.top, 30)
+                            Text("正在加载模型列表…")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
                     } else {
+                        // v3.0.35：缓存数据展示提示（后台刷新成功后自动消失）
+                        if usingCache {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 9))
+                                Text("显示上次加载的列表，正在刷新…")
+                                    .font(.system(size: 10.5))
+                            }
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                        }
                         // v3.0.19 review：全部 provider 模型为空 → 空态提示（防白屏）
                         let hasAnyModel = allProviders.contains { !$0.models.isEmpty }
                         if !hasAnyModel {
@@ -1613,13 +1689,34 @@ struct WechatChannelSheet: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("完成") { dismiss() }
             }
+            // v3.0.35：手动刷新（缓存过期/刷新失败后重拉）
+            ToolbarItem(placement: .primaryAction) {
+                Button { Task { await load() } } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
         }
         .task { await load() }
         }
     }
 
     /// 拉当前微信通道模型 + 全部 provider 模型列表
+    /// v3.0.35：①缓存优先（打开即有列表，不转圈）②两个请求 async let 并发（原串行，channel/model 挂起会拖死 providers）
     private func load() async {
+        // 1) 立即展示缓存
+        if allProviders.isEmpty, !ModelProvidersCache.load().isEmpty {
+            allProviders = ModelProvidersCache.load()
+            usingCache = true
+        }
+        // 2) 并发刷新（互不阻塞）
+        async let cm: Void = loadChannelModel()
+        async let pl: Void = loadProviders()
+        _ = await (cm, pl)
+    }
+
+    /// 拉当前微信通道模型（独立失败不影响模型列表）
+    private func loadChannelModel() async {
         if let j = try? await auth.json("/api/channel/model") {
             currentModel = (j["model"] as? String) ?? "未设置"
             currentProvider = (j["provider"] as? String) ?? ""
@@ -1627,12 +1724,29 @@ struct WechatChannelSheet: View {
         } else {
             currentModel = "读取失败（后端需 v3.0.19）"
         }
-        if let j = try? await auth.json("/api/stream/model-providers?with_models=1"),
-           let arr = j["providers"] as? [[String: Any]] {
-            allProviders = arr.compactMap { d in
-                guard let id = d["id"] as? String else { return nil }
-                let models = (d["models"] as? [String]) ?? []
-                return (id, models)
+    }
+
+    /// 拉 provider 模型列表（成功写缓存；失败置 loadFailed，有缓存则保留缓存展示）
+    private func loadProviders() async {
+        do {
+            let j = try await auth.json("/api/stream/model-providers?with_models=1")
+            guard (j["ok"] as? Bool) == true, let plist = j["providers"] as? [[String: Any]] else {
+                throw APIError.badJSON
+            }
+            var result: [(id: String, models: [String])] = []
+            for p in plist {
+                guard let id = p["id"] as? String else { continue }
+                let models = (p["models"] as? [String]) ?? []
+                result.append((id: id, models: models))
+            }
+            allProviders = result
+            ModelProvidersCache.save(result)
+            usingCache = false
+            loadFailed = false
+        } catch {
+            // 有缓存则保留缓存展示；无缓存时 UI 显示失败态+重试
+            if allProviders.isEmpty {
+                loadFailed = true
             }
         }
     }
@@ -1692,6 +1806,8 @@ struct AgentModelSheet: View {
     @State private var syncResult: String?
     @State private var allProviders: [(id: String, models: [String])] = []
     @State private var localInstalled: [String] = []
+    // v3.0.35：模型列表加载失败（不再无限转圈）
+    @State private var loadFailed = false
 
     /// opencode 模型显示名映射
     private let opencodeNames: [String: String] = [
@@ -1785,10 +1901,35 @@ struct AgentModelSheet: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         if allProviders.isEmpty && localInstalled.isEmpty {
-                            ProgressView()
+                            if loadFailed {
+                                // v3.0.35：加载失败态 + 重试（不再无限转圈）
+                                VStack(spacing: 10) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .font(.system(size: 28))
+                                        .foregroundStyle(.orange)
+                                    Text("模型列表加载失败")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Text("请检查网络或后端服务后重试")
+                                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                                    Button {
+                                        loadFailed = false
+                                        Task { await loadAllProviders() }
+                                    } label: {
+                                        Text("重试")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .padding(.horizontal, 18).padding(.vertical, 6)
+                                            .background(Color.accentColor.opacity(0.12), in: Capsule())
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                                 .padding(.top, 30)
-                            Text("正在加载模型列表…")
-                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                            } else {
+                                ProgressView()
+                                    .padding(.top, 30)
+                                Text("正在加载模型列表…")
+                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
                         } else {
                             // 按 provider 分组显示（v3.0.29 fix：移除 hardcoded 过滤，所有 provider 均展示）
                             ForEach(allProviders, id: \.id) { p in
@@ -1831,6 +1972,10 @@ struct AgentModelSheet: View {
             .onAppear {
                 selected = agentModel
                 selectedProvider = agentProvider
+                // v3.0.35：先展示缓存（打开即有列表不转圈），后台刷新成功后替换
+                if allProviders.isEmpty, !ModelProvidersCache.load().isEmpty {
+                    allProviders = ModelProvidersCache.load()
+                }
                 Task { await loadAllProviders() }
             }
         }
@@ -1912,17 +2057,25 @@ struct AgentModelSheet: View {
         }
     }
 
-    /// 拉取所有 provider 的模型列表
+    /// 拉取所有 provider 的模型列表（v3.0.35：成功写缓存，失败置 loadFailed，有缓存则保留缓存展示）
     private func loadAllProviders() async {
-        guard let j = try? await auth.json("/api/stream/model-providers?with_models=1") else { return }
-        if let providers = j["providers"] as? [[String: Any]] {
+        do {
+            let j = try await auth.json("/api/stream/model-providers?with_models=1")
+            let plist = (j["providers"] as? [[String: Any]]) ?? []
             var result: [(id: String, models: [String])] = []
-            for p in providers {
+            for p in plist {
                 guard let id = p["id"] as? String,
                       let models = p["models"] as? [String] else { continue }
                 result.append((id: id, models: models))
             }
             allProviders = result
+            ModelProvidersCache.save(result)
+            loadFailed = false
+        } catch {
+            // 有缓存则保留缓存展示；无缓存时 UI 显示失败态+重试
+            if allProviders.isEmpty && localInstalled.isEmpty {
+                loadFailed = true
+            }
         }
     }
 

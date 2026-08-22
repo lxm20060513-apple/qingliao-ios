@@ -275,8 +275,11 @@ struct VisionModelSheet: View {
         if let j = try? await auth.json("/api/local/models") {
             localInstalled = (j["models"] as? [[String: Any]] ?? []).map { $0["name"] as? String ?? "" }
         }
-        // 通用 provider
+        // 通用 provider（v3.0.35：先展示缓存，网络成功写缓存，与其他入口共用）
         if allProviders.isEmpty {
+            if !ModelProvidersCache.load().isEmpty {
+                allProviders = ModelProvidersCache.load()
+            }
             if let j = try? await auth.json("/api/stream/model-providers?with_models=1"),
                (j["ok"] as? Bool) == true,
                let plist = j["providers"] as? [[String: Any]] {
@@ -287,6 +290,7 @@ struct VisionModelSheet: View {
                     if !models.isEmpty { result.append((id: id, models: models)) }
                 }
                 allProviders = result
+                ModelProvidersCache.save(result)
             }
         }
     }
@@ -420,6 +424,7 @@ struct VisionModelSheet: View {
                 if !models.isEmpty { result.append((id: id, models: models)) }
             }
             allProviders = result
+            ModelProvidersCache.save(result)
         }
     }
 }
