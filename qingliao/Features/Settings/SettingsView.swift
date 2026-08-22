@@ -1007,6 +1007,9 @@ struct ModelSheet: View {
     @State private var hiddenModels: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
+    // v3.0.33：Agent 模型覆盖提示（Agent 开关开且配置了 agent 模型时，聊天实际走 agent 模型）
+    @AppStorage("qingliao_agent_model") private var agentModel = ""
+    @AppStorage("qingliao_agent_enabled") private var agentOn = true
     // v3.0.18：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
     @State private var localInstalled: [String] = []
     // v3.0.10：视觉模型配置弹窗（模型管理内导航）
@@ -1062,6 +1065,29 @@ struct ModelSheet: View {
                 Text(syncResult)
                     .font(.system(size: 11))
                     .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
+            }
+            // v3.0.33：Agent 模型覆盖提示——Agent 开关开且配置了 agent 模型时，
+            // 聊天实际走 agent 模型（视觉模型 > Agent 模型 > 主模型），此处选主模型不会生效
+            if agentOn && !agentModel.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("聊天实际使用 Agent 模型：\(agentModel)")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Agent 开关开启时优先用 Agent 模型，这里设置主模型不生效；可在设置页「Agent 模型」改为跟随主模型")
+                            .font(.system(size: 10.5)).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                }
+                .padding(11)
+                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .strokeBorder(Color.orange.opacity(0.35), lineWidth: 0.8)
+                )
             }
             Divider()
 
