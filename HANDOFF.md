@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-22
-> 最新版本：v3.0.32（native-3.0 分支，已发版）
+> 最新版本：v3.0.34（native-3.0 分支，已发版）
 
 ---
 
@@ -44,6 +44,20 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.34（模型列表同步并发优化，2026-08-22 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 模型列表同步并发优化 | `SettingsView.swift` + `VisionModelSheet.swift` | ModelSheet/VisionModelSheet 的 4 provider sync-models 改 async let 并行（最坏 40s → ~10s，失效 key 快速失败）；loadAllProviders 去掉空 models 逐个补拉的 N+1（聚合接口已并发+5min 缓存，补拉纯拖慢） |
+| 版本号 | `project.yml` | 3.0.33 → 3.0.34（build 332） |
+
+### v3.0.33（Agent 模型覆盖提示，2026-08-22 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 模型管理弹窗加 Agent 覆盖提示 | `SettingsView.swift` | ModelSheet 顶部条件显示提示：Agent 开关开且配置了 agent 模型时聊天实际走 agent 模型（视觉模型 > Agent 模型 > 主模型），此时在模型管理选主模型不生效；提示条说明原因并引导去 Agent 设置改为跟随主模型 |
+| 版本号 | `project.yml` | 3.0.32 → 3.0.33（build 331） |
 
 ### v3.0.32（视觉模型判定补全，2026-08-22 已发版）
 
