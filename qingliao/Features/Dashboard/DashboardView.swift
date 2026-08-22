@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - 看板页（智能家居 2x3 可控制 + NAS 2x3 + 磁盘弹出式）
 
 enum DashboardSheet: String, Identifiable {
-    case lights, climate, service, disks, docker
+    case lights, climate, service, serviceHermes, disks, docker
     var id: String { rawValue }
 }
 
@@ -12,6 +12,9 @@ struct DashboardView: View {
     @Environment(\.colorScheme) private var scheme   // v3.0.9：背景毛玻璃化深浅适配
 
     @State private var nas = NASStatus()
+    // v3.0.36：模型使用量栏（/api/nas/providers-usage）
+    @State private var providerUsages: [ProviderUsage] = []
+    @State private var usageError = ""
     @State private var haEntities: [HAEntity] = []
     @State private var router = RouterStatus()
     @State private var scrollPos = ScrollPosition()
@@ -205,11 +208,12 @@ struct DashboardView: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         MeterCard(name: "CPU", icon: "cpu.fill", value: nas.cpuText, sub: nil, ratio: nas.cpu / 100.0, color: .blue)
                         MeterCard(name: "内存", icon: "memorychip.fill", value: nas.memUsedText, sub: "/ \(nas.memTotalText)", ratio: nas.memPct, color: .green)
-                        MeterCard(name: "磁盘", icon: "internaldrive.fill", value: nas.maxDiskPctText, sub: "\(nas.disks.count) 个分区 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
+                        MeterCard(name: "磁盘", icon: "internaldrive.fill", value: nas.maxDiskPctText, sub: "\\(nas.disks.filter { $0.isSystem }.count) 系统盘 · \\(nas.disks.filter { !$0.isSystem }.count) 数据卷 · 点击查看", ratio: nas.maxDiskPct / 100.0, color: .orange)
                             .onTapGesture { activeSheet = .disks }
                         ServiceCard(name: "轻聊后端", icon: "server.rack", running: nas.qingliaoAlive, detail: nas.qingliaoMemText)
                             .onTapGesture { activeSheet = .service }
                         ServiceCard(name: "Hermes 网关", icon: "sparkles", running: nas.hermesAlive, detail: nas.hermesMemText)
+                            .onTapGesture { activeSheet = .serviceHermes }
                         // v2.0.72：Docker 管理卡片（点击弹部署弹窗）
                         ServiceCard(name: "Docker", icon: "shippingbox.fill", running: dockerContainerCount > 0,
                                     detail: dockerContainerCount > 0 ? "\(dockerContainerCount) 个容器 · 点击管理" : "暂无容器 · 点击部署")
@@ -217,6 +221,26 @@ struct DashboardView: View {
                         ServiceCard(name: "运行时间", icon: "clock.fill", running: true, detail: nas.uptime)
                         // v2.0.86：硬件温度（CPU / NVMe）
                         ServiceCard(name: "温度", icon: "thermometer", running: true, detail: hwDetail)
+                    }
+
+                    // v3.0.36：模型使用量（DeepSeek/StepFun 官方余额；无接口 provider 降级显示）
+                    sectionTitle("模型使用量")
+                    if usageError.isEmpty && providerUsages.isEmpty {
+                        Text("加载中…")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                    } else if !usageError.isEmpty {
+                        Text(usageError)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(providerUsages) { u in
+                                UsageCard(usage: u)
+                            }
+                        }
                     }
 
                     // v3.0.18：设备一键体检（六维诊断：服务/磁盘/容器/负载/内存/温度）
@@ -250,7 +274,10 @@ struct DashboardView: View {
                     HADeviceSheet(title: "空调", domain: "climate")
                         .presentationDetents([.medium, .large])
                 case .service:
-                    ServiceControlSheet()
+                    ServiceControlSheet(service: .qingliao)
+                        .presentationDetents([.medium])
+                case .serviceHermes:
+                    ServiceControlSheet(service: .hermes)
                         .presentationDetents([.medium])
                 case .disks:
                     DisksSheet(disks: nas.disks)
@@ -379,6 +406,20 @@ struct DashboardView: View {
         }
     }
 
+    /// v3.0.36：模型使用量（DeepSeek/StepFun 余额 + unsupported 降级）
+    private func loadProviderUsage() async {
+        guard let j = try? await auth.json("/api/nas/providers-usage") else {
+            usageError = "用量查询失败"
+            return
+        }
+        if let ps = j["providers"] as? [[String: Any]] {
+            providerUsages = ps.map { ProviderUsage.parse($0) }
+            usageError = ""
+        } else if let e = j["error"] as? String {
+            usageError = e
+        }
+    }
+
     /// 快捷指令：启动/关闭 Clash
     private func clashAction(_ action: String) {
         // v2.0.102：防抖——操作中再点直接忽略（原两个并发 Task 各自 defer 释放 busy 互相覆盖）
@@ -455,6 +496,8 @@ struct DashboardView: View {
         // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
         // 路由器重启后状态永远停在红点/离线，不会自动恢复）
         await loadRouter()
+        // v3.0.36：模型使用量（余额查询，独立于 nas/status）
+        await loadProviderUsage()
     }
 
     // v2.0.132：智能建议缓存（30 分钟有效，避免每次进看板/轮询重复生成费 token）
@@ -637,19 +680,54 @@ struct DashboardView: View {
 
 // MARK: - 服务控制 sheet（HomeKit 卡片式：信息卡 + 重试卡 + 停止卡）
 
+/// v3.0.36：服务类型（轻聊后端 / Hermes 网关）
+enum QLServiceKind: String {
+    case qingliao, hermes
+
+    var title: String {
+        switch self {
+        case .qingliao: return "轻聊后端"
+        case .hermes: return "Hermes 网关"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .qingliao: return "server.rack"
+        case .hermes: return "sparkles"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .qingliao: return "轻聊后端服务"
+        case .hermes: return "Hermes 网关服务"
+        }
+    }
+
+    var restartBody: [String: Any] { ["service": rawValue] }
+}
+
 struct ServiceControlSheet: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
+    let service: QLServiceKind
+
     @State private var busy = false
-    @State private var info = "管理轻聊后端服务"
+    @State private var info: String
     @State private var running: Bool?   // 真实运行状态
     @State private var showStopConfirm = false
+
+    init(service: QLServiceKind) {
+        self.service = service
+        _info = State(initialValue: service == .qingliao ? "管理轻聊后端服务" : "管理 Hermes 网关服务")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("轻聊后端")
+                Text(service.title)
                     .font(.system(size: 17, weight: .bold))
                 Spacer()
                 Button {
@@ -670,14 +748,14 @@ struct ServiceControlSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.blue.opacity(0.15))
-                    Image(systemName: "server.rack")
+                    Image(systemName: service.icon)
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(Color.accentColor)
                 }
                 .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("轻聊后端服务")
+                    Text(service.subtitle)
                         .font(.system(size: 14, weight: .semibold))
                     Text(info)
                         .font(.system(size: 11))
@@ -702,7 +780,7 @@ struct ServiceControlSheet: View {
                 // 真实运行状态
                 if let n = try? await auth.json("/api/nas/status") {
                     let st = NASStatus.parse(n)
-                    running = st.qingliaoAlive
+                    running = service == .qingliao ? st.qingliaoAlive : st.hermesAlive
                 }
             }
 
@@ -726,7 +804,7 @@ struct ServiceControlSheet: View {
                         Text("重试服务")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.primary)
-                        Text("重启轻聊后端进程")
+                        Text(service == .qingliao ? "重启轻聊后端进程" : "重启 Hermes 网关进程")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -743,10 +821,11 @@ struct ServiceControlSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 10)
 
-            // 停止卡
-            Button {
-                showStopConfirm = true
-            } label: {
+            // 停止卡（Hermes 网关不支持停止，隐藏）
+            if service == .qingliao {
+                Button {
+                    showStopConfirm = true
+                } label: {
                 HStack(spacing: 12) {
                     ZStack {
                         Circle().fill(Color.red.opacity(0.15))
@@ -785,6 +864,7 @@ struct ServiceControlSheet: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+            }
 
             Spacer()
         }
@@ -799,7 +879,7 @@ struct ServiceControlSheet: View {
             defer { busy = false }
             do {
                 _ = try await auth.request("/api/nas/service/restart", method: "POST",
-                                           body: ["service": "qingliao"])
+                                           body: service.restartBody)
                 info = "重试指令已发送，服务即将重启"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     if !Task.isCancelled { dismiss() }
@@ -818,7 +898,7 @@ struct ServiceControlSheet: View {
             defer { busy = false }
             do {
                 _ = try await auth.request("/api/nas/service/stop", method: "POST",
-                                           body: ["service": "qingliao"])
+                                           body: service.restartBody)
                 info = "停止指令已发送"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     if !Task.isCancelled { dismiss() }
@@ -1247,12 +1327,36 @@ struct DisksSheet: View {
             .padding(.bottom, 10)
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(disks) { d in
-                        DiskTile(disk: d)
+                // v3.0.36：按 kind 分组显示（系统盘分区 / 数据卷）
+                let system = disks.filter { $0.isSystem }
+                let data = disks.filter { !$0.isSystem }
+                VStack(alignment: .leading, spacing: 14) {
+                    if !system.isEmpty {
+                        Text("系统盘分区")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(system) { d in
+                                DiskTile(disk: d)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    if !data.isEmpty {
+                        Text("数据卷")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(data) { d in
+                                DiskTile(disk: d)
+                            }
+                        }
+                        .padding(.horizontal, 16)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 20)
             }
         }
@@ -1331,6 +1435,65 @@ struct DiskTile: View {
     private var shortName: String {
         let parts = disk.mnt.split(separator: "/").filter { !$0.isEmpty }
         return parts.last.map(String.init) ?? disk.mnt
+    }
+}
+
+// MARK: - v3.0.36 模型使用量卡片（与 MeterCard/ServiceCard 同款 HomeKit 卡片风格）
+
+/// 每 provider 一张：图标 + 名 + 余额/状态 + 副文本；余额低/失败亮警示色
+struct UsageCard: View {
+    let usage: ProviderUsage
+
+    private var statusColor: Color {
+        if usage.unsupported { return .gray }
+        if !usage.available { return .red }
+        if usage.total <= 10 { return .orange }   // 余额低于 10 元预警
+        return .green
+    }
+
+    private var icon: String {
+        switch usage.provider {
+        case "deepseek": return "d.circle.fill"
+        case "stepfun": return "s.circle.fill"
+        case "xiaomi": return "x.circle.fill"
+        case "opencode-apple", "opencode": return "o.circle.fill"
+        case "sensenova": return "s.square.fill"
+        default: return "terminal.fill"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(statusColor.opacity(0.15))
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(statusColor)
+                }
+                .frame(width: 28, height: 28)
+                Text(usage.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 6, height: 6)
+            }
+            Text(usage.balanceText)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(usage.unsupported ? Color.secondary : statusColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(usage.detailText)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .dashboardCard()
     }
 }
 

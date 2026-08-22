@@ -192,6 +192,60 @@ struct ChatSession: Identifiable {
     }
 }
 
+// MARK: - 模型使用量（/api/nas/providers-usage，v3.0.36）
+
+/// v3.0.36：看板「模型使用量」栏数据（DeepSeek/StepFun 官方余额；无接口 provider 标 unsupported）
+struct ProviderUsage: Identifiable {
+    let provider: String
+    let name: String
+    let mode: String          // payg=按量余额 / plan=订阅
+    let available: Bool
+    let unsupported: Bool     // 官方无公开用量接口
+    let total: Double
+    let granted: Double
+    let toppedUp: Double
+    let currency: String
+    let error: String
+
+    var id: String { provider }
+
+    /// 显示文案（余额卡片主文本）
+    var balanceText: String {
+        if unsupported { return "控制台查看" }
+        if total > 0 {
+            let sym = currency == "USD" ? "$" : "¥"
+            return String(format: "%@%.2f", sym, total)
+        }
+        return "—"
+    }
+
+    /// 副文本
+    var detailText: String {
+        if unsupported { return error.isEmpty ? "无公开接口" : error }
+        if !available { return error.isEmpty ? "不可用" : error }
+        var parts: [String] = []
+        if toppedUp > 0 { parts.append(String(format: "充值 %.2f", toppedUp)) }
+        if granted > 0 { parts.append(String(format: "赠金 %.2f", granted)) }
+        return parts.isEmpty ? "可用" : parts.joined(separator: " · ")
+    }
+
+    static func parse(_ d: [String: Any]) -> ProviderUsage {
+        let b = d["balance"] as? [String: Any] ?? [:]
+        return ProviderUsage(
+            provider: d["provider"] as? String ?? "",
+            name: d["name"] as? String ?? d["provider"] as? String ?? "",
+            mode: d["mode"] as? String ?? "payg",
+            available: (d["available"] as? Bool) ?? false,
+            unsupported: (d["unsupported"] as? Bool) ?? false,
+            total: (b["total"] as? Double) ?? 0,
+            granted: (b["granted"] as? Double) ?? 0,
+            toppedUp: (b["topped_up"] as? Double) ?? 0,
+            currency: b["currency"] as? String ?? "CNY",
+            error: d["error"] as? String ?? ""
+        )
+    }
+}
+
 // MARK: - NAS 状态（/api/nas/status）
 
 struct NASStatus {
@@ -260,8 +314,10 @@ struct NASDisk: Identifiable {
     let used: Double
     let total: Double
     let pct: Double
+    let kind: String  // v3.0.36：system=系统盘分区 / data=数据卷（/volume*）
 
     var id: String { mnt }
+    var isSystem: Bool { kind == "system" }
     var usedText: String { byteText(used) }
     var totalText: String { byteText(total) }
     var pctText: String { String(format: "%.0f%%", pct) }
@@ -272,7 +328,8 @@ struct NASDisk: Identifiable {
         let used = (d["used"] as? Double) ?? 0
         let total = (d["total"] as? Double) ?? 0
         let pct = Double(d["pct"] as? String ?? "0") ?? 0
-        return NASDisk(mnt: mnt, fs: fs, used: used, total: total, pct: pct)
+        let kind = d["kind"] as? String ?? (mnt.hasPrefix("/volume") || mnt.hasPrefix("/data") ? "data" : "system")
+        return NASDisk(mnt: mnt, fs: fs, used: used, total: total, pct: pct, kind: kind)
     }
 
     private func byteText(_ b: Double) -> String {

@@ -58,6 +58,42 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
         return audioURL
     }
 
+    /// v3.0.36 分段流式：暂停当前段并返回音频（保留 record 会话，供立即重录下一段）
+    /// 仅切换 AVAudioRecorder 实例，不切 AVAudioSession——避免 stop() 的会话重置开销
+    func stopCurrentSegment() -> URL? {
+        guard let r = recorder else { return nil }
+        r.stop()
+        let u = audioURL
+        audioURL = nil
+        recorder = nil
+        return u
+    }
+
+    /// v3.0.36 分段流式：续录新段（沿用 start 的会话设置，快速重建 recorder）
+    func resumeSegment() -> Bool {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url = dir.appendingPathComponent("voice_asr.m4a")
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ]
+        do {
+            let r = try AVAudioRecorder(url: url, settings: settings)
+            r.delegate = self
+            r.record()
+            recorder = r
+            audioURL = url
+            isRecording = true
+            return true
+        } catch {
+            recorder = nil
+            audioURL = nil
+            return false
+        }
+    }
+
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         isRecording = false
     }
