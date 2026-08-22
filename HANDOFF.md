@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-22
-> 最新版本：v3.0.34（native-3.0 分支，已发版）
+> 最新版本：v3.0.35（native-3.0 分支，已发版）
 
 ---
 
@@ -44,6 +44,14 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.35（模型列表加载优化，2026-08-22 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 微信通道/Agent 弹窗不再无限转圈 | `SettingsView.swift` + `AgentModelSheet` | 打开先显示缓存（UserDefaults 新 ModelProvidersCache）；`/api/channel/model` 与 model-providers 改 async let 并发（原串行）；失败态+重试按钮（原 try? 静默吞错→永远"正在加载模型列表…"）；新增手动刷新按钮 |
+| 通用 provider 接缓存 | `ModelSheet`/`VisionModelSheet` | 打开先显示缓存、后台刷新替换；缓存非空才写，防后端临时故障刷空缓存 |
+| 版本号 | `project.yml` | 3.0.34 → 3.0.35（build 333） |
 
 ### v3.0.34（模型列表同步并发优化，2026-08-22 已发版）
 
