@@ -382,26 +382,32 @@ struct VisionModelSheet: View {
     private func syncModels() async {
         // 复用后端 sync-models 接口
         func fetch(_ provider: String) async -> [String]? {
-            guard let j = try? await auth.json("/api/stream/sync-models?provider=\\(provider)"),
+            guard let j = try? await auth.json("/api/stream/sync-models?provider=\(provider)"),
                   (j["ok"] as? Bool) == true,
                   let list = j["models"] as? [String] else { return nil }
             return list
         }
-        if let s = await fetch("stepfun") {
+        // v3.0.34：4 个 provider 并发同步（async let），避免串行转圈
+        async let sf = fetch("stepfun")
+        async let ds = fetch("deepseek")
+        async let oa = fetch("opencode-apple")
+        async let sn = fetch("sensenova")
+        let (s, d, oaR, snR) = await (sf, ds, oa, sn)
+        if let s {
             stepfunModels = s
             UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
         }
-        if let d = await fetch("deepseek") {
+        if let d {
             deepseekModels = d
             UserDefaults.standard.set(d, forKey: "qingliao_models_deepseek")
         }
-        if let oa = await fetch("opencode-apple") {
-            opencodeAppleModels = oa
-            UserDefaults.standard.set(oa, forKey: "qingliao_models_opencode_apple")
+        if let oaR {
+            opencodeAppleModels = oaR
+            UserDefaults.standard.set(oaR, forKey: "qingliao_models_opencode_apple")
         }
-        if let sn = await fetch("sensenova") {
-            sensenovaModels = sn
-            UserDefaults.standard.set(sn, forKey: "qingliao_models_sensenova")
+        if let snR {
+            sensenovaModels = snR
+            UserDefaults.standard.set(snR, forKey: "qingliao_models_sensenova")
         }
         // 通用 provider
         if let j = try? await auth.json("/api/stream/model-providers?with_models=1"),

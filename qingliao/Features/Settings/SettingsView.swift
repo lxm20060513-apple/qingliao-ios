@@ -1335,12 +1335,14 @@ struct ModelSheet: View {
         syncing = true
         syncResult = nil
         Task {
-            let s = await fetchModels("stepfun")
-            let d = await fetchModels("deepseek")
+            // v3.0.34：4 个 provider 并发同步（async let），最坏 40s → ~10s（失效 key 快速失败）
+            async let stepfun = fetchModels("stepfun")
+            async let deepseek = fetchModels("deepseek")
             // v2.0.140：同步 opencode（apple）订阅
-            let oa = await fetchModels("opencode-apple")
+            async let opencodeApple = fetchModels("opencode-apple")
             // v3.0.4：同步 SenseNova（商汤）订阅模型
-            let sn = await fetchModels("sensenova")
+            async let sensenova = fetchModels("sensenova")
+            let (s, d, oa, sn) = await (stepfun, deepseek, opencodeApple, sensenova)
             if let s {
                 stepfunModels = s
                 UserDefaults.standard.set(s, forKey: "qingliao_models_stepfun")
@@ -1380,13 +1382,10 @@ struct ModelSheet: View {
         var result: [(id: String, models: [String])] = []
         for p in plist {
             guard let id = p["id"] as? String else { continue }
+            // v3.0.34：不再对空 models 逐个补拉 sync-models（N+1）——聚合接口已并发+缓存，
+            // 失效 key 的 provider 补拉也是空/401，纯拖慢同步；直接采用聚合结果
             let models = (p["models"] as? [String]) ?? []
-            // 未知 provider 的模型，通过单独 sync-models 补充（聚合可能因 key 缺失返回空）
-            var m = models
-            if m.isEmpty, let extra = await fetchModels(id) {
-                m = extra
-            }
-            result.append((id: id, models: m))
+            result.append((id: id, models: models))
         }
         allProviders = result
     }
