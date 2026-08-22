@@ -45,6 +45,27 @@
 
 ## 二、版本历史
 
+### v3.0.36（看板大版本：磁盘系统盘+模型用量+Hermes重启+分段流式语音+灵动岛发光，2026-08-22 已发版 CI 中）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 磁盘系统盘分区 | `DashboardView.swift` + `Models.swift` | NASDisk 加 `kind` 字段（system/data），DisksSheet 分组显示；后端 `/:/host_root:ro` 挂载 + 宿主视角 8 分区（/boot/rootfs/ugreen/mnt_factory/overlay + /volume1/2/3） |
+| 模型使用量栏 | `DashboardView.swift` + `Models.swift` + 后端 `usage_api.py` | ProviderUsage 模型 + UsageCard 卡片：DeepSeek ¥36.55（/user/balance）、StepFun ¥15（/v1/accounts）、OpenCode percent 配额（/zen/go/v1/usage：rolling/weekly/monthly + resetsAt）、小米/商汤 unsupported 降级；新接口 `/api/nas/providers-usage` |
+| Hermes 网关卡重启 | `DashboardView.swift` + 后端 `stream_api.py` | ServiceControlSheet 泛化支持 qingliao/hermes 双服务（hermes 隐藏停止卡）；后端 `/api/nas/service/restart` 支持 service=hermes（docker exec hermes-hermes-1 重启，stop 拒绝 400） |
+| 分段流式语音 | `ChatView.swift` + `VoiceRecorder.swift` | 录音中每 5s 切块上传转写，文字增量追加"边说边出字"毛玻璃条；VoiceRecorder `stopCurrentSegment`/`resumeSegment`；转文字/语音指令双模式；修复 read-before-resume 竞态 |
+| 灵动岛发光 | `LiquidGlass.swift` + `QingliaoApp.swift` + `CloudSettingsView.swift` | IslandGlowOverlay（顶部胶囊呼吸光晕，复用 Siri 发光 4 参数）+ 外观弹窗独立开关（本地+云端共用弹窗自动统一） |
+| version | `project.yml` | 3.0.35 → 3.0.36（build 334） |
+
+**v3.0.36 发版后 3 个线上 bug 修复（2026-08-23 全部验证通过）**
+
+| Bug | 根因 | 修复 |
+|---|---|---|
+| Hermes 网关显示已停止 | qingliao 容器极简镜像**无 pgrep/ps** → FileNotFoundError → hermes 恒 null | stream_api.py 改 curl 健康检查 + `docker exec hermes-hermes-1 ps` 取内存 |
+| 智能家居卡片刷不出 | compose 的 QL_HA_TOKEN 是 **30 分钟过期 JWT**（误存 access token），HA 端 8-11 后令牌重置，全链路 401 | 用户新提供长期令牌 → 更新 compose/重建容器 + ha_config.json + Hermes 侧 .ha_token（4 处） |
+| opencode 卡片 error | 容器内 getent 优先解析 **IPv6**（2606:4700:78::）而 v6 路由不通 → 连接超时 | usage_api.py query_opencode 强制 IPv4（socket.getaddrinfo AF_INET）+ 短超时 8s；实测 1.1-1.5s 稳定 |
+
+**部署注意**：compose env 变更必须 `docker compose up -d --force-recreate`（`docker restart` 不重新注入 env）；容器内无 pgrep/ps/不能直接 docker.sock，验证用宿主 python urllib+sudo PTY。
+
 ### v3.0.35（模型列表加载优化，2026-08-22 已发版）
 
 | 改动 | 文件 | 说明 |
