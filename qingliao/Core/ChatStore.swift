@@ -355,7 +355,8 @@ final class ChatStore {
               let fileURL = json["url"] as? String else { return nil }
         // v3.0.37：后端返回相对路径 → 拼 baseURL 成完整可访问 URL（WiFi 直连 / 蜂窝中继均按各自 base）
         if fileURL.hasPrefix("/") {
-            return base.rstrip("/") + fileURL
+            let trimmedBase = base.hasSuffix("/") ? String(base.dropLast()) : base
+            return trimmedBase + fileURL
         }
         return fileURL
     }
