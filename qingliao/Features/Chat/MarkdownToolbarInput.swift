@@ -59,6 +59,7 @@ struct MarkdownToolbarInput: UIViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     var isFocused: Bool = false
+    var onFocusChange: (Bool) -> Void = { _ in }
     var onChangeHeight: (CGFloat) -> Void = { _ in }
 
     @MainActor
@@ -66,6 +67,13 @@ struct MarkdownToolbarInput: UIViewRepresentable {
         var parent: MarkdownToolbarInput
         init(_ parent: MarkdownToolbarInput) { self.parent = parent }
 
+        func textViewDidBeginEditing(_ tv: UITextView) {
+            // 用户点击弹键盘 → 写回 FocusState（否则 updateUIView 会误 resign 收回键盘）
+            parent.onFocusChange(true)
+        }
+        func textViewDidEndEditing(_ tv: UITextView) {
+            parent.onFocusChange(false)
+        }
         func textViewDidChange(_ tv: UITextView) {
             parent.text = tv.text
             parent.selectedRange = tv.selectedRange
