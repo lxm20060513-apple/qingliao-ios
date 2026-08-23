@@ -76,6 +76,8 @@ struct SettingsView: View {
     @AppStorage("qingliao_ball_input") private var ballInput = true
     // v2.0.45：隐藏 Dock 栏开关
     @AppStorage("qingliao_hide_dock") private var hideDock = false
+    // v3.0.44：Dock 透明度（默认 1.0 = 3.0.43 原物质感；可调透，1 为全不偷光）
+    @AppStorage("qingliao_dock_opacity") private var dockOpacity = 1.0
     // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
     @AppStorage("qingliao_agent_enabled") private var agentOn = true
 
@@ -294,6 +296,19 @@ struct SettingsView: View {
                             DockVisibility.shared.forceHidden = false; DockVisibility.shared.reset()
                         }
                     }
+                if !hideDock {
+                    Divider().padding(.leading, 52)
+                    // v3.0.44：Dock 透明度滑条（默认 1.0 = 3.0.43 原物质感）
+                    HStack(spacing: 8) {
+                        Image(systemName: "circle.lefthalf.filled").font(.system(size: 13)).foregroundStyle(.teal).frame(width: 28)
+                        Text("Dock 透明度").font(.system(size: 14)).foregroundStyle(.primary)
+                        Spacer()
+                        Slider(value: $dockOpacity, in: 0.35...1.0).tint(.teal)
+                            .frame(width: 120)
+                        Text("\(Int(dockOpacity * 100))%").font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                }
                 Divider().padding(.leading, 52)
                 toggleRow(icon: "waveform", iconColor: .purple, title: "输入框流光光效", isOn: $glowOn)
                 Divider().padding(.leading, 52)

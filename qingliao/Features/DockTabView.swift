@@ -118,6 +118,8 @@ struct DockBar: View {
     @Binding var selected: DockTab
     @Environment(\.colorScheme) private var scheme
     @State private var bounce = false
+    // v3.0.44：Dock 透明度（设置→外观调节，默认1.0）
+    @AppStorage("qingliao_dock_opacity") private var dockOpacity = 1.0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -151,7 +153,7 @@ struct DockBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial.opacity(0.72))   // v3.0.44：更透一点（原 opaque 不透，现在是半透明玻璃）
+        .background(.ultraThinMaterial.opacity(dockOpacity))   // v3.0.44：透明度可调（设置→外观→Dock 透明度，默认1.0=3.0.43原物质感）
         .clipShape(Capsule())
         .overlay {
             Capsule().strokeBorder(
