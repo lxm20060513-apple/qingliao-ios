@@ -208,6 +208,8 @@ struct ChatView: View {
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
     @State private var toolCards: [ToolCardItem] = []
     @State private var toolGate = ToolConfirmGate()
+    // v3.0.41 性能：流式节流标记（50ms 合并一次 stream.content 更新）
+    @State private var lastStreamFlush: Date? = nil
     // v3.0.27：长文目录
     @State private var showTOCSheet = false
 
@@ -1299,7 +1301,13 @@ struct ChatView: View {
                         switch event {
                         case .text(let delta):
                             acc.text += delta
-                            self.stream.content = acc.text
+                            // v3.0.41 性能：流式节流——每 delta 更新 stream.content 触发全树重建，
+                            // 超长文本高频重建=卡死主因；限 50ms 合并一次（视觉仍连贯）
+                            let now = Date()
+                            if self.lastStreamFlush == nil || now.timeIntervalSince(self.lastStreamFlush!) >= 0.05 {
+                                self.lastStreamFlush = now
+                                self.stream.content = acc.text
+                            }
                         case .toolCard(let title, let ok):
                             self.toolCards.append(ToolCardItem(title: title, ok: ok))
                         case .done(let full):

@@ -81,12 +81,17 @@ struct MessageBlockView: View {
     // v3.0.17：流式输出中用 SwiftUI Text 渲染（UITextView 在流式高频更新下有锁旧窄布局/字体缩放 bug 家族，
     // 见 references/ui-textview-layout-shrink.md；流式中无需长按菜单，落库后恢复 SelectableTextLabel）
     var useSwiftUIText = false
+    // v3.0.41 性能：流式输出中超长文本渲染优化——纯 Text 渲染（跳过 markdown 解析/AttributedString 转换）
+    var streaming: Bool = false
 
     // v3.0.2 性能：缓存 markdown 渲染结果——流式每段更新 parent.messages 会触发子视图重算，
     // 若每次 body 都 MarkdownRenderer.render() 重新解析，长文本/流式下是滚动+更新卡顿主因。
     // 用 @State 缓存 + 内容指纹：文本/字号未变 → 复用已渲染的 NSAttributedString。
     @State private var cachedKey = ""
     @State private var cachedAttr: NSAttributedString? = nil
+    // v3.0.41 性能：缓存 AttributedString 本体（NSAttributedString→AttributedString 对超长文本也是 O(n) 转换，
+    // 滚动时每次 body 重算都转一次 = 长文本滑动卡顿主因之一）
+    @State private var cachedAttrStr: AttributedString? = nil
 
     /// 渲染并缓存 markdown（内容指纹：文本+字号）
     private func cachedRender(_ text: String) -> NSAttributedString {
@@ -94,13 +99,18 @@ struct MessageBlockView: View {
         if key != cachedKey || cachedAttr == nil {
             cachedKey = key
             cachedAttr = NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize)))
+            cachedAttrStr = nil   // 重新解析后重建 AttributedString 缓存
         }
         return cachedAttr ?? NSAttributedString(string: text)
     }
 
     /// v3.0.17：流式 SwiftUI Text 用 —— 复用同一缓存转 AttributedString
+    /// v3.0.41：AttributedString 本体缓存（key 未变直接复用，跳过转换）
     private func cachedRenderText(_ text: String) -> AttributedString {
-        AttributedString(cachedRender(text))
+        if cachedAttrStr == nil, let attr = cachedRender(text) as NSAttributedString? {
+            cachedAttrStr = AttributedString(attr)
+        }
+        return cachedAttrStr ?? AttributedString(text)
     }
 
     /// 代码块/表格共用的 SwiftUI 长按菜单（与原气泡级菜单项一致）
@@ -150,7 +160,16 @@ struct MessageBlockView: View {
     var body: some View {
         switch block.kind {
         case .markdown(let text):
-            if useSwiftUIText {
+            if streaming {
+                // v3.0.41 性能：流式中纯 Text 渲染——不做 markdown 解析/AttributedString 转换
+                //（流式高频更新下每次 body 重算都要全量解析超长文本 = 滑动卡死主因；
+                //  流式未完成的 markdown 解析无意义，落库后走完整渲染）
+                Text(text)
+                    .font(.system(size: CGFloat(fontSize)))
+                    .lineSpacing(aiLineSpacing)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if useSwiftUIText {
                 // v3.0.17：流式输出中的 AI 长文 —— SwiftUI Text 原生渲染，无 UITextView 布局锁/字体缩放问题
                 // v3.0.18：AI 消息落库后也保持 SwiftUI Text（不再切回 UITextView）——根治"字挤小框"
                 // 长按菜单用 contextMenu 提供（复制/引用/分享/大爆炸/重新生成/撤回/删除，与 UITextView 编辑菜单一致）
@@ -417,7 +436,8 @@ struct MessageBubble: View {
                                                     onRegenerate: onRegenerate,
                                                     onWithdraw: nil,
                                                     onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
-                                                    useSwiftUIText: true)   // v3.0.18：AI 消息（含落库后）恒用 SwiftUI Text——根治"字挤小框"（UITextView 流式锁窄 bug 家族，v3.0.17 只修流式中、落库后切回仍复现）
+                                                    useSwiftUIText: true,
+                                                    streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
                                 }
                             }
                         }
@@ -519,7 +539,11 @@ struct MessageBubble: View {
     }
 
     /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
+    /// v3.0.41 性能：流式输出中跳过分段（split/图片展开都是 O(n) 全量扫描），直接单块渲染
     private var contentBlocks: [MessageContentBlock] {
+        if streamingText {
+            return [.init(kind: .markdown(message.content))]
+        }
         let parts = Self.expandMediaMarks(message.content, serverURL: serverURL).components(separatedBy: "```")
         var blocks: [MessageContentBlock] = []
         for (i, p) in parts.enumerated() {
