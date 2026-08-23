@@ -114,7 +114,7 @@ struct CloudSettingsView: View {
                     }
                     .glassListCard()
 
-                    // v3.0.4：退出登录胶囊图标（对齐本地设置页样式）
+                    // v3.0.4：退出登录胶囊图标（v3.0.44：样式与本地设置页统一——本地为准）
                     SectionHeader("")
                     Button {
                         confirmLogout = true
@@ -126,10 +126,8 @@ struct CloudSettingsView: View {
                                 .font(.system(size: 15, weight: .semibold))
                         }
                         .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color.red.opacity(0.10),
-                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 40).padding(.vertical, 13)
+                        .background(Color.red.opacity(0.35), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .confirmationDialog("退出登录？", isPresented: $confirmLogout, titleVisibility: .visible) {
@@ -143,6 +141,7 @@ struct CloudSettingsView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
+                .padding(.bottom, 100)   // v3.0.44：底部避让 Dock（对齐本地设置页 100pt），否则退出登录按钮被 Dock 挡住
             }
         }
         .sheet(isPresented: $showAddSheet) {

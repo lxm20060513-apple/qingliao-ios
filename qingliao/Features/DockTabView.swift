@@ -151,16 +151,16 @@ struct DockBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
+        .background(.ultraThinMaterial.opacity(0.72))   // v3.0.44：更透一点（原 opaque 不透，现在是半透明玻璃）
         .clipShape(Capsule())
         .overlay {
             Capsule().strokeBorder(
-                LinearGradient(colors: [Color.white.opacity(0.38), Color.white.opacity(0.10)],
+                LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
                                startPoint: .top, endPoint: .bottom),
                 lineWidth: 0.5
             )
         }
-        .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
         .onReceive(NotificationCenter.default.publisher(for: .qingliaoSent)) { _ in
             withAnimation(.spring(duration: 0.25, bounce: 0.5)) {
                 bounce = true

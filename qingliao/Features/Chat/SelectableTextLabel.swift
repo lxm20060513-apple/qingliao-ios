@@ -13,6 +13,16 @@ import UIKit
 //    selectedTextRange（UITextRange 版）依然有效 —— 选中文字统一用 selectedTextRange
 
 struct SelectableTextLabel: UIViewRepresentable {
+    // v3.0.44 性能：sizeThatFits 高度缓存（跨 LazyVStack cell 存活）
+    // 长文本每次被 sizeThatFits 问高度都全量排版 = 滚动卡主因；同文本+同宽命中即免二次排版。
+    // NSCache 线程安全 + LRU 自动清理防内存暴涨；key = 文本hash|宽度|字号。
+    // （NSCache 官方线程安全，static let 惰性初始化亦线程安全，故 nonisolated(unsafe) 是安全逃逸）
+    nonisolated(unsafe) static let heightCache = NSCache<NSString, NSNumber>()
+    // v3.0.44：上限防流式期间增量死条目无限累积（NSCache 默认 countLimit=0 不限）
+    nonisolated(unsafe) static let heightCacheInit: Void = {
+        SelectableTextLabel.heightCache.countLimit = 512
+    }()
+
     let attributedText: NSAttributedString
     let fallbackColor: UIColor          // 无颜色属性的文本用此色（用户消息白字 / AI 消息 label）
     // v2.0.125：行距可配（AI 回复行距缩小；用户消息保持原行距）
@@ -115,21 +125,55 @@ struct SelectableTextLabel: UIViewRepresentable {
     // v3.0.4 fix（气泡自适应+无抖动）：宽度 = min(单行内容宽, 最大宽)——单行短文本窄气泡，
     // 多行超宽自动钳制为最大宽；宽度随文本单调增长（短→窄 长→宽），流式时平滑不跳变
     // （区别于 v3.0.2 按高度判断单行 → 边界抖动"字时大时小"）。
+    /// v3.0.44：缓存 key 用的当前字号（与 updateUIView 内实际渲染字号一致）
+    private func tvFontSize() -> CGFloat {
+        let s = UserDefaults.standard.double(forKey: "qingliao_font_size")
+        return CGFloat(s > 0 ? s : 15)
+    }
+
+    /// v3.0.44：缓存 key —— 文本|宽度|字号|行距 齐全，与 updateUIView 渲染指纹一致
+    /// （宽度/字号 rounded 避免 Int 截断在换行临界错 1 行）
+    private func measureKey(_ text: String, width: CGFloat) -> String {
+        let spacing = lineSpacingFromSettings
+            ? UserDefaults.standard.double(forKey: "qingliao_ai_line_spacing")
+            : lineSpacing
+        return "\(text.hashValue)|\(text.count)|\(width.rounded())|\(tvFontSize().rounded())|\(spacing)"
+    }
+
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        _ = Self.heightCacheInit   // 触发 countLimit 初始化
         let maxWidth = UIScreen.main.bounds.width - 60
         // v3.0.5 review fix：优先用容器提案宽（iPad 分栏等窄容器），无提案才用屏幕宽
         let available = (proposal.width.map { $0.isFinite ? $0 : nil } ?? nil) ?? maxWidth
         let upperBound = min(available, maxWidth)
+        let text = attributedText.string
+        // v3.0.44 fix：命中/写入前校验 tv 实际内容 == 目标文本，否则跳过缓存
+        //（防先于 updateUIView 用空/旧 tv 测出错误高度污染真实 key）
+        let tvMatches = (tv.text == text)
+        let key = measureKey(text, width: fillWidth ? upperBound : 0)
         if fillWidth {
+            // v3.0.44：命中高度缓存直接返回（长文本滚动不再重复全量排版）
+            if tvMatches, let h = Self.heightCache.object(forKey: key as NSString) {
+                return CGSize(width: upperBound, height: h.doubleValue)
+            }
             // v3.0.11 fix：满容器宽——宽度恒定（只随行数长高），流式内容增长时布局不跳变
             let size = uiView.sizeThatFits(CGSize(width: upperBound, height: .greatestFiniteMagnitude))
+            if tvMatches {
+                Self.heightCache.setObject(NSNumber(value: size.height), forKey: key as NSString)
+            }
             return CGSize(width: upperBound, height: size.height)
         }
-        // 单行整段内容宽（不换行测量）
+        // 非 fillWidth（用户消息自适应气泡）同样走缓存，key 用最终计算宽度
         let contentW = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
-        // 宽度 = min(内容宽 + 少量余量, 容器可用宽, 屏幕最大宽)，单调增长无跳变
         let target = max(min(contentW + 10, upperBound), 1)
+        let wKey = measureKey(text, width: target)
+        if tvMatches, let h = Self.heightCache.object(forKey: wKey as NSString) {
+            return CGSize(width: target, height: h.doubleValue)
+        }
         let size = uiView.sizeThatFits(CGSize(width: target, height: .greatestFiniteMagnitude))
+        if tvMatches {
+            Self.heightCache.setObject(NSNumber(value: size.height), forKey: wKey as NSString)
+        }
         return CGSize(width: target, height: size.height)
     }
 

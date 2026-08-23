@@ -358,7 +358,7 @@ struct SettingsView: View {
             Button("退出登录", role: .destructive) { auth.logout() }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("退出后回到登录页，可切换本地 AI / 云端 AI 模式。")
+            Text("退出后回到登录页，可切换本地 AI / 云端 AI 模式。云端配置（API Key）仍保留在手机本地。")
         }
         .padding(.top, 2)
     }

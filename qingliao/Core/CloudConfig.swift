@@ -47,6 +47,12 @@ struct CloudProviderPreset: Identifiable {
                             baseURL: "https://token.sensenova.cn/v1",
                             defaultModel: "deepseek-v4-flash",
                             apiKeyHint: "sensenova.cn 控制台获取"),
+        // v3.0.44：小米 MiMo Token 计划（token-plan-cn.xiaomimimo.com）
+        // ⚠️ 模型名必须是网关支持的（mimo-v2.5 系）；填 MiMo-7B-RL 这类会 401/400（已实踩）
+        CloudProviderPreset(id: "mimo", name: "小米 MiMo",
+                            baseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+                            defaultModel: "mimo-v2.5",
+                            apiKeyHint: "米家/小米开放平台 Token 计划获取 (tp-...)"),
         CloudProviderPreset(id: "custom", name: "自定义 (OpenAI 兼容)",
                             baseURL: "",
                             defaultModel: "",
