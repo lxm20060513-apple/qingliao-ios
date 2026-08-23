@@ -21,9 +21,9 @@ enum MarkdownRenderer {
     /// LazyVStack 滚动离屏会销毁 cell（@State 缓存随之丢失），滚回时若重新完整解析
     /// 几万字长文（render 逐行 += 是 O(n²)）→ 主线程阻塞数秒 = 全 App 卡死。
     /// 全局字典缓存：cell 重建直接命中，永不重复解析同一文本。
-    private static var renderCache: [String: NSAttributedString] = [:]
-    private static var renderAttrCache: [String: AttributedString] = [:]
-    private static let renderCacheLock = NSLock()
+    private static nonisolated(unsafe) var renderCache: [String: NSAttributedString] = [:]
+    private static nonisolated(unsafe) var renderAttrCache: [String: AttributedString] = [:]
+    private static nonisolated(unsafe) let renderCacheLock = NSLock()
 
     /// 缓存版渲染（返回 NSAttributedString 供 SelectableTextLabel / AttributedString 转换）
     static func renderCached(_ text: String, baseSize: CGFloat) -> NSAttributedString {
