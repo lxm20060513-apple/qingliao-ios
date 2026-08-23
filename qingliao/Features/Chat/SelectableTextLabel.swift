@@ -149,7 +149,7 @@ struct SelectableTextLabel: UIViewRepresentable {
         let text = attributedText.string
         // v3.0.44 fix：命中/写入前校验 tv 实际内容 == 目标文本，否则跳过缓存
         //（防先于 updateUIView 用空/旧 tv 测出错误高度污染真实 key）
-        let tvMatches = (tv.text == text)
+        let tvMatches = (uiView.text == text)
         let key = measureKey(text, width: fillWidth ? upperBound : 0)
         if fillWidth {
             // v3.0.44：命中高度缓存直接返回（长文本滚动不再重复全量排版）
