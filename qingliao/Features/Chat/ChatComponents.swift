@@ -831,6 +831,14 @@ struct ChatInputBar: View {
                 }
             }
         }
+        // v3.0.38 fix2：外部要求收键盘（点空白 inputFocus=false / 切语音）→ UIKit 兜底强制 resign。
+        // 注意：点输入框弹键盘走 UIKit 原生（updateUIView 不 resign 防竞态），FocusState 只管外部显式收。
+        .onChange(of: focused) { _, newVal in
+            if !newVal {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            }
+        }
     }
 
     /// 完整输入栏（原 ChatInputBar 内容）

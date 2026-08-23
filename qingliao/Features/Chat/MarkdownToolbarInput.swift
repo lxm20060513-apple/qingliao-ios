@@ -102,18 +102,19 @@ struct MarkdownToolbarInput: UIViewRepresentable {
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
-        // 外部文本更新（语音转写/工具栏格式化）→ 同步
+        // v3.0.38 fix：外部文本更新（语音转写/工具栏格式化）→ 同步
         if tv.text != text {
             tv.text = text
             // 工具栏应用格式后恢复目标光标（限幅防越界）
             let target = min(selectedRange.location, (text as NSString).length)
             tv.selectedRange = NSRange(location: target, length: 0)
         }
-        // 焦点状态同步（FocusState 不适用于 UIKit 桥接，手动 firstResponder）
+        // v3.0.38 fix2：点击弹不出键盘——绝不在 updateUIView 里 resign 键盘！
+        // 竞态：点击→UIKit 弹键盘→SwiftUI 重渲染→isFocused 仍 false→旧代码 resign→键盘立刻被收回。
+        // 这里只负责"外部要求弹键盘"（球展开/转写完成 focused=true→become），
+        // resign 交给 ChatInputBar 的 onChange(of: focused) 显式兜底。
         if isFocused && !tv.isFirstResponder {
             tv.becomeFirstResponder()
-        } else if !isFocused && tv.isFirstResponder {
-            tv.resignFirstResponder()
         }
     }
 }
