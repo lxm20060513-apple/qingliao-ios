@@ -760,9 +760,6 @@ struct ChatInputBar: View {
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
     @State private var pressKeyboardUp = false
-    // v3.0.37：富文本输入——UITextView 桥接（选区 + 工具栏格式化）
-    @State private var editorSelRange = NSRange(location: 0, length: 0)
-    @State private var editorHeight: CGFloat = 44
     // v2.0.129：Siri 圆球输入（设置开关，默认开）——默认状态是圆球，单击展开输入框，长按语音转文字
     @AppStorage("qingliao_ball_input") private var ballInput = true
     @State private var ballExpanded = false   // 球 → 输入框展开态（切会话由外层 .id() 重建复位）
@@ -831,14 +828,6 @@ struct ChatInputBar: View {
                 }
             }
         }
-        // v3.0.38 fix2：外部要求收键盘（点空白 inputFocus=false / 切语音）→ UIKit 兜底强制 resign。
-        // 注意：点输入框弹键盘走 UIKit 原生（updateUIView 不 resign 防竞态），FocusState 只管外部显式收。
-        .onChange(of: focused) { _, newVal in
-            if !newVal {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                to: nil, from: nil, for: nil)
-            }
-        }
     }
 
     /// 完整输入栏（原 ChatInputBar 内容）
@@ -873,24 +862,22 @@ struct ChatInputBar: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.red.opacity(0.08), in: Capsule())
             } else {
-                // v3.0.37：富文本输入（路线 B）——UITextView 桥接 + 格式工具栏
-                // 原 TextField(axis:.vertical) 无选区 API，无法支持"选中文字应用格式"；
-                // 桥接 UITextView 读 selectedRange，工具栏对选区包 Markdown 标记，发送仍走 Markdown 源码
-                VStack(spacing: 2) {
-                    MarkdownToolbar { tool in
-                        let (newText, cursor) = applyMarkdownTool(tool, text: text, range: editorSelRange)
-                        text = newText
-                        editorSelRange = NSRange(location: cursor, length: 0)
-                    }
-                    MarkdownToolbarInput(text: $text, selectedRange: $editorSelRange, isFocused: focused,
-                             onFocusChange: { focused = $0 }) { h in
-                        // v2.0.35：1行起（最小高）→ 6 行上限（对应原 lineLimit 1...6）
-                        editorHeight = min(max(h, 44), 150)
-                    }
-                    .frame(height: editorHeight)
+                // v3.0.40：回滚富文本输入（UITextView 桥接体验不佳）→ 恢复原 TextField(axis:.vertical)
+                // v2.0.34：placeholder 用 overlay 自定义（vertical axis 的 TextField 自带
+                // placeholder 在 lineLimit(2...6) 多行高下顶部对齐，视觉不居中）
+                TextField("", text: $text, axis: .vertical)
+                    .font(.system(size: 15))
+                    .lineLimit(1...6)   // v2.0.35：1行起（原来2...6最小2行高→单行光标/文字偏上不居中）
+                    .padding(.vertical, 12)   // v2.0.93f：9→12 输入框加高（用户反馈太窄）
+                    .padding(.horizontal, 2)
+                    .fixedSize(horizontal: false, vertical: true)   // 文字超宽自动增高输入框，旧文字始终可见
+                    .focused($focused)
                     // v2.0.106：长按输入框 = 进入语音转文字（与长按发送键同效；收键盘由 ChatView 处理）
+                    // v2.0.106b：onLongPressGesture 被 UITextField 内置长按(放大镜/选择)拦截不触发
+                    //           → 改 simultaneousGesture 与系统手势共存触发
                     // v2.0.109b：onChanged（down 瞬间）记录键盘可见状态——键盘开=true 保持，关=false 收回
                     // v3.0.4 fix：云端无语音 → 输入框长按不触发语音转文字（保留系统默认长按）
+                    //           （用 .simultaneousGesture 里 if/else 各自挂同类型 LongPressGesture，规避泛型不一致）
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: voiceEnabled ? 0.4 : 3600)
                             .onChanged { _ in
@@ -924,7 +911,6 @@ struct ChatInputBar: View {
                             }
                         }
                     }
-                }
             }
 
             // v2.0.88：AI 回答中也可继续发送（消息排队，答完自动逐条回）；
