@@ -94,11 +94,13 @@ struct MessageBlockView: View {
     @State private var cachedAttrStr: AttributedString? = nil
 
     /// 渲染并缓存 markdown（内容指纹：文本+字号）
+    /// v3.0.43：改走 MarkdownRenderer.renderCached 全局缓存（跨 cell 生命周期——LazyVStack
+    /// 滚动离屏销毁 cell 后 @State 丢失，若重新全量解析超长文本=主线程卡死；全局缓存命中即免）
     private func cachedRender(_ text: String) -> NSAttributedString {
         let key = "\(text.hashValue)|\(fontSize)"
         if key != cachedKey || cachedAttr == nil {
             cachedKey = key
-            cachedAttr = NSAttributedString(MarkdownRenderer.render(text, baseSize: CGFloat(fontSize)))
+            cachedAttr = MarkdownRenderer.renderCached(text, baseSize: CGFloat(fontSize))
             cachedAttrStr = nil   // 重新解析后重建 AttributedString 缓存
         }
         return cachedAttr ?? NSAttributedString(string: text)
@@ -106,9 +108,12 @@ struct MessageBlockView: View {
 
     /// v3.0.17：流式 SwiftUI Text 用 —— 复用同一缓存转 AttributedString
     /// v3.0.41：AttributedString 本体缓存（key 未变直接复用，跳过转换）
+    /// v3.0.43：走 renderCachedAttr 全局双缓存（跨 cell 生命周期，滚动重建不重复转换）
     private func cachedRenderText(_ text: String) -> AttributedString {
-        if cachedAttrStr == nil, let attr = cachedRender(text) as NSAttributedString? {
-            cachedAttrStr = AttributedString(attr)
+        let key = "\(text.hashValue)|\(fontSize)"
+        if key != cachedKey || cachedAttrStr == nil {
+            cachedKey = key
+            cachedAttrStr = MarkdownRenderer.renderCachedAttr(text, baseSize: CGFloat(fontSize))
         }
         return cachedAttrStr ?? AttributedString(text)
     }

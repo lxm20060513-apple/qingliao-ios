@@ -16,6 +16,45 @@ enum MarkdownRenderer {
         return out
     }
 
+    // MARK: - v3.0.43 全局渲染缓存（跨 LazyVStack cell 生命周期）
+
+    /// LazyVStack 滚动离屏会销毁 cell（@State 缓存随之丢失），滚回时若重新完整解析
+    /// 几万字长文（render 逐行 += 是 O(n²)）→ 主线程阻塞数秒 = 全 App 卡死。
+    /// 全局字典缓存：cell 重建直接命中，永不重复解析同一文本。
+    private static var renderCache: [String: NSAttributedString] = [:]
+    private static var renderAttrCache: [String: AttributedString] = [:]
+    private static let renderCacheLock = NSLock()
+
+    /// 缓存版渲染（返回 NSAttributedString 供 SelectableTextLabel / AttributedString 转换）
+    static func renderCached(_ text: String, baseSize: CGFloat) -> NSAttributedString {
+        renderCachedPair(text, baseSize: baseSize).0
+    }
+
+    /// 缓存版渲染（返回 AttributedString 供 SwiftUI Text 直接渲染）
+    static func renderCachedAttr(_ text: String, baseSize: CGFloat) -> AttributedString {
+        renderCachedPair(text, baseSize: baseSize).1
+    }
+
+    /// 双缓存统一入口：NSAttributedString + AttributedString 一次解析两形态都存，
+    /// 跨 LazyVStack cell 生命周期命中（超长文本 O(n²) 解析绝不在滚动/重建时重复发生）
+    static func renderCachedPair(_ text: String, baseSize: CGFloat) -> (NSAttributedString, AttributedString) {
+        let key = "\(text.hashValue)|\(baseSize)"
+        renderCacheLock.lock()
+        defer { renderCacheLock.unlock() }
+        if let ns = renderCache[key], let at = renderAttrCache[key] {
+            return (ns, at)
+        }
+        let rendered = render(text, baseSize: baseSize)   // 首次 O(n²) 全量解析
+        let ns = NSAttributedString(rendered)
+        if renderCache.count > 120 {
+            renderCache.removeAll()   // 简单防爆：上限内保留，超了清空重来（一次性成本可接受）
+            renderAttrCache.removeAll()
+        }
+        renderCache[key] = ns
+        renderAttrCache[key] = rendered
+        return (ns, rendered)
+    }
+
     // MARK: - 行级语法
 
     private static func renderLine(_ line: String, baseSize: CGFloat) -> AttributedString {
