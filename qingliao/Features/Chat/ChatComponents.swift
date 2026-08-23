@@ -169,7 +169,7 @@ struct MessageBlockView: View {
                     .lineSpacing(aiLineSpacing)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else if useSwiftUIText {
+            } else if useSwiftUIText && text.count <= 6000 {
                 // v3.0.17：流式输出中的 AI 长文 —— SwiftUI Text 原生渲染，无 UITextView 布局锁/字体缩放问题
                 // v3.0.18：AI 消息落库后也保持 SwiftUI Text（不再切回 UITextView）——根治"字挤小框"
                 // 长按菜单用 contextMenu 提供（复制/引用/分享/大爆炸/重新生成/撤回/删除，与 UITextView 编辑菜单一致）
@@ -180,6 +180,11 @@ struct MessageBlockView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contextMenu { bubbleMenu }
             } else {
+                // v3.0.41 fix：超长静态文本（>6000 字）改回 UITextView 渲染——
+                // SwiftUI 大 Text 在 LazyVStack 滚动时每次布局都全量 CoreText 排版（几万字），
+                // 生成后上下滑动直接卡死；UITextView 布局一次后高度缓存，滚动流畅。
+                // 流式/普通长度消息仍走上面的 SwiftUI Text（v3.0.17-18 布局 bug 只在流式高频更新时出现，
+                // 静态长文本无此问题）。
                 // v2.0.125：UITextView 渲染 —— 长按文字弹菜单，点「选择文本」从手按位置选中可拖动
                 // v3.0.2 性能：用 cachedRender 缓存 markdown 渲染结果（避免流式/滚动反复重解析）
                 SelectableTextLabel(
