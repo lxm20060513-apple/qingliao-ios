@@ -809,9 +809,10 @@ struct ChatInputBar: View {
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 VStack(spacing: 18) {
                     // v3.0.46：扫码球（青色粒子+扫描框+扫描线，点击散开识物/识人/翻译/扫码）
-                    // rev2：录音/转写中 hidden(而非 opacity0)——真正移除渲染与命中，省算且防隐形点击
+                    // rev3：录音/转写中隐藏——.hidden(Bool) 不存在，用 opacity0 + 关闭命中(防隐形点击)
                     ScanOrbView { mode in onScanPick(mode) }
-                        .hidden(isRecording || transcribing)
+                        .opacity(isRecording || transcribing ? 0 : 1)
+                        .allowsHitTesting(!(isRecording || transcribing))
                     // v2.0.129 智能球保持原交互（单击展开输入框 / 长按语音转文字）
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,

@@ -568,6 +568,12 @@ struct ChatView: View {
                         // v3.0.19：长按输入框 = 原语音转文字；长按智能球 = 语音指令（走 startVoiceCommand）
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
                         onBallLongPress: { startVoiceCommand() },
+                        // v3.0.46：扫码球选中子功能 → 弹相机，拍到的图带对应 Prompt 自动发送
+                        // 注意：按 ChatInputBar 声明序，onScanPick 必须在 voiceEnabled 之前(rev fix)
+                        onScanPick: { mode in
+                            scanMode = mode
+                            showScanCamera = true
+                        },
                         // v3.0.4：云端模式无后端 ASR → 关闭全部语音入口
                         voiceEnabled: !CloudConfig.shared.isCloudMode,
                         // v2.0.132：点击智能球 → 全屏粒子爆发（v2.0.133b：粒子寿命延至 1.2s 放烟花闪烁，特效层同步延长）
@@ -577,11 +583,6 @@ struct ChatView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
                                 showFullBurst = false
                             }
-                        },
-                        // v3.0.46：扫码球选中子功能 → 弹相机，拍到的图带对应 Prompt 自动发送
-                        onScanPick: { mode in
-                            scanMode = mode
-                            showScanCamera = true
                         })   // v2.0.106/107：长按输入框进语音模式
                         // v2.0.129：球态输入框 —— 绑定会话 id，切会话重建复位（展开态在切会话后回球态）
                         .id(chat.sessionId)

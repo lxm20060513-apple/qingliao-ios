@@ -159,49 +159,27 @@ struct ScanCornerFrame: View {
     let size: CGFloat
     let color: Color
     var body: some View {
-        ZStack {
-            corner(x: 0, y: 0, shape: topLeftCorner)
-            corner(x: size, y: 0, shape: topRightCorner)
-            corner(x: 0, y: size, shape: bottomLeftCorner)
-            corner(x: size, y: size, shape: bottomRightCorner)
-        }
-        .frame(width: size, height: size)
-    }
-    private func corner(x: CGFloat, y: CGFloat, shape: AnyShape) -> some View {
-        shape
+        ScanCornersShape()
             .stroke(color, lineWidth: 1.6)
-            .frame(width: 9, height: 9)
-            .position(x: x, y: y)
-    }
-    private var topLeftCorner: AnyShape {
-        AnyShape(PiecewiseLinearShape { p in
-            p.move(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 0, y: 0)); p.addLine(to: CGPoint(x: 9, y: 0))
-        })
-    }
-    private var topRightCorner: AnyShape {
-        AnyShape(PiecewiseLinearShape { p in
-            p.move(to: CGPoint(x: 0, y: 0)); p.addLine(to: CGPoint(x: 9, y: 0)); p.addLine(to: CGPoint(x: 9, y: 9))
-        })
-    }
-    private var bottomLeftCorner: AnyShape {
-        AnyShape(PiecewiseLinearShape { p in
-            p.move(to: CGPoint(x: 0, y: 0)); p.addLine(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 9, y: 9))
-        })
-    }
-    private var bottomRightCorner: AnyShape {
-        AnyShape(PiecewiseLinearShape { p in
-            p.move(to: CGPoint(x: 9, y: 0)); p.addLine(to: CGPoint(x: 9, y: 9)); p.addLine(to: CGPoint(x: 0, y: 9))
-        })
+            .frame(width: size, height: size)
     }
 }
 
-/// 便捷 Shape 包装（可写闭包路径的 Shape）
-struct PiecewiseLinearShape: Shape {
-    let draw: (inout Path) -> Void
+/// 描出四角的 L 形（roundrect 风格，非全框）——用固定 Path 绘制，避免存储闭包引发 Sendable 问题
+struct ScanCornersShape: Shape {
     func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        let s: CGFloat = 9  // 每个角的边长
         var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        draw(&p)
+        // 左上
+        p.move(to: CGPoint(x: 0, y: s)); p.addLine(to: CGPoint(x: 0, y: 0)); p.addLine(to: CGPoint(x: s, y: 0))
+        // 右上
+        p.move(to: CGPoint(x: w - s, y: 0)); p.addLine(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: w, y: s))
+        // 左下
+        p.move(to: CGPoint(x: 0, y: h - s)); p.addLine(to: CGPoint(x: 0, y: h)); p.addLine(to: CGPoint(x: s, y: h))
+        // 右下
+        p.move(to: CGPoint(x: w - s, y: h)); p.addLine(to: CGPoint(x: w, y: h)); p.addLine(to: CGPoint(x: w, y: h - s))
         return p
     }
 }
