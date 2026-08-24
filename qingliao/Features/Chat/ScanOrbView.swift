@@ -102,6 +102,8 @@ struct ScanOrbView: View {
 
                 // ---- 展开：4 子功能环形浮现 ----
                 ForEach(Array(ScanMode.allCases.enumerated()), id: \.element) { i, mode in
+                    // v3.0.48 fix：弧线收敛在容器(±40)内 + 容器扩大，按钮完整落在命中域可点。
+                    // 收起态 allowsHitTesting(false) 防隐形劫持；展开态(true)按钮天然优先于容器手势。
                     Button {
                         onPick(mode)
                         withAnimation(.spring(duration: 0.25, bounce: 0.2)) { expanded = false }
