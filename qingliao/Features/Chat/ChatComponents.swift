@@ -262,6 +262,8 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
+    // v3.0.47：扫码 AI 推荐回调（AI推荐卡点击，由外层 ChatView 提供真实模型推荐）
+    var onScanAIRecommend: (() -> Void)? = nil
     // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
     var onAIImageTap: (String) -> Void = { _ in }
     // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标
@@ -507,6 +509,12 @@ struct MessageBubble: View {
                             .padding(.vertical, 2)
                             .background(Color.accentColor.opacity(0.12), in: Capsule())
                             .padding(.top, 1)
+                    }
+                    // v3.0.47：扫码 AI 回复 → 直达行动卡（链接直达/电话拨打/AI推荐）
+                    if let action = message.scanAction, !message.isUser {
+                        ScanActionView(action: action, content: message.content,
+                                       onAIRecommend: onScanAIRecommend)
+                            .padding(.top, 6)
                     }
                 }
                 .padding(.horizontal, 13)
@@ -1797,5 +1805,119 @@ struct SessionCardView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy年M月d日 HH:mm"
         return f.string(from: Date())
+    }
+}
+
+// MARK: - v3.0.47 扫码直达行动卡（功能②链接直达 / ③AI推荐直达）
+
+/// 显示在扫码产出的 AI 消息底部：一键直达的链接/电话卡，或未命中规则的 AI 推荐卡。
+struct ScanActionView: View {
+    let action: ScanAction
+    let content: String
+    /// v3.0.47：AI 推荐回调（由外层 ChatView 提供真实模型推荐；nil = 无，退化为仅记忆）
+    var onAIRecommend: (() -> Void)? = nil
+
+    var body: some View {
+        Group {
+            switch action {
+            case .openURL(let url):
+                dButton(title: "直达链接", subtitle: cleanURL(url), icon: "arrow.up.right.square",
+                        tint: .blue) { open(url) }
+            case .phone(let phone):
+                dButton(title: "拨打 \(phone)", subtitle: "一键拨打电话", icon: "phone.fill",
+                        tint: .green) {
+                    if let u = URL(string: "tel:\(phone)") { UIApplication.shared.open(u) }
+                }
+            case .aiRecommend(let knownTo):
+                aiRecommendCard(knownTo: knownTo)
+            }
+        }
+    }
+
+    /// 直达按钮卡
+    private func dButton(title: String, subtitle: String, icon: String, tint: Color,
+                         actionz: @escaping () -> Void) -> some View {
+        Button(action: actionz) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.primary)
+                    Text(subtitle).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(tint.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// AI 推荐卡（陌生码）：给方案 + 一次点击记住 → 下次自动直达
+    private func aiRecommendCard(knownTo: Set<String>) -> some View {
+        // v3.0.47 rev S2：命中判断——本次 content 是否命中所记住的关键词(而非集合非空)
+        let hasMemory = knownTo.contains { keyword in content.contains(keyword) }
+        return Button {
+            // v3.0.47：AI 推荐方案——已记住的自动直达；未记住则触发 AI 推荐并记忆
+            if hasMemory {
+                // 已记住：记忆一个代表性关键词后直接走推荐(统一存储)
+                remember(content: content)
+            }
+            if let cb = onAIRecommend {
+                cb()   // 外层 ChatView 调真实 AI 推荐
+            } else {
+                remember(content: content)   // 无回调：仅记忆
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hasMemory ? "AI 推荐直达" : "AI 推荐方案")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.primary)
+                    Text(hasMemory
+                         ? "已记住此码类型，点此默认处理"
+                         : "本地未识别，让 AI 帮你选验证过的打开方式")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(.orange)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// AI 推荐记忆（功能③）：提取代表性关键词,统一走 ChatView 静态方法存 UserDefaults
+    private func remember(content: String) {
+        var keyword = cleanURL(content)
+        if keyword.isEmpty {
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            keyword = String(trimmed.prefix(12))
+        }
+        if !keyword.isEmpty {
+            ChatView.rememberScanAction(keyword)
+        }
+    }
+
+    private func cleanURL(_ s: String) -> String {
+        return s.hasPrefix("http") ? s.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "") : s
+    }
+
+    private func open(_ s: String) {
+        guard let u = URL(string: s), UIApplication.shared.canOpenURL(u) else { return }
+        UIApplication.shared.open(u)
     }
 }

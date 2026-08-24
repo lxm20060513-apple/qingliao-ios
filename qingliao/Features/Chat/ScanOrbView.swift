@@ -25,10 +25,10 @@ enum ScanMode: String, CaseIterable, Identifiable {
     /// 送视觉模型的系统提示（决定模型怎么答）
     var instruction: String {
         switch self {
-        case .identify:  return "识别图片中的主体是什么：给出名称、类别、用途与显著特征，用中文简洁回答。"
+        case .identify:  return "识别图片中的主体（可能的海报/菜单/说明书/单据/物品等）：先给出名称、类别、用途与显著特征，再用两三行指出「能办的事」——例如可帮你提取信息、查做法、记账、生成操作建议等，用中文简洁回答。"
         case .person:    return "描述图片中人物的外貌、表情、服装、气质等可观察特征（无法识别具体身份）。用中文简洁回答。"
-        case .translate: return "把图片中的文字内容完整提取并翻译成中文。若图片无文字，请说明。用中文简洁回答。"
-        case .qrcode:    return "解析图片中的二维码/条码/图示：尝试读出内容（链接/文本/数据），并说明它指向什么。用中文简洁回答。"
+        case .translate: return "把图片中的文字内容完整提取并翻译成中文。若图片无文字，请说明。若文字是可办理的事项（如联系信息、日程、WiFi、链接），一并指出可「一键办理」的方向，用中文简洁回答。"
+        case .qrcode:    return "解析图片中的二维码/条码/图示：先读出内容（链接/文本/数据），再判断它指向什么、能否一键直达。若是可办理事项，给出直达建议，用中文简洁回答。"
         }
     }
 }
@@ -39,12 +39,13 @@ struct ScanOrbView: View {
 
     @State private var expanded = false
 
-    /// 4 子功能相对球体的径向布局（2 上 2 侧，避开下方智能球）
+    /// 4 子功能沿球上方一条弧线散开（弧形弹出菜单，v3.0.47）
+    /// 弧：上方从 (-170,0) 到 (170,0) 的上凸弧，规整覆盖智能球上方空间
     private let layout: [(dx: CGFloat, dy: CGFloat)] = [
-        (-132, -34),   // 左上 识物
-        (0, -104),     // 正上 识人
-        (132, -34),    // 右上 翻译
-        (0, 60),       // 正下 扫码
+        (-168, 18),    // 左端 识物
+        (-56, -66),    // 左上 识人
+        (56, -66),     // 右上 翻译
+        (168, 18),     // 右端 扫码
     ]
 
     var body: some View {
@@ -84,17 +85,17 @@ struct ScanOrbView: View {
                                       dotColors: [.mint, .green, .white, .cyan])
                             .allowsHitTesting(false)
                     }
-                    // 扫描框四角
+                    // 扫描框四角（v3.0.47：缩小嵌进球内中心~28pt，突出球体聚焦）
                     .overlay {
-                        ScanCornerFrame(size: expanded ? 46 : 42, color: .white.opacity(0.85))
+                        ScanCornerFrame(size: expanded ? 30 : 26, color: .white.opacity(0.9))
                     }
-                    // 扫描线（上下来回）
+                    // 扫描线（上下来回，适配缩小后的框）
                     .overlay {
                         Capsule()
                             .fill(LinearGradient(colors: [.clear, .white, .clear], startPoint: .leading, endPoint: .trailing))
-                            .frame(width: expanded ? 32 : 28, height: 1.6)
-                            .offset(y: CGFloat((scanPhase * 2 - 1)) * (expanded ? 18 : 16))
-                            .shadow(color: .white.opacity(0.6), radius: 3)
+                            .frame(width: expanded ? 22 : 18, height: 1.4)
+                            .offset(y: CGFloat((scanPhase * 2 - 1)) * (expanded ? 11 : 9))
+                            .shadow(color: .white.opacity(0.6), radius: 2.5)
                             .opacity(0.9)
                     }
 

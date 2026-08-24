@@ -99,6 +99,17 @@ extension QingliaoBot {
     }
 }
 
+// MARK: - 扫描直达行动（v3.0.47 扫码球功能②③）
+// 扫码球产出的 AI 回复后，解析出的可直达行动：
+//  - openURL: 识别出链接 → 气泡内一键打开
+//  - phone:   识别出电话 → 拨打
+//  - aiRecommend: 无法本地规则直达 → 提供"AI推荐方案"（点一次记忆选择）
+enum ScanAction {
+    case openURL(String)
+    case phone(String)
+    case aiRecommend(knownTo: Set<String>)   // knownTo = 已记住的码内容关键词,推荐后自动直达
+}
+
 // MARK: - 聊天消息（content 可能是纯文本或数组，手动解析最稳）
 
 struct ChatMessage: Identifiable {
@@ -112,6 +123,8 @@ struct ChatMessage: Identifiable {
     var withdrawn: Bool = false    // v2.0.92：已撤回（显示"[已撤回]"占位）
     var agent: Bool = false        // v2.0.96b：Agent 回复标记（工具调用回复，显示标签）
     var voiceCommand: Bool = false   // v3.0.19：语音指令触发（长按智能球，显示 🎤 标记）
+    // v3.0.47：扫码球触发——AI 回复后附加可直达行动（URL/电话/日程/AI推荐）
+    var scanAction: ScanAction? = nil
 
     var id: String { "\(role)-\(content.hashValue)-\(imageDataURL?.hashValue ?? 0)-\(timestamp ?? 0)" }
     var isUser: Bool { role == "user" }

@@ -180,6 +180,9 @@ struct ChatView: View {
     // v3.0.46：扫码球——选中的子功能模式 + 扫码相机
     @State private var scanMode: ScanMode? = nil
     @State private var showScanCamera = false
+    // v3.0.47：扫码触发中——记录扫码那条 user 消息 id，AI 回复落库后解析出可直达行动
+    // v3.0.47 rev：改用绑定消息 id(而非 bool)，根治排队/切会话/云端路径标志泄漏挂错
+    @State private var lastScanUserID: String? = nil
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
@@ -650,9 +653,12 @@ struct ChatView: View {
             }
         }
         // v3.0.46：扫码球拍照——拍到图直接带对应 Prompt 自动发送（不预览，聚焦快捷识别）
+        // v3.0.47：标记扫码触发中——AI 回复落库后解析出可直达行动（链接直达/AI推荐）
         .sheet(isPresented: $showScanCamera) {
             CameraPicker { img in
                 if let data = compressImage(img), let mode = scanMode {
+                    // v3.0.47：标记扫码待解析（rev：sentinel 占位，sendCore 里绑定实际 user msg id）
+                    lastScanUserID = "__pending_scan__"
                     sendCore(text: mode.instruction, imageData: data)
                 }
                 scanMode = nil
@@ -805,6 +811,9 @@ struct ChatView: View {
                             } onWithdraw: {
                                 // v2.0.92：消息撤回（10 秒内）
                                 withdrawMessage(msg)
+                            } onScanAIRecommend: {
+                                // v3.0.47：扫码 AI 推荐——调模型给验证过的打开方案
+                                scanAIRecommend(content: msg.content)
                             } onAIImageTap: { url in
                                 // v2.0.128：AI 消息内图片 → 打开大图查看器（单张）
                                 openAIImage(url)
@@ -1176,6 +1185,10 @@ struct ChatView: View {
             // 排队路径：消息立即显示（标记排队中），回答结束后自动发送
             var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
             msg.queued = true
+            // v3.0.47 rev：扫码待解析 sentinel → 绑定本条 user 消息 id（排队路径同样有效）
+            if lastScanUserID == "__pending_scan__" {
+                lastScanUserID = msg.id
+            }
             // v3.0.19 review fix #5：排队路径也应用 🎤 标记（sendCore 开头已消费标志）
             if isVoiceCommandSend {
                 msg.voiceCommand = true
@@ -1193,6 +1206,10 @@ struct ChatView: View {
         // v2.0.65：发送通知 → Dock 聊天图标轻跳
         NotificationCenter.default.post(name: .qingliaoSent, object: nil)
         var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
+        // v3.0.47 rev：扫码待解析 sentinel → 绑定本条 user 消息 id（主路径）
+        if lastScanUserID == "__pending_scan__" {
+            lastScanUserID = msg.id
+        }
         // v3.0.19：语音指令触发的消息打 🎤 标记（sendCore 开头已消费标志）
         if isVoiceCommandSend {
             msg.voiceCommand = true
@@ -1253,8 +1270,15 @@ struct ChatView: View {
                     // v3.0.19：限流错误友好提示（sensenova 等免费额度 tpm 爆了 → 提示换路由）
                     let friendly = Self.friendlyStreamError(error)
                     chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(friendly)" : stream.content + "\n\n⚠️ \(friendly)", agent: stream.isAgent)
+                    // v3.0.47 rev：失败也复位扫码标记，防泄漏到下次回复
+                    lastScanUserID = nil
                 } else {
                     chat.upsertAssistant(stream.content, agent: stream.isAgent)
+                    // v3.0.47：扫码触发 → 解析生成可直达行动（仅在确实回应扫码 user 消息时），并复位标记
+                    if let scanID = lastScanUserID {
+                        attachScanActionIfNeeded(text: stream.content, scanUserID: scanID)
+                        lastScanUserID = nil
+                    }
                     showSentOK()
                     // v3.0.19：语音指令回复完成 → TTS 播报摘要
                     speakVoiceResultIfNeeded(stream.content)
@@ -1345,6 +1369,11 @@ struct ChatView: View {
                 if let finalText, !finalText.isEmpty {
                     // 落库 assistant 消息（替换掉 streamingBubble）
                     chat.upsertAssistant(finalText)
+                    // v3.0.47 rev M2：云端也消费扫码标记（之前只在本地路径消费）
+                    if let scanID = lastScanUserID {
+                        attachScanActionIfNeeded(text: finalText, scanUserID: scanID)
+                        lastScanUserID = nil
+                    }
                     showSentOK()
                     // v3.0.19：语音指令回复完成 → TTS 播报摘要
                     speakVoiceResultIfNeeded(finalText)
@@ -2060,6 +2089,16 @@ struct ChatView: View {
                              })
     }
 
+    /// v3.0.47：扫码 AI 推荐（功能③）——把扫码内容发给模型，让它给"验证过的打开/处理方案"
+    private func scanAIRecommend(content: String) {
+        let prompt = """
+        [扫码推荐] 我扫到一个无法本地识别的码/图，内容是：\(content)
+        请用中文给出一个最佳处理/打开方案（如跳转哪个App、访问哪个链接、或如何办理）。
+        """
+        // 复用发送链路，让 AI 以其能力推荐方案（走现有 sendCore 流式回复）
+        sendCore(text: prompt, imageData: nil)
+    }
+
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
     private func compressImage(_ image: UIImage) -> String? {
         let maxSide: CGFloat = 1280
@@ -2082,6 +2121,72 @@ struct ChatView: View {
         }
         guard let d = data else { return nil }
         return "data:image/jpeg;base64," + d.base64EncodedString()
+    }
+
+    /// v3.0.47：扫码 AI 回复解析出可直达行动（功能②链接直达/③AI推荐直达）
+    /// v3.0.47 rev M3/M4：必须校验"最后一条 user 消息就是发起扫码的那条"(scanUserID)，
+    /// 才附加行动卡——否则排队/切会话/失败泄漏会把行动卡贴到普通回复上。
+    /// 规则：提取 URL → openURL 直达；提取电话 → phone 拨打；
+    ///       都无法规则直达 → 查已记住的码类型,命中则仍可直达,否则 aiRecommend(交给 UI 触发 AI 推荐并记忆)
+    private func attachScanActionIfNeeded(text: String, scanUserID: String) {
+        // 校验最后一条 user 消息确实是扫码触发（防挂错）
+        guard let lastUser = chat.messages.last(where: { $0.isUser })?.id == scanUserID else {
+            return
+        }
+        // 1) 提取 URL(http/https)
+        if let url = Self.extractURL(from: text) {
+            if let idx = chat.messages.lastIndex(where: { $0.role == "assistant" }) {
+                chat.messages[idx].scanAction = .openURL(url)
+            }
+            return
+        }
+        // 2) 提取电话
+        if let phone = Self.extractPhone(from: text) {
+            if let idx = chat.messages.lastIndex(where: { $0.role == "assistant" }) {
+                chat.messages[idx].scanAction = .phone(phone)
+            }
+            return
+        }
+        // 3) 无法规则直达 → AI推荐（记忆的码类型/关键词）。
+        //    rev S1：仅当 scanUserID 对应的 user 消息是"扫码模式"时才附加 aiRecommend，避免误贴普通回复
+        let known = Self.rememberedScanActions()
+        if let idx = chat.messages.lastIndex(where: { $0.role == "assistant" }) {
+            chat.messages[idx].scanAction = .aiRecommend(knownTo: known)
+        }
+    }
+
+    /// 从文本提取首个 http/https 链接（v3.0.47 rev：正则排除集去掉 ASCII 句点——否则域名/TLD 被截断，
+    /// 末尾句子句点由下方 hasSuffix(".") 兜底处理）
+    static func extractURL(from text: String) -> String? {
+        let pattern = #"https?://[^\s，。；、""'（）)）]+"#
+        guard let rg = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let m = rg.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let url = ns.substring(with: m.range)
+        return url.hasSuffix(".") ? String(url.dropLast()) : url
+    }
+
+    /// 从文本提取首个电话号码（11位手机或带区号）
+    static func extractPhone(from text: String) -> String? {
+        let pattern = #"(?:\+?86[-\s]?)?1[3-9]\d{9}"#
+        guard let rg = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let m = rg.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let raw = ns.substring(with: m.range)
+        return raw.filter { $0.isNumber }
+    }
+
+    /// 读取已记忆的扫码直达类型（UserDefaults，v3.0.47 功能③ AI推荐记忆）
+    static func rememberedScanActions() -> Set<String> {
+        let arr = UserDefaults.standard.stringArray(forKey: "qingliao_scan_remembered") ?? []
+        return Set(arr)
+    }
+
+    /// 记忆一个扫码直达类型（AI推荐后用户选择 → 记住,下次自动直达）
+    static func rememberScanAction(_ keyword: String) {
+        var s = rememberedScanActions()
+        s.insert(keyword)
+        UserDefaults.standard.set(Array(s), forKey: "qingliao_scan_remembered")
     }
 }
 
