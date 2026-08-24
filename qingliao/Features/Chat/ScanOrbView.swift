@@ -39,14 +39,13 @@ struct ScanOrbView: View {
 
     @State private var expanded = false
 
-    /// 4 子功能沿球上方一条弧线散开（弧形弹出菜单，v3.0.47）
-    /// v3.0.47 fix：弧度收敛到容器(±42)内——既满足"弧度改小"，又保证按钮可点
-    ///（之前 ±168 超出 96pt 容器 bounds，命中测试被裁剪 → 视觉显示但点不到）
+    /// v3.0.48 user：点击扫码球 → 【横向发牌】——4 子功能从球心向两侧同一水平线依次弹出(像发牌摊开)
+    /// y 全为 0(同一水平线)，x 从中心向两侧对称散开
     private let layout: [(dx: CGFloat, dy: CGFloat)] = [
-        (-40, 6),     // 左 识物
-        (-14, -52),   // 左中 识人
-        (14, -52),    // 右中 翻译
-        (40, 6),      // 右 扫码
+        (-96, 0),   // 最左 识物
+        (-32, 0),   // 左  识人
+        (32, 0),    // 右  翻译
+        (96, 0),    // 最右 扫码
     ]
 
     var body: some View {
@@ -57,7 +56,10 @@ struct ScanOrbView: View {
             let scanPhase = (sin(t * 2.2) + 1) / 2              // 扫描线上下
 
             ZStack(alignment: .center) {
-                // ---- 扫码球本体（青色粒子光晕球） ----
+                // ---- 扫码球本体（青色粒子光晕球）----
+                // v3.0.48 根治点不到：球体独立 ZStack+onTapGesture(仅球面 toggle)，容器不再挂手势，
+                // 子功能按钮完全独立可点，不再被容器 onTapGesture 吞掉
+                ZStack(alignment: .center) {
                 Circle()
                     .fill(AngularGradient(
                         colors: [.green.opacity(0.6 * breathe), .mint.opacity(0.5 * breathe),
@@ -99,11 +101,15 @@ struct ScanOrbView: View {
                             .shadow(color: .white.opacity(0.6), radius: 2.5)
                             .opacity(0.9)
                     }
+                }
+                .contentShape(Circle())
+                .onTapGesture {
+                    withAnimation(.spring(duration: 0.35, bounce: 0.25)) { expanded.toggle() }
+                }
 
                 // ---- 展开：4 子功能环形浮现 ----
                 ForEach(Array(ScanMode.allCases.enumerated()), id: \.element) { i, mode in
-                    // v3.0.48 fix：弧线收敛在容器(±40)内 + 容器扩大，按钮完整落在命中域可点。
-                    // 收起态 allowsHitTesting(false) 防隐形劫持；展开态(true)按钮天然优先于容器手势。
+                    // v3.0.48 根治：容器已不在 onTapGesture——按钮完全独立可点(球体 tap 只作用球面)。
                     Button {
                         onPick(mode)
                         withAnimation(.spring(duration: 0.25, bounce: 0.2)) { expanded = false }
@@ -126,22 +132,23 @@ struct ScanOrbView: View {
                     }
                     .buttonStyle(.plain)
                     .opacity(expanded ? 1 : 0)
-                    .scaleEffect(expanded ? 1 : 0.3)
+                    .scaleEffect(expanded ? 1 : 0.4)
+                    // v3.0.48 user 发牌手效果：收起时各按钮绕球心旋转错位，展开时依次转正弹出(像摊牌)
+                    .rotationEffect(.degrees(expanded ? 0 : (i < 2 ? -90 : 90)))
                     // ⚠️ review fix：收起态必须关命中——.opacity(0) 不关命中测试，
                     // 若不加 allowsHitTesting，隐形子按钮叠在球心会劫持点击直开相机，永远进不了展开态
                     .allowsHitTesting(expanded)
                     .offset(x: expanded ? layout[i].dx : 0,
                             y: expanded ? layout[i].dy : 0)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.72).delay(Double(i) * 0.05),
-                               value: expanded)
+                    // 发牌节奏：中心先出(识人/翻译),两侧随后(识物/扫码)，错开弹出生动
+                    .animation(.spring(response: 0.42, dampingFraction: 0.68)
+                                .delay(i == 1 || i == 2 ? 0 : 0.07), value: expanded)
                 }
             }
-            // v3.0.47 fix：容器扩大到能容纳弧线按钮(±40,±52)的完整命中域——否则溢出部分点不到
-            .frame(width: 170, height: 160)
-            .contentShape(Circle())
-            .onTapGesture {
-                withAnimation(.spring(duration: 0.35, bounce: 0.25)) { expanded.toggle() }
-            }
+            // v3.0.48 user：横向发牌 → 容器加宽容纳 ±96(按钮宽50/2=25 → 需到121)；球区高度 ~110
+            // v3.0.48 根治：移除容器 onTapGesture/contentShape——它会覆盖整个容器(含按钮区)吞掉按钮点击。
+            //      展开/收起改由球体独立 ZStack 的 onTapGesture 控制（见球体处）。容器仅布局，不参与手势。
+            .frame(width: 250, height: 110)
             .onChange(of: expanded) { _, on in
                 // 收回 3s 后自动复位（v3.0.47 fix：原1.2s太短——用户点击球散开后手还没移到按钮就收起，导致"点不到"）
                 // ⚠️ review fix：guard 防毛刺——若用户在超时前已手动收起（expanded 已 false），
@@ -154,8 +161,8 @@ struct ScanOrbView: View {
                 }
             }
         }
-        // v3.0.47 fix：外层 frame 与内层一致，容纳弧线按钮完整命中域
-        .frame(width: 170, height: 160)
+        // v3.0.48 user：外层 frame 与内层一致(横向发牌容器 250×110)
+        .frame(width: 250, height: 110)
     }
 }
 

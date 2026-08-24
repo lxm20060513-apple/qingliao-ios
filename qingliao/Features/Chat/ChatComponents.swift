@@ -815,8 +815,9 @@ struct ChatInputBar: View {
             if ballInput && !ballExpanded {
                 // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
-                VStack(spacing: 18) {
-                    // v3.0.46：扫码球（青色粒子+扫描框+扫描线，点击散开识物/识人/翻译/扫码）
+                // v3.0.48 user：扫码球与智能球【并排居中】(HStack,原 VStack 上下叠)——横向更省上下空间
+                HStack(spacing: 34) {
+                    // v3.0.46：扫码球（青色粒子+扫描框+扫描线）——v3.0.48 点击【横向发牌】弹出识物/识人/翻译/扫码
                     // rev3：录音/转写中隐藏——.hidden(Bool) 不存在，用 opacity0 + 关闭命中(防隐形点击)
                     ScanOrbView { mode in onScanPick(mode) }
                         .opacity(isRecording || transcribing ? 0 : 1)
