@@ -177,6 +177,9 @@ struct ChatView: View {
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var showCameraPicker = false   // v2.0.38 拍照输入
+    // v3.0.46：扫码球——选中的子功能模式 + 扫码相机
+    @State private var scanMode: ScanMode? = nil
+    @State private var showScanCamera = false
     @State private var photoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
@@ -574,6 +577,11 @@ struct ChatView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
                                 showFullBurst = false
                             }
+                        },
+                        // v3.0.46：扫码球选中子功能 → 弹相机，拍到的图带对应 Prompt 自动发送
+                        onScanPick: { mode in
+                            scanMode = mode
+                            showScanCamera = true
                         })   // v2.0.106/107：长按输入框进语音模式
                         // v2.0.129：球态输入框 —— 绑定会话 id，切会话重建复位（展开态在切会话后回球态）
                         .id(chat.sessionId)
@@ -638,6 +646,15 @@ struct ChatView: View {
             CameraPicker { img in
                 pendingImage = img
                 pendingImageData = compressImage(img)
+            }
+        }
+        // v3.0.46：扫码球拍照——拍到图直接带对应 Prompt 自动发送（不预览，聚焦快捷识别）
+        .sheet(isPresented: $showScanCamera) {
+            CameraPicker { img in
+                if let data = compressImage(img), let mode = scanMode {
+                    sendCore(text: mode.instruction, imageData: data)
+                }
+                scanMode = nil
             }
         }
         // v2.0.43：快捷指令面板（点击填充输入框）

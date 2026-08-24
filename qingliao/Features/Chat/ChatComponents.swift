@@ -790,6 +790,8 @@ struct ChatInputBar: View {
     var onLongPressInput: (Bool) -> Void = { _ in }
     // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
     var onBallLongPress: () -> Void = {}
+    // v3.0.46：扫码球选中某子功能（识物/识人/翻译/扫码）——外层负责弹相机/相册 + 发送
+    var onScanPick: (ScanMode) -> Void = { _ in }
     // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
@@ -805,27 +807,27 @@ struct ChatInputBar: View {
             if ballInput && !ballExpanded {
                 // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
+                VStack(spacing: 18) {
+                    // v3.0.46：扫码球（青色粒子+扫描框+扫描线，点击散开识物/识人/翻译/扫码）
+                    // rev2：录音/转写中 hidden(而非 opacity0)——真正移除渲染与命中，省算且防隐形点击
+                    ScanOrbView { mode in onScanPick(mode) }
+                        .hidden(isRecording || transcribing)
+                    // v2.0.129 智能球保持原交互（单击展开输入框 / 长按语音转文字）
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
                                  thinking: streaming,
                                  onTap: {
-                                                                                                      // 转写中点击不响应（避免打断）
-                                                                                                      guard !transcribing else { return }
-                                                                                                      // v2.0.130：炫酷展开 —— 全屏粒子爆发（满屏散开）+ 输入框从球心缩放展开
-                                                                                                      // v2.0.132 优化：局部 BurstEffect 已删（与全屏特效重叠且双 TimelineView 掉帧），
-                                                                                                      // 动画改短 0.35s、避免四路动画叠加掉帧
-                                                                                                      // v2.0.133e：弹键盘再顺延到 0.4s——等 spring 展开完全结束才弹，
-                                                                                                      // 与键盘动画完全串行（原 0.28s 时展开动画还在回弹，两段动画抢帧 → 衔接生硬）
-                                                                                                      onFullBurst()
-                                                                                                      withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
-                                                                                                          ballExpanded = true
-                                                                                                      }
-                                                                                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                                                                                          focused = true   // 键盘动画与展开动画串行，衔接平滑
-                                                                                                      }
-                                                                                                  },
+                                     // 转写中点击不响应（避免打断）
+                                     guard !transcribing else { return }
+                                     // v2.0.130：炫酷展开 —— 全屏粒子爆发 + 输入框从球心缩放展开
+                                     onFullBurst()
+                                     withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                                         ballExpanded = true
+                                     }
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                         focused = true   // 键盘动画与展开动画串行，衔接平滑
+                                     }
+                                 },
                                  onLongPress: {
                                      // v3.0.19：长按球 = 语音指令（ASR 后自动发送执行 + TTS 播报）
                                      // v3.0.4：云端模式无语音 → 长按球展开输入框（等同点击）
@@ -839,7 +841,6 @@ struct ChatInputBar: View {
                                      guard !transcribing else { return }
                                      onBallLongPress()
                                  })
-                    Spacer(minLength: 0)
                 }
                 .padding(.bottom, 12)   // v2.0.132：球态下沉；v2.0.137：下沉贴 Dock；v2.0.140：再下移贴近（球底距 Dock 顶约 12pt）
                 // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出

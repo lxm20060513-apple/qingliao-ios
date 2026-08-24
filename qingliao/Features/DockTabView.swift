@@ -153,16 +153,24 @@ struct DockBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial.opacity(dockOpacity))   // v3.0.44：透明度可调（设置→外观→Dock 透明度，默认1.0=3.0.43原物质感）
+        // v3.0.46：Dock 改真液态玻璃——原生 glassEffect(输入栏同款，液态光泽/折射/边缘高光)
+        // 替代原 ultraThinMaterial 模拟；dockOpacity 透明度滑条作用于整体玻璃(默认1.0=完整液态玻璃)
+        .background {
+            Capsule()
+                .glassEffect()
+                .opacity(dockOpacity)
+        }
         .clipShape(Capsule())
         .overlay {
+            // 液态玻璃自带边缘光泽，仅留极轻描边增强边界（与输入栏一致，v2.0.87e 规范）
+            // v3.0.46/rev2：描边强度随 dockOpacity 成比例——避免滑条降到低透明时"有框无底"怪异
             Capsule().strokeBorder(
-                LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                LinearGradient(colors: [Color.white.opacity(0.20 * dockOpacity), Color.white.opacity(0.04 * dockOpacity)],
                                startPoint: .top, endPoint: .bottom),
                 lineWidth: 0.5
             )
         }
-        .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.10 * dockOpacity), radius: 10, x: 0, y: 4)
         .onReceive(NotificationCenter.default.publisher(for: .qingliaoSent)) { _ in
             withAnimation(.spring(duration: 0.25, bounce: 0.5)) {
                 bounce = true
