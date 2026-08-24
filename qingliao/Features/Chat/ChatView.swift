@@ -2130,7 +2130,8 @@ struct ChatView: View {
     ///       都无法规则直达 → 查已记住的码类型,命中则仍可直达,否则 aiRecommend(交给 UI 触发 AI 推荐并记忆)
     private func attachScanActionIfNeeded(text: String, scanUserID: String) {
         // 校验最后一条 user 消息确实是扫码触发（防挂错）
-        guard let lastUser = chat.messages.last(where: { $0.isUser })?.id == scanUserID else {
+        guard let lastUserID = chat.messages.last(where: { $0.isUser })?.id,
+              lastUserID == scanUserID else {
             return
         }
         // 1) 提取 URL(http/https)
