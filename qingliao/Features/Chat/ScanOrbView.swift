@@ -40,12 +40,13 @@ struct ScanOrbView: View {
     @State private var expanded = false
 
     /// 4 子功能沿球上方一条弧线散开（弧形弹出菜单，v3.0.47）
-    /// 弧：上方从 (-170,0) 到 (170,0) 的上凸弧，规整覆盖智能球上方空间
+    /// v3.0.47 fix：弧度收敛到容器(±42)内——既满足"弧度改小"，又保证按钮可点
+    ///（之前 ±168 超出 96pt 容器 bounds，命中测试被裁剪 → 视觉显示但点不到）
     private let layout: [(dx: CGFloat, dy: CGFloat)] = [
-        (-168, 18),    // 左端 识物
-        (-56, -66),    // 左上 识人
-        (56, -66),     // 右上 翻译
-        (168, 18),     // 右端 扫码
+        (-40, 6),     // 左 识物
+        (-14, -52),   // 左中 识人
+        (14, -52),    // 右中 翻译
+        (40, 6),      // 右 扫码
     ]
 
     var body: some View {
@@ -133,24 +134,26 @@ struct ScanOrbView: View {
                                value: expanded)
                 }
             }
-            .frame(width: 96, height: 96)
+            // v3.0.47 fix：容器扩大到能容纳弧线按钮(±40,±52)的完整命中域——否则溢出部分点不到
+            .frame(width: 170, height: 160)
             .contentShape(Circle())
             .onTapGesture {
                 withAnimation(.spring(duration: 0.35, bounce: 0.25)) { expanded.toggle() }
             }
             .onChange(of: expanded) { _, on in
-                // 收起 1.2s 后自动复位（避免残留半开）。
+                // 收回 3s 后自动复位（v3.0.47 fix：原1.2s太短——用户点击球散开后手还没移到按钮就收起，导致"点不到"）
                 // ⚠️ review fix：guard 防毛刺——若用户在超时前已手动收起（expanded 已 false），
                 // 回调用旧值重复 withAnimation(false) 无害但多余，此处直接跳过。
                 if on {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                         guard expanded else { return }
                         withAnimation(.spring(duration: 0.25)) { expanded = false }
                     }
                 }
             }
         }
-        .frame(width: 96, height: 96)
+        // v3.0.47 fix：外层 frame 与内层一致，容纳弧线按钮完整命中域
+        .frame(width: 170, height: 160)
     }
 }
 
