@@ -25,12 +25,15 @@ final class StreamClient {
     private var interval: TimeInterval = 0.8
     private var pollTask: Task<Void, Never>?
     private var onFinished: ((Bool, String) -> Void)?   // (success, errorMessage)
+    // v3.0.50 稳定性：代际计数——停止/重启后旧轮询 resume 时丢弃结果，防污染新流
+    private var generation = 0
 
     /// 启动流式请求（v3.0.7：bot 透传给 streamStart）
     func start(auth: AuthStore, sessionId: String, model: String, provider: String,
                messages: [[String: Any]], bot: String? = nil,
                onFinished: ((Bool, String) -> Void)? = nil) async {
         stopPolling()
+        generation += 1   // v3.0.50：废除在途旧轮询代
         content = ""
         offset = 0
         failCount = 0
@@ -62,6 +65,7 @@ final class StreamClient {
     /// 主动停止
     func stop(auth: AuthStore) {
         stopPolling()
+        generation += 1   // v3.0.50：停止后旧 pollOnce resume 不再写状态
         if !taskId.isEmpty, !isDone {
             Task { await auth.streamStop(taskId: taskId) }
         }
@@ -73,11 +77,13 @@ final class StreamClient {
     // MARK: - 轮询（直连路径参数版）
 
     private func startPolling(auth: AuthStore) {
+        let gen = generation
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, !self.isDone else { break }
-                await self.pollOnce(auth: auth)
+                await self.pollOnce(auth: auth, generation: gen)
                 if self.isDone { break }
+                if gen != self.generation { break }   // v3.0.50：已是新代 → 退出
                 try? await Task.sleep(for: .seconds(self.interval))
             }
         }
@@ -88,9 +94,10 @@ final class StreamClient {
         pollTask = nil
     }
 
-    private func pollOnce(auth: AuthStore) async {
+    private func pollOnce(auth: AuthStore, generation: Int) async {
         do {
             let (c, done, st, err, agent) = try await auth.streamPoll(taskId: taskId, offset: offset)
+            guard generation == self.generation else { return }   // v3.0.50：旧代轮询丢弃
             if agent { isAgent = true }   // v2.0.96b：Agent 回复标记
             failCount = 0
             if !c.isEmpty {
@@ -107,6 +114,7 @@ final class StreamClient {
                 finish(success: st != "error", error: err)
             }
         } catch APIError.server(404) {
+            guard generation == self.generation else { return }
             // v3.0.31：任务丢失（qingliao 重启/内存回收）→ 尝试 recover 续上，避免长任务白等
             if !recoverTried {
                 recoverTried = true
@@ -117,6 +125,7 @@ final class StreamClient {
                 finish(success: false, error: "连接中断，请重试")
             }
         } catch {
+            guard generation == self.generation else { return }
             failCount += 1
             if failCount >= 10 {
                 finish(success: false, error: "连接中断，请重试")
@@ -178,6 +187,8 @@ final class StreamClient {
     func restoreIfNeeded(auth: AuthStore, onFinished: ((Bool, String) -> Void)? = nil) async {
         guard !isStreaming else { return }
         stopPolling()
+        generation += 1   // v3.0.50：恢复时同样废除在途旧轮询代
+
         guard let d = UserDefaults.standard.dictionary(forKey: "qingliao_stream_pending") else { return }
         // 超过 30 分钟的任务视为失效（服务器端流可能已回收）
         if let ts = d["ts"] as? TimeInterval, Date().timeIntervalSince1970 - ts > 1800 {

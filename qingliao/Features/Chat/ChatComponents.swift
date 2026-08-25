@@ -262,8 +262,6 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
-    // v3.0.47：扫码 AI 推荐回调（AI推荐卡点击，由外层 ChatView 提供真实模型推荐）
-    var onScanAIRecommend: (() -> Void)? = nil
     // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
     var onAIImageTap: (String) -> Void = { _ in }
     // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标
@@ -274,6 +272,10 @@ struct MessageBubble: View {
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.128：AI 输出行高（设置页滑条，实时生效）
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
+    // v3.0.50：超长 AI 消息折叠——展开/收起状态（cell 重建回收起，可接受）
+    @State private var aiExpanded = false
+    /// 折叠阈值：AI 落库后内容超过该字符数即默认收成摘要（v3.0.50）
+    private static let foldThreshold = 600
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
     // v2.0.130：AI 发图 MEDIA 路径 → 服务器图片 URL（读 App 配置的服务器地址）
@@ -436,20 +438,53 @@ struct MessageBubble: View {
                                 )
                             }
                         } else {
-                            // v3.0.15：AI 消息全文展示（取消 v2.0.65 超长消息折叠）——代码块分段渲染（等宽 + 深色背景），其余 markdown
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(0..<contentBlocks.count, id: \.self) { i in
-                                    MessageBlockView(block: contentBlocks[i],
-                                                    onCopy: { UIPasteboard.general.string = message.content },
-                                                    onQuote: onQuote,
-                                                    onShare: onShare,
-                                                    onBigBang: onBigBang,
-                                                    onDelete: onDelete,
-                                                    onRegenerate: onRegenerate,
-                                                    onWithdraw: nil,
-                                                    onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
-                                                    useSwiftUIText: true,
-                                                    streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
+                            // v3.0.50：超长 AI 消息折叠——流式输出中不折叠（实时全文），
+                            // 落库后超过阈值的长消息默认收成摘要 + 「展开全文」；点开看完整 markdown 分段渲染
+                            let isLongMsg = !streamingText && message.content.count > Self.foldThreshold
+                            if isLongMsg && !aiExpanded {
+                                // 折叠态：纯 Text 摘要（不解析 markdown，避免截断破坏分段）+ 展开按钮
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(message.content)
+                                        .font(.system(size: CGFloat(fontSize)))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(5)
+                                        .textSelection(.enabled)
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = true }
+                                    } label: {
+                                        Label("展开全文", systemImage: "chevron.down")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(Color.accentColor)
+                                            .padding(.top, 2)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            } else {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(0..<contentBlocks.count, id: \.self) { i in
+                                        MessageBlockView(block: contentBlocks[i],
+                                                        onCopy: { UIPasteboard.general.string = message.content },
+                                                        onQuote: onQuote,
+                                                        onShare: onShare,
+                                                        onBigBang: onBigBang,
+                                                        onDelete: onDelete,
+                                                        onRegenerate: onRegenerate,
+                                                        onWithdraw: nil,
+                                                        onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
+                                                        useSwiftUIText: true,
+                                                        streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
+                                    }
+                                    if isLongMsg {
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = false }
+                                        } label: {
+                                            Label("收起", systemImage: "chevron.up")
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                                .padding(.top, 2)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
                             }
                         }
@@ -509,12 +544,6 @@ struct MessageBubble: View {
                             .padding(.vertical, 2)
                             .background(Color.accentColor.opacity(0.12), in: Capsule())
                             .padding(.top, 1)
-                    }
-                    // v3.0.47：扫码 AI 回复 → 直达行动卡（链接直达/电话拨打/AI推荐）
-                    if let action = message.scanAction, !message.isUser {
-                        ScanActionView(action: action, content: message.content,
-                                       onAIRecommend: onScanAIRecommend)
-                            .padding(.top, 6)
                     }
                 }
                 .padding(.horizontal, 13)
@@ -798,8 +827,6 @@ struct ChatInputBar: View {
     var onLongPressInput: (Bool) -> Void = { _ in }
     // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
     var onBallLongPress: () -> Void = {}
-    // v3.0.46：扫码球选中某子功能（识物/识人/翻译/扫码）——外层负责弹相机/相册 + 发送
-    var onScanPick: (ScanMode) -> Void = { _ in }
     // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
@@ -815,13 +842,8 @@ struct ChatInputBar: View {
             if ballInput && !ballExpanded {
                 // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
-                // v3.0.48 user：扫码球与智能球【并排居中】(HStack,原 VStack 上下叠)——横向更省上下空间
+                // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
                 HStack(spacing: 34) {
-                    // v3.0.46：扫码球（青色粒子+扫描框+扫描线）——v3.0.48 点击【横向发牌】弹出识物/识人/翻译/扫码
-                    // rev3：录音/转写中隐藏——.hidden(Bool) 不存在，用 opacity0 + 关闭命中(防隐形点击)
-                    ScanOrbView { mode in onScanPick(mode) }
-                        .opacity(isRecording || transcribing ? 0 : 1)
-                        .allowsHitTesting(!(isRecording || transcribing))
                     // v2.0.129 智能球保持原交互（单击展开输入框 / 长按语音转文字）
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
@@ -1806,119 +1828,5 @@ struct SessionCardView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy年M月d日 HH:mm"
         return f.string(from: Date())
-    }
-}
-
-// MARK: - v3.0.47 扫码直达行动卡（功能②链接直达 / ③AI推荐直达）
-
-/// 显示在扫码产出的 AI 消息底部：一键直达的链接/电话卡，或未命中规则的 AI 推荐卡。
-struct ScanActionView: View {
-    let action: ScanAction
-    let content: String
-    /// v3.0.47：AI 推荐回调（由外层 ChatView 提供真实模型推荐；nil = 无，退化为仅记忆）
-    var onAIRecommend: (() -> Void)? = nil
-
-    var body: some View {
-        Group {
-            switch action {
-            case .openURL(let url):
-                dButton(title: "直达链接", subtitle: cleanURL(url), icon: "arrow.up.right.square",
-                        tint: .blue) { open(url) }
-            case .phone(let phone):
-                dButton(title: "拨打 \(phone)", subtitle: "一键拨打电话", icon: "phone.fill",
-                        tint: .green) {
-                    if let u = URL(string: "tel:\(phone)") { UIApplication.shared.open(u) }
-                }
-            case .aiRecommend(let knownTo):
-                aiRecommendCard(knownTo: knownTo)
-            }
-        }
-    }
-
-    /// 直达按钮卡
-    private func dButton(title: String, subtitle: String, icon: String, tint: Color,
-                         actionz: @escaping () -> Void) -> some View {
-        Button(action: actionz) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.primary)
-                    Text(subtitle).font(.system(size: 10)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(tint.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// AI 推荐卡（陌生码）：给方案 + 一次点击记住 → 下次自动直达
-    private func aiRecommendCard(knownTo: Set<String>) -> some View {
-        // v3.0.47 rev S2：命中判断——本次 content 是否命中所记住的关键词(而非集合非空)
-        let hasMemory = knownTo.contains { keyword in content.contains(keyword) }
-        return Button {
-            // v3.0.47：AI 推荐方案——已记住的自动直达；未记住则触发 AI 推荐并记忆
-            if hasMemory {
-                // 已记住：记忆一个代表性关键词后直接走推荐(统一存储)
-                remember(content: content)
-            }
-            if let cb = onAIRecommend {
-                cb()   // 外层 ChatView 调真实 AI 推荐
-            } else {
-                remember(content: content)   // 无回调：仅记忆
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(hasMemory ? "AI 推荐直达" : "AI 推荐方案")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.primary)
-                    Text(hasMemory
-                         ? "已记住此码类型，点此默认处理"
-                         : "本地未识别，让 AI 帮你选验证过的打开方式")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(.orange)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// AI 推荐记忆（功能③）：提取代表性关键词,统一走 ChatView 静态方法存 UserDefaults
-    private func remember(content: String) {
-        var keyword = cleanURL(content)
-        if keyword.isEmpty {
-            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            keyword = String(trimmed.prefix(12))
-        }
-        if !keyword.isEmpty {
-            ChatView.rememberScanAction(keyword)
-        }
-    }
-
-    private func cleanURL(_ s: String) -> String {
-        return s.hasPrefix("http") ? s.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "") : s
-    }
-
-    private func open(_ s: String) {
-        guard let u = URL(string: s), UIApplication.shared.canOpenURL(u) else { return }
-        UIApplication.shared.open(u)
     }
 }
