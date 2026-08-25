@@ -438,56 +438,70 @@ struct MessageBubble: View {
                                 )
                             }
                         } else {
-                            // v3.0.50：超长 AI 消息折叠——流式输出中不折叠（实时全文），
-                            // 落库后超过阈值的长消息默认收成摘要 + 「展开全文」；点开看完整 markdown 分段渲染
-                            let isLongMsg = !streamingText && message.content.count > Self.foldThreshold
-                            if isLongMsg && !aiExpanded {
-                                // 折叠态：纯 Text 摘要（不解析 markdown，避免截断破坏分段）+ 展开按钮
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(message.content)
-                                        .font(.system(size: CGFloat(fontSize)))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(5)
-                                        .textSelection(.enabled)
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = true }
-                                    } label: {
-                                        Label("展开全文", systemImage: "chevron.down")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundStyle(Color.accentColor)
-                                            .padding(.top, 2)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            } else {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(0..<contentBlocks.count, id: \.self) { i in
-                                        MessageBlockView(block: contentBlocks[i],
-                                                        onCopy: { UIPasteboard.general.string = message.content },
-                                                        onQuote: onQuote,
-                                                        onShare: onShare,
-                                                        onBigBang: onBigBang,
-                                                        onDelete: onDelete,
-                                                        onRegenerate: onRegenerate,
-                                                        onWithdraw: nil,
-                                                        onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
-                                                        useSwiftUIText: true,
-                                                        streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
-                                    }
-                                    if isLongMsg {
-                                        Button {
-                                            withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = false }
-                                        } label: {
-                                            Label("收起", systemImage: "chevron.up")
-                                                .font(.system(size: 12, weight: .medium))
-                                                .foregroundStyle(.secondary)
-                                                .padding(.top, 2)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                        }
+                                                    // v3.0.51：AI 长回复多气泡段落流式——按空行拆段，每段独立气泡，
+                                                    // 完成段落稳定可读、末尾段落持续流式（用户感知持续在动）
+                                                    let paras = Self.splitParagraphs(message.content)
+                                                    if paras.count > 1 {
+                                                        // 多气泡：每个段落一个独立气泡（贴左，头像在本气泡外右下角）
+                                                        VStack(alignment: .leading, spacing: 6) {
+                                                            ForEach(Array(paras.enumerated()), id: \.offset) { idx, para in
+                                                                aiParagraphBubble(para,
+                                                                                  isLast: idx == paras.count - 1,
+                                                                                  streaming: streamingText)
+                                                                    .transition(.opacity)
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // 单段落（短回复）→ 原折叠/单块逻辑
+                                                        let isLongMsg = !streamingText && message.content.count > Self.foldThreshold
+                                                        if isLongMsg && !aiExpanded {
+                                                            // 折叠态：纯 Text 摘要（不解析 markdown，避免截断破坏分段）+ 展开按钮
+                                                            VStack(alignment: .leading, spacing: 6) {
+                                                                Text(message.content)
+                                                                    .font(.system(size: CGFloat(fontSize)))
+                                                                    .foregroundStyle(.primary)
+                                                                    .lineLimit(5)
+                                                                    .textSelection(.enabled)
+                                                                Button {
+                                                                    withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = true }
+                                                                } label: {
+                                                                    Label("展开全文", systemImage: "chevron.down")
+                                                                        .font(.system(size: 12, weight: .medium))
+                                                                        .foregroundStyle(Color.accentColor)
+                                                                        .padding(.top, 2)
+                                                                }
+                                                                .buttonStyle(.plain)
+                                                            }
+                                                        } else {
+                                                            VStack(alignment: .leading, spacing: 6) {
+                                                                ForEach(0..<contentBlocks.count, id: \.self) { i in
+                                                                    MessageBlockView(block: contentBlocks[i],
+                                                                                    onCopy: { UIPasteboard.general.string = message.content },
+                                                                                    onQuote: onQuote,
+                                                                                    onShare: onShare,
+                                                                                    onBigBang: onBigBang,
+                                                                                    onDelete: onDelete,
+                                                                                    onRegenerate: onRegenerate,
+                                                                                    onWithdraw: nil,
+                                                                                    onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
+                                                                                    useSwiftUIText: true,
+                                                                                    streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
+                                                                }
+                                                                if isLongMsg {
+                                                                    Button {
+                                                                        withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = false }
+                                                                    } label: {
+                                                                        Label("收起", systemImage: "chevron.up")
+                                                                            .font(.system(size: 12, weight: .medium))
+                                                                            .foregroundStyle(.secondary)
+                                                                            .padding(.top, 2)
+                                                                    }
+                                                                    .buttonStyle(.plain)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                     }
                     // v2.0.59：发送失败 → 重试按钮（红色，点击按原内容重发）
                     if message.isUser && message.failed {
@@ -546,17 +560,29 @@ struct MessageBubble: View {
                             .padding(.top, 1)
                     }
                 }
-                .padding(.horizontal, 13)
-                .padding(.vertical, 9)
-                // v2.0.68：用户反馈拿掉气泡尾巴（试了两版效果都不理想），回归纯圆角
+                .padding(.horizontal, isMultiBubbleAI ? 2 : 13)
+                .padding(.vertical, isMultiBubbleAI ? 2 : 9)
+                // v3.0.51：多气泡段落时外层不画整块气泡（每段各自带圆角底），否则段与段被外层包围成一大块
                 .background(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(message.withdrawn ? aiBubbleColor : (message.isUser ? userBubbleColor : aiBubbleColor))   // v2.0.92：撤回统一灰
+                    Group {
+                        if isMultiBubbleAI {
+                            Color.clear
+                        } else {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(message.withdrawn ? aiBubbleColor : (message.isUser ? userBubbleColor : aiBubbleColor))   // v2.0.92：撤回统一灰
+                        }
+                    }
                 )
                 // v2.0.43 搜索定位高亮边框
                 .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
+                    Group {
+                        if isMultiBubbleAI {
+                            Color.clear
+                        } else {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(isHighlighted ? Color.accentColor : .clear, lineWidth: 2)
+                        }
+                    }
                 )
             .frame(maxWidth: 366, alignment: message.isUser ? .trailing : .leading)   // v2.0.41 气泡加宽 350→366（贴红线/近满宽）
             // v2.0.85c：气泡出现微动画（缩放 + 淡入，单条插入安全）
@@ -588,10 +614,35 @@ struct MessageBubble: View {
     /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
     /// v3.0.41 性能：流式输出中跳过分段（split/图片展开都是 O(n) 全量扫描），直接单块渲染
     private var contentBlocks: [MessageContentBlock] {
-        if streamingText {
-            return [.init(kind: .markdown(message.content))]
+        Self.blocks(for: message.content, serverURL: serverURL, streaming: streamingText)
+    }
+
+    /// 按段落(空行 \n\n)拆分——跳过 ``` 代码块内部空行，代码块整体不拆
+    /// 供多气泡段落流式输出使用（v3.0.51）
+    private static func splitParagraphs(_ text: String) -> [String] {
+        let lines = text.components(separatedBy: "\n")
+        var paras: [String] = []
+        var cur: [String] = []
+        var inFence = false
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") { inFence.toggle() }
+            if trimmed.isEmpty && !inFence {
+                if !cur.isEmpty { paras.append(cur.joined(separator: "\n")); cur = [] }
+            } else {
+                cur.append(line)
+            }
         }
-        let parts = Self.expandMediaMarks(message.content, serverURL: serverURL).components(separatedBy: "```")
+        if !cur.isEmpty { paras.append(cur.joined(separator: "\n")) }
+        return paras.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// 指定文本的 markdown 分段渲染（v3.0.51：多气泡段落各自解析）
+    private static func blocks(for text: String, serverURL: String, streaming: Bool) -> [MessageContentBlock] {
+        if streaming {
+            return [.init(kind: .markdown(text))]
+        }
+        let parts = Self.expandMediaMarks(text, serverURL: serverURL).components(separatedBy: "```")
         var blocks: [MessageContentBlock] = []
         for (i, p) in parts.enumerated() {
             if i % 2 == 1 {
@@ -606,7 +657,50 @@ struct MessageBubble: View {
                 }
             }
         }
-        return blocks.isEmpty ? [.init(kind: .markdown(message.content))] : blocks
+        return blocks.isEmpty ? [.init(kind: .markdown(text))] : blocks
+    }
+
+    /// v3.0.51：AI 消息是否为「多气泡段落」渲染（>1 段且非图片消息）
+    private var isMultiBubbleAI: Bool {
+        !message.isUser && message.imageDataURL == nil
+            && Self.splitParagraphs(message.content).count > 1
+    }
+
+    /// v3.0.51：多气泡的单个段落气泡——每段独立圆角底 + maxWidth 366（贴左）
+    /// - streaming 为 true 时（流式中）用纯 SwiftUI Text（v3.0.41 性能：跳过 markdown 解析，末尾段持续增长）
+    /// - 落库后（streaming=false）该段走完整 markdown 分段渲染
+    @ViewBuilder
+    private func aiParagraphBubble(_ para: String, isLast: Bool, streaming: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if streaming {
+                Text(para)
+                    .font(.system(size: CGFloat(fontSize)))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            } else {
+                let pb = Self.blocks(for: para, serverURL: serverURL, streaming: false)
+                ForEach(0..<pb.count, id: \.self) { i in
+                    MessageBlockView(block: pb[i],
+                                    onCopy: { UIPasteboard.general.string = para },
+                                    onQuote: onQuote,
+                                    onShare: onShare,
+                                    onBigBang: onBigBang,
+                                    onDelete: onDelete,
+                                    onRegenerate: onRegenerate,
+                                    onWithdraw: nil,
+                                    onImageTap: { url in onAIImageTap(url) },
+                                    useSwiftUIText: true,
+                                    streaming: false)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(aiBubbleColor)
+        )
+        .frame(maxWidth: 366, alignment: .leading)
     }
 
     /// v2.0.130：AI 发图 —— Hermes 回复的 MEDIA:/路径 协议 → markdown 图片语法

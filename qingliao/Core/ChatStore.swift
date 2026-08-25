@@ -326,6 +326,41 @@ final class ChatStore {
         }
     }
 
+    // MARK: - v3.0.51 A1 图片持久化增强（待传队列 + 失败重传 + 重启续传）
+
+    /// 扫描 messages 里仍为 base64（data:image/）的用户图片消息，重传换 URL。
+    /// 队列天然派生自消息数组（重启后内存 messages 重新加载，残留 base64 的就是待传的），无需单独持久化。
+    /// 触发点：会话加载后 / 前台回到 App / 发送路径降级后。
+    func retryPendingImageUploads(auth: AuthStore, maxRetries: Int = 3) async {
+        guard !CloudConfig.shared.isCloudMode else { return }   // 云端本地上传链路不同，跳过
+        let indices = messages.indices.filter { idx in
+            let m = messages[idx]
+            return m.isUser && (m.imageDataURL?.hasPrefix("data:image/") ?? false)
+        }
+        guard !indices.isEmpty else { return }
+        for idx in indices {
+            guard let img = messages[idx].imageDataURL,
+                  img.hasPrefix("data:image/"),
+                  let comma = img.firstIndex(of: ",") else { continue }
+            let b64 = String(img[img.index(after: comma)...])
+            guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else { continue }
+            // 指数退避重试
+            var ok: String? = nil
+            for attempt in 0..<maxRetries {
+                if attempt > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 1_000_000_000))
+                }
+                ok = await uploadImage(data, auth: auth)
+                if ok != nil { break }
+            }
+            guard let url = ok else { continue }
+            if messages.indices.contains(idx) {   // 重试期间数组可能已变化（删除/切会话）
+                messages[idx].imageDataURL = url
+                await saveToServer(auth: auth, sessionId: sessionId, messages: messages, title: title)
+            }
+        }
+    }
+
     // MARK: - v3.0.27 图片持久化
 
     /// 上传图片到服务器，返回可访问的 URL

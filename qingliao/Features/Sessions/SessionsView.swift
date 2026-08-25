@@ -7,6 +7,7 @@ struct SessionsView: View {
     @Environment(ChatStore.self) private var chat
     @Environment(BotStore.self) private var botStore   // v3.0.7：bot 分组显示
     @Environment(CategoryStore.self) private var categoryStore   // v3.0.27：会话分类
+    @Environment(SessionTagStore.self) private var tagStore     // v3.0.51 B7：会话标签
 
     @State private var sessions: [ChatSession] = []
     @State private var isLoading = false
@@ -37,6 +38,10 @@ struct SessionsView: View {
     @State private var showAddCategory = false
     @State private var addCategoryForSession: String?
     @State private var newCategoryName = ""
+    // v3.0.51 B7：会话标签
+    @State private var tagTarget: ChatSession?
+    @State private var showNewTag = false
+    @State private var newTagName = ""
     var onOpenSession: (() -> Void)? = nil   // 切到聊天 tab
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -196,6 +201,7 @@ struct SessionsView: View {
                                         botGroupHeaderIfNeeded(group.key)
                                         ForEach(group.items) { s in
                                             SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
+                                                   tags: tagStore.tags(for: s.id),
                                                        showCheck: editing, checked: selectedIds.contains(s.id)) {
                                                 if editing {
                                                     toggleSelect(s.id)
@@ -243,6 +249,25 @@ struct SessionsView: View {
                                                         showAddCategory = true
                                                     }
                                                 }
+                                                // v3.0.51 B7：会话标签（本地，非文件夹）
+                                                                                                Menu("标签") {
+                                                                                                    ForEach(tagStore.allTags, id: .self) { t in
+                                                                                                        Button {
+                                                                                                            tagStore.toggle(t, on: s.id)
+                                                                                                        } label: {
+                                                                                                            let has = tagStore.tags(for: s.id).contains(t)
+                                                                                                            Label(has ? "\(t)  ✓" : t, systemImage: has ? "checkmark.circle.fill" : "circle")
+                                                                                                        }
+                                                                                                    }
+                                                                                                    Divider()
+                                                                                                    Button {
+                                                                                                        tagTarget = s
+                                                                                                        newTagName = ""
+                                                                                                        showNewTag = true
+                                                                                                    } label: {
+                                                                                                        Label("新建标签", systemImage: "plus")
+                                                                                                    }
+                                                                                                }
                                                 // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
                                                 Button(role: .destructive) {
                                                     confirmDelete = s
@@ -358,6 +383,19 @@ struct SessionsView: View {
                 categoryStore.addCategory(cat)
                 if let sid = addCategoryForSession {
                     categoryStore.assignSession(sid, to: cat.id)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
+        // v3.0.51 B7：新建标签
+        .alert("新建标签", isPresented: $showNewTag) {
+            TextField("标签名称（≤6字）", text: $newTagName)
+            Button("创建") {
+                let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                tagStore.addCustomTag(name)
+                if let sid = tagTarget?.id {
+                    tagStore.toggle(name, on: sid)
                 }
             }
             Button("取消", role: .cancel) {}
@@ -789,6 +827,7 @@ struct SessionRow: View {
     let session: ChatSession
     var pinned: Bool = false
     var faved: Bool = false   // v2.0.60 收藏
+    var tags: [String] = []   // v3.0.51 B7：会话标签
     var showCheck = false   // v2.0.87ad：多选模式
     var checked = false
     var action: () -> Void = {}
@@ -822,6 +861,21 @@ struct SessionRow: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
+                }
+                // v3.0.51 B7：会话标签小胶囊（彩色，最多 3 个）
+                if !tags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(tags, id: .self) { t in
+                            Text(t)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(tagColor(t))
+                                .lineLimit(1)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(tagColor(t).opacity(0.14), in: Capsule())
+                        }
+                    }
+                    .padding(.top, 1)
                 }
                 Text(session.lastMessageText)
                     .font(.system(size: 12))

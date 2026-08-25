@@ -24,6 +24,7 @@ struct QingliaoApp: App {
                 .environment(keyboard)
                 .environment(botStore)
                 .environment(categoryStore)
+                .environment(SessionTagStore.shared)   // v3.0.51 B7：会话标签
                 .preferredColorScheme(colorScheme)
                 // v3.0.22：主题切换过渡动画（深色/浅色切换平滑过渡）
                 .animation(.easeInOut(duration: 0.3), value: appearance)

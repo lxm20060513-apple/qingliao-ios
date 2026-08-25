@@ -212,6 +212,12 @@ struct ChatView: View {
     @State private var lastStreamFlush: Date? = nil
     // v3.0.27：长文目录
     @State private var showTOCSheet = false
+    // v3.0.51 A2：极长会话分页懒加载——初始只渲染尾部最近 N 条，顶部可"加载更早"
+    @State private var displayLimit = 300
+    private static let loadMoreStep = 300
+    private var visibleMessageCount: Int { min(chat.messages.count, displayLimit) }
+    /// 可见窗口起始绝对索引（用于日期分隔线的 prevTs 取真实前一条）
+    private var visibleStartIndex: Int { chat.messages.count - visibleMessageCount }
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -748,7 +754,28 @@ struct ChatView: View {
                 // 列表再清数据），批量移除崩溃路径不复存在；长聊天记录仅渲染可见气泡，
                 // 修复长文本滑动/左右切页卡顿
                 LazyVStack(spacing: 10) {
-                        ForEach(Array(chat.messages.enumerated()), id: \.element.id) { idx, msg in
+                                        // v3.0.51 A2：顶部"加载更早"按钮（会话长于可见窗口时显示）
+                                        if visibleStartIndex > 0 {
+                                            Button {
+                                                withAnimation(.easeOut(duration: 0.25)) {
+                                                    displayLimit += Self.loadMoreStep
+                                                }
+                                            } label: {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "chevron.up")
+                                                        .font(.system(size: 10, weight: .semibold))
+                                                    Text("加载更早 \(min(visibleStartIndex, Self.loadMoreStep)) 条")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                }
+                                                .foregroundStyle(.secondary)
+                                                .padding(.vertical, 8)
+                                                .padding(.horizontal, 14)
+                                                .background(Color.secondary.opacity(0.08), in: Capsule())
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.bottom, 2)
+                                        }
+                                        ForEach(Array(chat.messages.enumerated())[visibleStartIndex...], id: .element.id) { idx, msg in
                             // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
                             if idx > 0,
                                let prevTs = chat.messages[idx - 1].timestamp,
@@ -894,6 +921,8 @@ struct ChatView: View {
             .onChange(of: chat.sessionId) {
                 clearPendingQueue()
                 toolCards = []   // v3.0.18：工具卡片跨会话残留清理
+                // v3.0.51 A1：会话加载后重传残留 base64 图片（重启续传/失败重传）
+                Task { await chat.retryPendingImageUploads(auth: auth) }
             }
             // 滚动消息区即收起键盘（微信式）
             .scrollDismissesKeyboard(.immediately)
