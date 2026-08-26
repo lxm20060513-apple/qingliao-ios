@@ -365,6 +365,13 @@ final class ChatStore {
 
     /// 上传图片到服务器，返回可访问的 URL
     func uploadImage(_ imageData: Data, auth: AuthStore) async -> String? {
+        // v3.0.54：蜂窝分片上传 —— URLSession multipart 在蜂窝 IPv6 POST 必挂（退回 base64 大 body
+        // → CFStream/relay 载不动 → bad json 400）。蜂窝改走 auth.request（CFStream 直连+relay 兜底、
+        // 自动带 X-Auth-Token，正是文字聊天走通的小 body 通路）把图切小片 JSON base64 上传、服务端重组。
+        // WiFi 仍走原 URLSession 直连大文件，质量不变。
+        if NetworkMonitor.shared.isCellular {
+            return await uploadImageChunked(imageData, auth: auth)
+        }
         guard let config = CloudConfig.shared.activeConfig else { return nil }
         var base = config.baseURL
         if !base.hasPrefix("http") { base = "https://" + base }
@@ -394,5 +401,50 @@ final class ChatStore {
             return trimmedBase + fileURL
         }
         return fileURL
+    }
+
+    /// 蜂窝分片上传：把图片切小块 base64，逐片经 auth.request（直连+relay 兜底）传 /api/files/upload_chunk，
+    /// 服务端按 offset 写 staging、收齐自动组回完整文件返回 url。
+    /// 片大小自适应：从 16KB 起，某一片失败 → 整体减半重试（换新 uploadId），直到摸出蜂窝能通过的临界值。
+    private func uploadImageChunked(_ imageData: Data, auth: AuthStore) async -> String? {
+        guard let config = CloudConfig.shared.activeConfig else { return nil }
+        var base = config.baseURL
+        if !base.hasPrefix("http") { base = "https://" + base }
+
+        var slice = min(imageData.count, 16 * 1024)
+        while slice >= 1024 {
+            let uploadId = UUID().uuidString
+            let total = (imageData.count + slice - 1) / slice
+            var success = true
+            var index = 0
+            var offset = 0
+            while offset < imageData.count {
+                let len = min(slice, imageData.count - offset)
+                let chunkB64 = imageData.subdata(in: offset..<(offset + len)).base64EncodedString()
+                let payload: [String: Any] = [
+                    "uploadId": uploadId, "index": index, "total": total,
+                    "ext": "jpg", "slice": slice, "base64": chunkB64,
+                ]
+                guard let (data, resp) = try? await auth.request("/api/files/upload_chunk", method: "POST", body: payload),
+                      resp.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    success = false
+                    break
+                }
+                // 最后一片：服务端返回组装好的 fileURL
+                if let rel = json["url"] as? String {
+                    if rel.hasPrefix("/") {
+                        let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
+                        return trimmed + rel
+                    }
+                    return rel
+                }
+                offset += len
+                index += 1
+            }
+            if success { break }
+            slice /= 2
+        }
+        return nil
     }
 }
