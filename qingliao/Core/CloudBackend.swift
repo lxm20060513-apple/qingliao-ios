@@ -64,7 +64,13 @@ final class CloudBackend {
         req.httpMethod = "POST"
         req.timeoutInterval = 20
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        } else if config.keyless {
+            // v3.0.57：keyless 免费档（opencode-free）不发凭证，带免费档要求 header
+            req.setValue("https://hermes-agent.nousresearch.com", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("Hermes Agent", forHTTPHeaderField: "X-Title")
+        }
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "model": config.model.isEmpty ? "test" : config.model,
             "messages": [["role": "user", "content": "hi"]],
@@ -111,7 +117,13 @@ final class CloudBackend {
                 req.httpMethod = "POST"
                 req.timeoutInterval = 60
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+                if !config.apiKey.isEmpty {
+                    req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+                } else if config.keyless {
+                    // v3.0.57：keyless 免费档（opencode-free）不发凭证，带免费档要求 header
+                    req.setValue("https://hermes-agent.nousresearch.com", forHTTPHeaderField: "HTTP-Referer")
+                    req.setValue("Hermes Agent", forHTTPHeaderField: "X-Title")
+                }
                 var body: [String: Any] = [
                     "model": config.model,
                     "messages": messages,
@@ -209,7 +221,13 @@ final class CloudBackend {
         req.httpMethod = "POST"
         req.timeoutInterval = 60
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        } else if config.keyless {
+            // v3.0.57：keyless 免费档（opencode-free）不发凭证，带免费档要求 header
+            req.setValue("https://hermes-agent.nousresearch.com", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("Hermes Agent", forHTTPHeaderField: "X-Title")
+        }
         var body: [String: Any] = [
             "model": config.model,
             "messages": messages,
@@ -248,13 +266,20 @@ final class CloudBackend {
     /// 拉取当前 API 可用模型列表（OpenAI 兼容 /models 端点）——对齐本地模型管理
     func fetchModels() async -> ([String], String?) {
         guard let config = CloudConfig.shared.activeConfig,
-              !config.baseURL.isEmpty, !config.apiKey.isEmpty,
+              !config.baseURL.isEmpty,
+              (config.keyless || !config.apiKey.isEmpty),
               let url = URL(string: config.baseURL + "/models") else {
             return ([], "云端模型未配置")
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
-        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        } else if config.keyless {
+            // v3.0.57：keyless 免费档（opencode-free）不发凭证，带免费档要求 header
+            req.setValue("https://hermes-agent.nousresearch.com", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("Hermes Agent", forHTTPHeaderField: "X-Title")
+        }
         do {
             let (data, resp) = try await session.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -278,7 +303,13 @@ final class CloudBackend {
         req.httpMethod = "POST"
         req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        } else if config.keyless {
+            // v3.0.57：keyless 免费档（opencode-free）不发凭证，带免费档要求 header
+            req.setValue("https://hermes-agent.nousresearch.com", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("Hermes Agent", forHTTPHeaderField: "X-Title")
+        }
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "model": config.model,
             "messages": messages,
@@ -305,6 +336,7 @@ final class CloudBackend {
 
 extension CloudProviderConfig {
     var isValidForChat: Bool {
-        !baseURL.isEmpty && !apiKey.isEmpty && !model.isEmpty
+        // v3.0.57：keyless 免费档（opencode-free）无需 apiKey
+        (keyless ? !baseURL.isEmpty && !model.isEmpty : !baseURL.isEmpty && !apiKey.isEmpty && !model.isEmpty)
     }
 }

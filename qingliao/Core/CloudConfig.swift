@@ -17,6 +17,7 @@ struct CloudProviderPreset: Identifiable {
     let defaultModel: String // 默认模型
     let apiKeyHint: String   // key 格式提示
     var supportsVision: Bool = false   // v3.0.4：默认模型是否支持视觉
+    var keyless: Bool = false           // v3.0.57：keyless 免费档（无需 apiKey）
 
     static let presets: [CloudProviderPreset] = [
         CloudProviderPreset(id: "deepseek", name: "DeepSeek",
@@ -53,6 +54,10 @@ struct CloudProviderPreset: Identifiable {
                             baseURL: "https://token-plan-cn.xiaomimimo.com/v1",
                             defaultModel: "mimo-v2.5",
                             apiKeyHint: "米家/小米开放平台 Token 计划获取 (tp-...)"),
+        // v3.0.57：OpenCode 免费档（keyless，免任何 Key）——Hermes 内置 opencode-free
+        CloudProviderPreset(id: "opencode-free", name: "OpenCode 免费(免Key)",
+                            baseURL: "https://opencode.ai/zen/v1", defaultModel: "nemotron-3.5-lightning-free",
+                            apiKeyHint: "免 Key（Hermes keyless 免费档）", keyless: true),
         CloudProviderPreset(id: "custom", name: "自定义 (OpenAI 兼容)",
                             baseURL: "",
                             defaultModel: "",
@@ -68,6 +73,7 @@ struct CloudProviderConfig: Codable, Identifiable {
     var apiKey: String
     var model: String
     var supportsVision: Bool = false   // v3.0.4：是否支持视觉（图片降级判断）
+    var keyless: Bool = false           // v3.0.57：keyless 免费档（无需 apiKey）
 
     var id: String { providerID }   // v3.0: ForEach 需要 Identifiable
 }
@@ -146,10 +152,29 @@ final class CloudConfig {
             activeProviderID = providers.first?.providerID ?? ""
         }
     }
+    /// v3.0.57：确保 opencode-free keyless 免费档已在 providers 并置为 active（无则从 preset 添加）
+    @discardableResult
+    func activateFreeProvider() -> CloudProviderConfig? {
+        guard let pre = CloudProviderPreset.presets.first(where: { $0.keyless }) else { return nil }
+        var cfg = providers.first(where: { $0.providerID == pre.id })
+        if cfg == nil {
+            cfg = CloudProviderConfig(providerID: pre.id, name: pre.name,
+                                      baseURL: pre.baseURL, apiKey: "", model: pre.defaultModel,
+                                      supportsVision: pre.supportsVision, keyless: true)
+            providers.append(cfg!)
+            saveProviders()
+        }
+        activeProviderID = pre.id
+        return cfg
+    }
+
 
     /// 校验云端配置是否可用（登录/聊天前）
     var isConfigured: Bool {
-        guard let c = activeConfig, !c.baseURL.isEmpty, !c.apiKey.isEmpty, !c.model.isEmpty else { return false }
+        guard let c = activeConfig, !c.baseURL.isEmpty, !c.model.isEmpty else { return false }
+        // v3.0.57：keyless 免费档（opencode-free）无需 apiKey
+        if c.keyless { return true }
+        guard !c.apiKey.isEmpty else { return false }
         return true
     }
 

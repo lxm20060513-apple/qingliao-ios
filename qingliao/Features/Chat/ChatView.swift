@@ -1259,6 +1259,11 @@ struct ChatView: View {
         let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
         let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
         let (useModel, useProvider): (String, String) = {
+            // v3.0.57：免费模型开关（keyless opencode-free）——优先级最高，开启后全用免费档
+            if UserDefaults.standard.bool(forKey: "qingliao_free_model") {
+                let freeName = UserDefaults.standard.string(forKey: "qingliao_free_model_name") ?? "nemotron-3.5-lightning-free"
+                return (freeName, "opencode-free")
+            }
             // 图片消息视觉模型优先级最高
             if msg.imageDataURL != nil, let vision = CloudConfig.effectiveVisionModel() {
                 return (vision.model, vision.provider)

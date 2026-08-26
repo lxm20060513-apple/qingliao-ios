@@ -5,7 +5,9 @@ import Observation
 // 上行：POST /r/stream/start/{uid}（relay 中转，Safari 进程发请求）
 // 下行：GET  /r/stream/poll/{uid}/{taskId}/{offset}（路径参数无 query → CFStream 直连）
 // 停止：POST /r/stream/stop/{uid}/{taskId}（relay 中转）
-// 轮询间隔自适应：800ms 起 -> 有内容 500ms -> 连续 3 次空 2000ms；连续失败 10 次停止
+// 轮询间隔自适应：0.8s 起 -> 有内容 0.5s -> 连续 3 次空 2.0s；连续失败 10 次停止
+// v3.0.57：首 token 思考期空轮从 0.8 分级改为统一 0.25s——首 token 落地后最快 0.25s 拉回渲染
+//（原最坏 0.8s），同一模型 TTFT 下首字附加延迟从 ~0.8s 压到 ~0.25s，逼近推送式体验
 
 @MainActor
 @Observable
@@ -22,7 +24,7 @@ final class StreamClient {
     private var failCount = 0
     private var idleStreak = 0
     private var recoverTried = false   // v3.0.31：poll 404（任务丢失）时只尝试 recover 一次
-    private var interval: TimeInterval = 0.8
+    private var interval: TimeInterval = 0.25
     private var pollTask: Task<Void, Never>?
     private var onFinished: ((Bool, String) -> Void)?   // (success, errorMessage)
     // v3.0.50 稳定性：代际计数——停止/重启后旧轮询 resume 时丢弃结果，防污染新流
@@ -39,7 +41,7 @@ final class StreamClient {
         failCount = 0
         idleStreak = 0
         recoverTried = false
-        interval = 0.8
+        interval = 0.25
         isStreaming = true
         isDone = false
         status = ""
@@ -107,8 +109,9 @@ final class StreamClient {
                 if interval != 0.15 { interval = 0.15 }   // 有内容时 0.15s 高频轮询（接近逐字）
             } else if !done {
                 idleStreak += 1
-                // 空 poll 保持 0.4s——首 token 思考期（10-20s）不增加等待感
-                if idleStreak >= 3 && interval != 0.4 { interval = 0.4 }
+                // v3.0.57：首 token 思考期高频空轮 0.25s——首 token 落地后最快 0.25s 拉到
+                //（原 0.8s 分级，最坏要多等 0.8s 才见首字）；NAS 本机查询瞬时，空轮 0.25s 可接受
+                if interval != 0.25 { interval = 0.25 }
             }
             if done {
                 finish(success: st != "error", error: err)

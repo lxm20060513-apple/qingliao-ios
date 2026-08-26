@@ -1051,6 +1051,9 @@ struct ModelSheet: View {
     @State private var hiddenModels: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
+    // v3.0.57：免费模型开关（keyless opencode-free）——开启后用 Hermes 内置免费档，免任何 Key
+    @AppStorage("qingliao_free_model") private var freeModelOn = false
+    @AppStorage("qingliao_free_model_name") private var freeModelName = "nemotron-3.5-lightning-free"
     // v3.0.33：Agent 模型覆盖提示（Agent 开关开且配置了 agent 模型时，聊天实际走 agent 模型）
     @AppStorage("qingliao_agent_model") private var agentModel = ""
     @AppStorage("qingliao_agent_enabled") private var agentOn = true
@@ -1099,6 +1102,22 @@ struct ModelSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 10) {
+                // v3.0.57：免费模型开关（keyless opencode-free）——开关在模型管理页顶部，ChatView 据此路由
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("免费模型（免 Key）", isOn: $freeModelOn)
+                        .font(.system(size: 15, weight: .medium))
+                    Text(freeModelOn
+                         ? "当前免费模型：\(freeModelName)（keyless，免任何 Key）"
+                         : "关闭——聊天使用你自选的付费/主模型"
+                         + "。开启后可随时切换免费档。")
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+                .padding(11)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .strokeBorder(freeModelOn ? Color.green.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: 0.8)
+                )
                 // 在线状态 + 同步结果
                 HStack(spacing: 5) {
                 Circle().fill(syncing ? Color.orange : Color.green).frame(width: 7, height: 7)

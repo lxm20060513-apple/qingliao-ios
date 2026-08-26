@@ -11,6 +11,9 @@ struct CloudSettingsView: View {
     @State private var showAbout = false
     @State private var showCloudModels = false   // v3.0.2：云端模型管理列表
     @State private var confirmLogout = false
+    // v3.0.57：免费模型开关（keyless opencode-free）——复用本地同一 key（双模式唯一开关，不各做一套）
+    @AppStorage("qingliao_free_model") private var freeModelOn = false
+    @State private var pendingDeleteID: String?   // v3.0.57：云端厂商删除确认
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +28,40 @@ struct CloudSettingsView: View {
                     }
                     .glassListCard()
 
+                    // === 云端模型 ===
+                    // v3.0.57：免费模型开关（keyless opencode-free）——开启切到 Hermes 免费档，关恢复付费
+                    SectionHeader("免费模型")
+                    VStack(spacing: 0) {
+                        Toggle("使用免费模型（免 Key）", isOn: $freeModelOn)
+                            .font(.system(size: 15, weight: .medium))
+                            .tint(.green)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                        Text(freeModelOn
+                             ? "开启中——用 Hermes 内置免费模型（keyless，免任何 Key）"
+                             : "开启后可一键切到免费档；关闭回到你自选的付费模型")
+                            .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14).padding(.bottom, 8)
+                    }
+                    .glassListCard()
+                    .onChange(of: freeModelOn) { _, on in
+                        if on {
+                            // v3.0.57 review fix：active 已是 opencode-free 时不覆写 prev（防 prev 被污染成 free，关开关永久失效丢付费恢复路径）
+                            if config.activeProviderID != "opencode-free" {
+                                UserDefaults.standard.set(config.activeProviderID, forKey: "qingliao_cloud_free_prev")
+                            }
+                            config.activateFreeProvider()
+                        } else {
+                            if let prev = UserDefaults.standard.string(forKey: "qingliao_cloud_free_prev"),
+                               !prev.isEmpty, prev != "opencode-free",
+                               config.providers.contains(where: { $0.providerID == prev }) {
+                                config.activeProviderID = prev
+                            } else if config.activeProviderID.hasSuffix("opencode-free") {
+                                // v3.0.57 review fix：prev 失效且当前在免费档 → 退回首个非 keyless 付费厂商，避免"UI 关实则仍免费"失配
+                                config.activeProviderID = config.providers.first(where: { !$0.keyless })?.providerID ?? ""
+                            }
+                        }
+                    }
                     // 云端模型（对齐本地「连接与模型」卡片风格）
                     SectionHeader("云端模型")
                     VStack(spacing: 0) {
@@ -59,6 +96,17 @@ struct CloudSettingsView: View {
                                             .background(Color.accentColor.opacity(0.12), in: Capsule())
                                     }
                                     .buttonStyle(.plain)
+                                    // v3.0.57：删除厂商（清掉无法使用的模型厂商）
+                                    Button {
+                                        pendingDeleteID = p.providerID
+                                    } label: {
+                                        Image(systemName: "trash.fill")
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(.red)
+                                            .padding(.horizontal, 10).padding(.vertical, 4)
+                                            .background(Color.red.opacity(0.12), in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                             .padding(.horizontal, 14)
@@ -75,6 +123,20 @@ struct CloudSettingsView: View {
                             .onTapGesture { showCloudModels = true }   // v3.0.2：列出当前 API 可用模型
                     }
                     .glassListCard()
+                    .confirmationDialog("删除模型厂商？", isPresented: Binding(
+                        get: { pendingDeleteID != nil },
+                        set: { if !$0 { pendingDeleteID = nil } }
+                    ), titleVisibility: .visible) {
+                        Button("删除", role: .destructive) {
+                            if let id = pendingDeleteID {
+                                config.removeProvider(id: id)
+                            }
+                            pendingDeleteID = nil
+                        }
+                        Button("取消", role: .cancel) { pendingDeleteID = nil }
+                    } message: {
+                        Text("将从云端厂商列表移除该厂商（含其 API Key）。无法使用的厂商删除后可在「添加/编辑厂商」重新配置。")
+                    }
 
                     // v3.0.18：本地工具（云端 function calling 手机工具集）
                     SectionHeader("本地工具")
