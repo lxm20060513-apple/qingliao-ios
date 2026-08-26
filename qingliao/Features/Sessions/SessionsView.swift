@@ -200,81 +200,8 @@ struct SessionsView: View {
                                         // v3.0.8 CI fix：拆成辅助函数，type-check 收敛
                                         botGroupHeaderIfNeeded(group.key)
                                         ForEach(group.items) { s in
-                                            SessionRow(session: s, pinned: pinnedIDs.contains(s.id), faved: favIDs.contains(s.id),
-                                                   tags: tagStore.tags(for: s.id),
-                                                       showCheck: editing, checked: selectedIds.contains(s.id)) {
-                                                if editing {
-                                                    toggleSelect(s.id)
-                                                } else {
-                                                    chat.load(s)
-                                                    onOpenSession?()
-                                                }
-                                            }
-                                            // 长按删除（滑动删除与 TabView 切板块手势冲突，改长按）
-                                            .contextMenu {
-                                                Button {
-                                                    togglePin(s)
-                                                } label: {
-                                                    Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
-                                                }
-                                                // v2.0.60：收藏
-                                                Button {
-                                                    toggleFav(s)
-                                                } label: {
-                                                    Label(favIDs.contains(s.id) ? "取消收藏" : "收藏", systemImage: favIDs.contains(s.id) ? "star.slash" : "star")
-                                                }
-                                                // v2.0.43：会话重命名
-                                                Button {
-                                                    renameTarget = s
-                                                    renameText = s.title
-                                                } label: {
-                                                    Label("重命名", systemImage: "pencil")
-                                                }
-                                                // v3.0.27：移动到文件夹
-                                                Menu("移动到…") {
-                                                    Button("无分类") {
-                                                        categoryStore.assignSession(s.id, to: nil)
-                                                    }
-                                                    ForEach(categoryStore.categories) { cat in
-                                                        Button {
-                                                            categoryStore.assignSession(s.id, to: cat.id)
-                                                        } label: {
-                                                            Label(cat.name, systemImage: cat.icon)
-                                                        }
-                                                    }
-                                                    Divider()
-                                                    Button("新建分类…") {
-                                                        addCategoryForSession = s.id
-                                                        newCategoryName = ""
-                                                        showAddCategory = true
-                                                    }
-                                                }
-                                                // v3.0.51 B7：会话标签（本地，非文件夹）
-                                                                                                Menu("标签") {
-                                                                                                    ForEach(tagStore.allTags, id: .self) { t in
-                                                                                                        Button {
-                                                                                                            tagStore.toggle(t, on: s.id)
-                                                                                                        } label: {
-                                                                                                            let has = tagStore.tags(for: s.id).contains(t)
-                                                                                                            Label(has ? "\(t)  ✓" : t, systemImage: has ? "checkmark.circle.fill" : "circle")
-                                                                                                        }
-                                                                                                    }
-                                                                                                    Divider()
-                                                                                                    Button {
-                                                                                                        tagTarget = s
-                                                                                                        newTagName = ""
-                                                                                                        showNewTag = true
-                                                                                                    } label: {
-                                                                                                        Label("新建标签", systemImage: "plus")
-                                                                                                    }
-                                                                                                }
-                                                // v2.0.57：先弹确认再删（contextMenu 关闭瞬间不改数据）
-                                                Button(role: .destructive) {
-                                                    confirmDelete = s
-                                                } label: {
-                                                    Label("删除会话", systemImage: "trash")
-                                                }
-                                            }
+                                            // v3.0.51：会话 cell（SessionRow+长按菜单）拆辅助函数，避免嵌套 ForEach type-check 超时
+                                            sessionCell(s)
                                         }
                                     }
                                 }
@@ -494,6 +421,83 @@ struct SessionsView: View {
         }
         .padding(.horizontal, 4)
         .padding(.top, 6)
+    }
+
+    /// v3.0.51：会话 cell（SessionRow + 长按菜单）——拆辅助函数，防嵌套 ForEach type-check 超时
+    @ViewBuilder
+    private func sessionCell(_ s: ChatSession) -> some View {
+        SessionRow(session: s,
+                   pinned: pinnedIDs.contains(s.id),
+                   faved: favIDs.contains(s.id),
+                   tags: tagStore.tags(for: s.id),
+                   showCheck: editing,
+                   checked: selectedIds.contains(s.id)) {
+            if editing {
+                toggleSelect(s.id)
+            } else {
+                chat.load(s)
+                onOpenSession?()
+            }
+        }
+        .contextMenu {
+            Button {
+                togglePin(s)
+            } label: {
+                Label(pinnedIDs.contains(s.id) ? "取消置顶" : "置顶", systemImage: pinnedIDs.contains(s.id) ? "pin.slash" : "pin")
+            }
+            Button {
+                toggleFav(s)
+            } label: {
+                Label(favIDs.contains(s.id) ? "取消收藏" : "收藏", systemImage: favIDs.contains(s.id) ? "star.slash" : "star")
+            }
+            Button {
+                renameTarget = s
+                renameText = s.title
+            } label: {
+                Label("重命名", systemImage: "pencil")
+            }
+            Menu("移动到…") {
+                Button("无分类") {
+                    categoryStore.assignSession(s.id, to: nil)
+                }
+                ForEach(categoryStore.categories) { cat in
+                    Button {
+                        categoryStore.assignSession(s.id, to: cat.id)
+                    } label: {
+                        Label(cat.name, systemImage: cat.icon)
+                    }
+                }
+                Divider()
+                Button("新建分类…") {
+                    addCategoryForSession = s.id
+                    newCategoryName = ""
+                    showAddCategory = true
+                }
+            }
+            Menu("标签") {
+                ForEach(tagStore.allTags, id: .self) { t in
+                    Button {
+                        tagStore.toggle(t, on: s.id)
+                    } label: {
+                        let has = tagStore.tags(for: s.id).contains(t)
+                        Label(has ? "\(t)  ✓" : t, systemImage: has ? "checkmark.circle.fill" : "circle")
+                    }
+                }
+                Divider()
+                Button {
+                    tagTarget = s
+                    newTagName = ""
+                    showNewTag = true
+                } label: {
+                    Label("新建标签", systemImage: "plus")
+                }
+            }
+            Button(role: .destructive) {
+                confirmDelete = s
+            } label: {
+                Label("删除会话", systemImage: "trash")
+            }
+        }
     }
 
     private func rank(_ id: String) -> Int {
@@ -863,21 +867,11 @@ struct SessionRow: View {
                         .lineLimit(1)
                 }
                 // v3.0.51 B7：会话标签小胶囊（彩色，最多 3 个）
-                if !tags.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(tags, id: .self) { t in
-                            Text(t)
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(tagColor(t))
-                                .lineLimit(1)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1.5)
-                                .background(tagColor(t).opacity(0.14), in: Capsule())
-                        }
-                    }
-                    .padding(.top, 1)
-                }
-                Text(session.lastMessageText)
+                                if !tags.isEmpty {
+                                    SessionTagCapsules(tags: tags)
+                                        .padding(.top, 1)
+                                }
+                                Text(session.lastMessageText)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -912,5 +906,24 @@ struct SessionRow: View {
         .contentShape(Rectangle())
         // 用 tap 手势而非 Button 包裹（Button 会与 swipeActions 滑动手势冲突，导致滑动删除失效）
         .onTapGesture { action() }
+    }
+}
+
+
+// v3.0.51 B7：会话标签胶囊行（独立小结构，减轻 SessionRow body type-check 负担）
+private struct SessionTagCapsules: View {
+    let tags: [String]
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tags, id: \.self) { t in
+                Text(t)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(tagColor(t))
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(tagColor(t).opacity(0.14), in: Capsule())
+            }
+        }
     }
 }

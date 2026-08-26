@@ -218,6 +218,10 @@ struct ChatView: View {
     private var visibleMessageCount: Int { min(chat.messages.count, displayLimit) }
     /// 可见窗口起始绝对索引（用于日期分隔线的 prevTs 取真实前一条）
     private var visibleStartIndex: Int { chat.messages.count - visibleMessageCount }
+    /// v3.0.51 A2：预计算可见窗口（拆出 ForEach 内联切片，避免 type-check 超时）
+    private var visibleMessages: [(index: Int, msg: ChatMessage)] {
+        Array(chat.messages.enumerated())[visibleStartIndex...].map { (index: $0.offset, msg: $0.element) }
+    }
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
     // v2.0.48：改 @AppStorage——computed property 无观察机制，
@@ -725,6 +729,32 @@ struct ChatView: View {
         }
     }
 
+    /// v3.0.51：单条消息气泡构造——拆独立方法（防消息列表 ForEach 内 type-check 超时）
+    @ViewBuilder
+    private func chatMessageBubble(_ msg: ChatMessage) -> some View {
+        MessageBubble(message: msg,
+                      isHighlighted: msg.id == highlightMessageID) {
+            regenerate(at: msg.id)
+        } onBigBang: {
+            bigBangPayload = BigBangPayload(text: msg.content)
+        } onQuote: {
+            quotedMessage = msg
+            inputFocus = true
+        } onDelete: {
+            deleteMessage(msg)
+        } onShare: {
+            shareMessage(msg)
+        } onImageTap: {
+            openImageViewer(for: msg)
+        } onRetry: {
+            retryMessage(msg)
+        } onWithdraw: {
+            withdrawMessage(msg)
+        } onAIImageTap: { url in
+            openAIImage(url)
+        }
+    }
+
     /// v3.0.15：流式输出气泡——拆独立计算属性（防 messageList 巨型 body type-check 超时）
     @ViewBuilder
     private var streamingBubble: some View {
@@ -775,7 +805,9 @@ struct ChatView: View {
                                             .buttonStyle(.plain)
                                             .padding(.bottom, 2)
                                         }
-                                        ForEach(Array(chat.messages.enumerated())[visibleStartIndex...], id: .element.id) { idx, msg in
+                                        ForEach(visibleMessages, id: .msg.id) { entry in
+                                                                    let idx = entry.index
+                                                                    let msg = entry.msg
                             // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
                             if idx > 0,
                                let prevTs = chat.messages[idx - 1].timestamp,
@@ -791,34 +823,9 @@ struct ChatView: View {
                                curTs - prevTs > 300_000 {
                                 timeDivider(curTs)
                             }
-                            MessageBubble(message: msg,
-                                          isHighlighted: msg.id == highlightMessageID) {
-                                regenerate(at: msg.id)
-                            } onBigBang: {
-                                bigBangPayload = BigBangPayload(text: msg.content)
-                            } onQuote: {
-                                // v2.0.36：引用回复（点击回复时输入框聚焦）
-                                quotedMessage = msg
-                                inputFocus = true
-                            } onDelete: {
-                                // v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
-                                deleteMessage(msg)
-                            } onShare: {
-                                shareMessage(msg)
-                            } onImageTap: {
-                                // v2.0.62：相册式查看（收集全部图片消息翻页）
-                                openImageViewer(for: msg)
-                            } onRetry: {
-                                // v2.0.59：失败消息重试
-                                retryMessage(msg)
-                            } onWithdraw: {
-                                // v2.0.92：消息撤回（10 秒内）
-                                withdrawMessage(msg)
-                            } onAIImageTap: { url in
-                                // v2.0.128：AI 消息内图片 → 打开大图查看器（单张）
-                                openAIImage(url)
-                            }
-                            .id(msg.id)
+                            // v3.0.51：消息气泡拆辅助函数（缓解 ForEach 内 type-check 超时）
+                            chatMessageBubble(msg)
+                                .id(msg.id)
                             // 气泡出现动效：淡入 + 轻微上移（灵动）
                             // v2.0.38：去掉 .animation(value: messages.count)——
                             // 批量清空（清空会话/新建会话）时全 cell 同时移除的 spring 动画曾导致闪退
