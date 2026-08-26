@@ -1169,6 +1169,9 @@ struct ChatView: View {
     /// v2.0.88：AI 回答中发送不再被拦截——消息上屏 + 入队，当前回答结束后自动逐条发送
     /// v2.0.102：sendingLock 同步置位——防极快双击时 isStreaming 尚未置位导致双流竞态
     private func sendCore(text: String, imageData: String?) {
+        // v3.0.52：蜂窝下 base64 图 body 过大 → 先超强压缩（uploadImage 蜂窝大概率失败退回 base64 大 body，
+        // 导致 CFStream/relay 载不动 → 后端 bad json 400；压小后直连可过）
+        let imageData = compressForCellular(imageData)
         guard !text.isEmpty || imageData != nil else { return }
         // v3.0.19 review fix #1：语音指令标志在此一次性消费——标记本消息 + 转播报意图 + 清空 sid
         // （原实现只在主路径标记，排队/失败/切会话路径会悬挂 → 误标下一条 + 无故 TTS）
@@ -2108,6 +2111,33 @@ struct ChatView: View {
             data = resized.jpegData(compressionQuality: quality)
         }
         guard let d = data else { return nil }
+        return "data:image/jpeg;base64," + d.base64EncodedString()
+    }
+
+    /// v3.0.52：蜂窝下把 base64 图压到极小，使 stream/start 的 body 能通过 CFStream 直连传输
+    /// （蜂窝下 uploadImage(URLSession) 大概率失败 → 图片退回 base64 大 body → 后端 bad json 400；压小后直连可过）
+    private func compressForCellular(_ imageDataURL: String?) -> String? {
+        guard let img = imageDataURL,
+              NetworkMonitor.shared.isCellular,
+              let comma = img.firstIndex(of: ","),
+              img[..<comma].hasPrefix("data:image/"),
+              let b64 = String(img[img.index(after: comma)...]).data(using: .ascii),
+              let data = Data(base64Encoded: b64),
+              let ui = UIImage(data: data)
+        else { return imageDataURL }
+        let maxSide: CGFloat = 640
+        var w = ui.size.width
+        var h = ui.size.height
+        if max(w, h) > maxSide {
+            let scale = maxSide / max(w, h)
+            w *= scale
+            h *= scale
+        }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: w, height: h))
+        let resized = renderer.image { _ in
+            ui.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        guard let d = resized.jpegData(compressionQuality: 0.5) else { return imageDataURL }
         return "data:image/jpeg;base64," + d.base64EncodedString()
     }
 }   // v3.0.50：扫码球移除后 ChatView struct 闭合

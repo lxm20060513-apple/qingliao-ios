@@ -317,7 +317,13 @@ final class AuthStore {
         guard (200..<300).contains(code),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tid = json["taskId"] as? String else {
-            throw APIError.badResponseDetail("stream start fail (\(code))")
+            // v3.0.52：暴露后端真实 400 原因（如 bad json / messages required），勿再只报通用码
+            var errDetail = ""
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let msg = obj["error"] as? String {
+                errDetail = " — " + msg
+            }
+            throw APIError.badResponseDetail("stream start fail (\(code))\(errDetail)")
         }
         return tid
     }
