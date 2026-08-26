@@ -1126,6 +1126,9 @@ struct ChatView: View {
     /// 已是 http 或非数据 URL 原样返回；上传失败降级回 base64（保证发送不中断）
     private func persistImageIfNeeded(_ imageDataURL: String?) async -> String? {
         guard let img = imageDataURL, !img.hasPrefix("http") else { return imageDataURL }
+        // v3.0.55：蜂窝不再 await URL 上传——v3.0.54 阻塞路径卡在分片末屏响应导致图不上屏/不发。
+        // 蜂窝直接短路返回，交给 sendCore 的 compressForCellular（压缩 base64）立即上屏发送，不挂起。
+        if NetworkMonitor.shared.isCellular { return img }
         var b64 = img
         if let comma = img.firstIndex(of: ","), img[..<comma].hasPrefix("data:image/") {
             b64 = String(img[img.index(after: comma)...])
