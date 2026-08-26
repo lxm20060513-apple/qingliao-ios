@@ -1463,15 +1463,20 @@ struct ChatView: View {
     }
 
     /// 蜂窝下历史从后往前保留，直到 payload ≤ 3400（AI 至少看到最近上下文 + 新消息）
+    /// v3.0.53 fix：带图消息绝不能因 3400 relay 上限被裁成空数组（否则蜂窝发图 → messages 空 → 后端 400 messages required）。
+    /// 带图消息走 CFStream 直连（不受 relay 3400 限制），必须保留图片本身；此函数仅作 relay 兜底的历史裁剪。
     private func relaySafeHistory(_ history: [[String: Any]]) -> [[String: Any]] {
         let limit = 3400
         if relayPayloadLength(messages: history) <= limit { return history }
         var kept: [[String: Any]] = []
         for m in history.reversed() {
+            let hasImage = (m["content"] as? [[String: Any]])?.contains { ($0["type"] as? String) == "image_url" } ?? false
             let test = [m] + kept
-            if relayPayloadLength(messages: test) <= limit {
+            let within = relayPayloadLength(messages: test) <= limit
+            if within || hasImage {
                 kept = test
-            } else { break }
+            }
+            if !within && !hasImage { break }
         }
         return kept
     }
@@ -2116,6 +2121,7 @@ struct ChatView: View {
 
     /// v3.0.52：蜂窝下把 base64 图压到极小，使 stream/start 的 body 能通过 CFStream 直连传输
     /// （蜂窝下 uploadImage(URLSession) 大概率失败 → 图片退回 base64 大 body → 后端 bad json 400；压小后直连可过）
+    /// v3.0.53：再压狠一点 (480px/0.45) → body ~20KB，提高 CFStream 蜂窝直连通过率
     private func compressForCellular(_ imageDataURL: String?) -> String? {
         guard let img = imageDataURL,
               NetworkMonitor.shared.isCellular,
@@ -2125,7 +2131,7 @@ struct ChatView: View {
               let data = Data(base64Encoded: b64),
               let ui = UIImage(data: data)
         else { return imageDataURL }
-        let maxSide: CGFloat = 640
+        let maxSide: CGFloat = 480
         var w = ui.size.width
         var h = ui.size.height
         if max(w, h) > maxSide {
@@ -2137,7 +2143,7 @@ struct ChatView: View {
         let resized = renderer.image { _ in
             ui.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
         }
-        guard let d = resized.jpegData(compressionQuality: 0.5) else { return imageDataURL }
+        guard let d = resized.jpegData(compressionQuality: 0.45) else { return imageDataURL }
         return "data:image/jpeg;base64," + d.base64EncodedString()
     }
 }   // v3.0.50：扫码球移除后 ChatView struct 闭合
