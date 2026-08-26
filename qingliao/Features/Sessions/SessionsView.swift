@@ -475,7 +475,7 @@ struct SessionsView: View {
                 }
             }
             Menu("标签") {
-                ForEach(tagStore.allTags, id: .self) { t in
+                ForEach(tagStore.allTags, id: \.self) { t in
                     Button {
                         tagStore.toggle(t, on: s.id)
                     } label: {

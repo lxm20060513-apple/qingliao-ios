@@ -219,8 +219,13 @@ struct ChatView: View {
     /// 可见窗口起始绝对索引（用于日期分隔线的 prevTs 取真实前一条）
     private var visibleStartIndex: Int { chat.messages.count - visibleMessageCount }
     /// v3.0.51 A2：预计算可见窗口（拆出 ForEach 内联切片，避免 type-check 超时）
-    private var visibleMessages: [(index: Int, msg: ChatMessage)] {
-        Array(chat.messages.enumerated())[visibleStartIndex...].map { (index: $0.offset, msg: $0.element) }
+    private struct MessageRowItem: Identifiable {
+        let index: Int
+        let msg: ChatMessage
+        var id: String { msg.id }
+    }
+    private var visibleMessages: [MessageRowItem] {
+        Array(chat.messages.enumerated())[visibleStartIndex...].map { MessageRowItem(index: $0.offset, msg: $0.element) }
     }
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
@@ -729,6 +734,33 @@ struct ChatView: View {
         }
     }
 
+    /// v3.0.51：单条消息整行（日期分隔 + 时间分隔 + 气泡）——拆独立方法防 ForEach type-check 超时
+    @ViewBuilder
+    private func messageRow(idx: Int, msg: ChatMessage) -> some View {
+        // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
+        if idx > 0,
+           let prevTs = chat.messages[idx - 1].timestamp,
+           let curTs = msg.timestamp,
+           !Calendar.current.isDate(Date(timeIntervalSince1970: curTs / 1000),
+                                   inSameDayAs: Date(timeIntervalSince1970: prevTs / 1000)) {
+            dateDivider(curTs)
+        }
+        // 相邻消息间隔 >5 分钟：插入居中时间分隔（微信式）
+        if idx > 0,
+           let prevTs = chat.messages[idx - 1].timestamp,
+           let curTs = msg.timestamp,
+           curTs - prevTs > 300_000 {
+            timeDivider(curTs)
+        }
+        chatMessageBubble(msg)
+            .id(msg.id)
+            // 气泡出现动效：淡入 + 轻微上移（灵动）
+            // v2.0.38：去掉 .animation(value: messages.count)——
+            // 批量清空（清空会话/新建会话）时全 cell 同时移除的 spring 动画曾导致闪退
+            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                    removal: .opacity))
+    }
+
     /// v3.0.51：单条消息气泡构造——拆独立方法（防消息列表 ForEach 内 type-check 超时）
     @ViewBuilder
     private func chatMessageBubble(_ msg: ChatMessage) -> some View {
@@ -805,33 +837,10 @@ struct ChatView: View {
                                             .buttonStyle(.plain)
                                             .padding(.bottom, 2)
                                         }
-                                        ForEach(visibleMessages, id: .msg.id) { entry in
-                                                                    let idx = entry.index
-                                                                    let msg = entry.msg
-                            // v2.0.60：跨天 → 日期分隔线（微信式：昨天/M月d日）
-                            if idx > 0,
-                               let prevTs = chat.messages[idx - 1].timestamp,
-                               let curTs = msg.timestamp,
-                               !Calendar.current.isDate(Date(timeIntervalSince1970: curTs / 1000),
-                                                       inSameDayAs: Date(timeIntervalSince1970: prevTs / 1000)) {
-                                dateDivider(curTs)
-                            }
-                            // 相邻消息间隔 >5 分钟：插入居中时间分隔（微信式）
-                            if idx > 0,
-                               let prevTs = chat.messages[idx - 1].timestamp,
-                               let curTs = msg.timestamp,
-                               curTs - prevTs > 300_000 {
-                                timeDivider(curTs)
-                            }
-                            // v3.0.51：消息气泡拆辅助函数（缓解 ForEach 内 type-check 超时）
-                            chatMessageBubble(msg)
-                                .id(msg.id)
-                            // 气泡出现动效：淡入 + 轻微上移（灵动）
-                            // v2.0.38：去掉 .animation(value: messages.count)——
-                            // 批量清空（清空会话/新建会话）时全 cell 同时移除的 spring 动画曾导致闪退
-                            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                                                    removal: .opacity))
-                        }
+                                        ForEach(visibleMessages) { entry in
+                                                                    // v3.0.51：整行（日期分隔 + 时间分隔 + 气泡）拆辅助函数，ForEach 内只留薄调用
+                                                                    messageRow(idx: entry.index, msg: entry.msg)
+                                                                }
                         // v3.0.18：云端工具执行卡片（显示在流式气泡上方）
                         if !toolCards.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
