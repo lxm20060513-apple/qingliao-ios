@@ -79,7 +79,7 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
     }
 }
 
-// MARK: - v2.0.50 滚动位置检测（替代 .scrollPosition，DockVisibility 用）
+// MARK: - v2.0.50 滚动位置检测（替代 .scrollPosition）
 // .scrollPosition 在 TabView 隐藏页内容清空时是已知崩溃点（SIGTRAP），
 // 换 GeometryReader + PreferenceKey：滚动时上报内容区 minY，取负后语义同 scrollPos.y
 
@@ -162,9 +162,6 @@ struct ChatView: View {
     // v2.0.43：快捷指令 / 搜索定位高亮
     @State private var showQuickPrompts = false
     @State private var highlightMessageID: String?
-    // v2.0.46：隐藏 Dock 栏开关（开启时输入框贴底）
-    @AppStorage("qingliao_hide_dock") private var hideDock = false
-    // v2.0.59：上下文过长提示 / 失败重试
     @State private var showLongContextAlert = false
     @State private var pendingSend: (text: String, imageData: String?)?
     @State private var showModelSheet = false   // 模型快速切换
@@ -595,18 +592,11 @@ struct ChatView: View {
                         // v2.0.135：消费输入栏区域的点击，防冒泡到消息区 ZStack 根手势误收键盘
                         // （TextField/按钮自身优先消费，此手势只兜底输入栏空白处）
                         .onTapGesture {}
-                         // v2.0.37：键盘弹出时输入框贴键盘顶部（绝对坐标换算，0 空隙）；
-            // v2.0.46：隐藏 Dock 栏开关开启时输入框贴底（不留 Dock 避让），否则留 86pt 避让贴底 Dock
-            // v2.0.133e：动画时长/曲线跟随键盘系统动画（观察器已记录），完全同步无跳变
-            .padding(.bottom, kb.isVisible
-                     ? max(0, UIScreen.main.bounds.height - kb.topY)
-                     : (hideDock ? 0 : 76))
+            // v3.0.64：改用 iOS 26 系统原生 TabView tab bar 后，底部间距交给系统安全区 + 原生键盘避让。
+            // 旧手动 .padding(.bottom, kb 高度 / 76) 是为自定义 DockBar（内容铺到屏幕底再叠 dock）定，
+            // 现内容受原生 tab bar 安全区约束，手动偏移会双重叠加 → 输入框不贴键盘/dock。故移除。
+            .padding(.bottom, 0)
         }
-        // v2.0.140：禁用系统键盘避让——ChatInputBar 已手动按 kb.topY 精确算 bottom padding，
-        // 系统默认避让叠加会双重上抬 → 输入框与键盘间留空隙（用户红线标注：让红线长度=0）
-        // 注：.keyboardAvoidance(.disabled) 并非 SwiftUI 公开 API（CI 编译报 no member），
-        // 用官方键盘避让 opt-out：.ignoresSafeArea(.keyboard)
-        .ignoresSafeArea(.keyboard)
         .animation(.easeOut(duration: kb.animationDuration), value: kb.height)
         // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
         .alert("语音转文字不可用", isPresented: $voiceAuthFailed) {

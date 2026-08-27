@@ -260,9 +260,6 @@ struct AppearanceSheet: View {
     // v3.0.36：灵动岛发光（独立开关，复用 Siri 发光 4 参数）
     @AppStorage("qingliao_island_glow") private var islandGlow = false
     @AppStorage("qingliao_ball_input") private var ballInput = true
-    @AppStorage("qingliao_hide_dock") private var hideDock = false
-    // v3.0.44：Dock 透明度（默认1.0=3.0.43原物质感，本地/云端共用）
-    @AppStorage("qingliao_dock_opacity") private var dockOpacity = 1.0
     @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
     @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
     @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
@@ -288,26 +285,6 @@ struct AppearanceSheet: View {
                 Section("交互") {
                     Toggle("智能球输入", isOn: $ballInput)
                     Toggle("输入框流光光效", isOn: $glowOn)   // v3.0.4：补全本地独有项
-                    Toggle("Dock 栏", isOn: $hideDock)
-                        .onChange(of: hideDock) { _, on in
-                            if on {
-                                DockVisibility.shared.forceHidden = true
-                                DockVisibility.shared.hidden = true
-                            } else {
-                                DockVisibility.shared.forceHidden = false
-                                DockVisibility.shared.reset()
-                            }
-                        }
-                    if !hideDock {
-                        // v3.0.44：Dock 透明度滑条（默认1.0=3.0.43原物质感）
-                        HStack(spacing: 10) {
-                            Text("Dock 透明度").font(.system(size: 15)).foregroundStyle(.primary)
-                            Spacer()
-                            Slider(value: $dockOpacity, in: 0.35...1.0).tint(.teal)
-                                .frame(width: 130)
-                            Text("\(Int(dockOpacity * 100))%").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
-                        }
-                    }
                 }
                 // AI 回答发光（对齐本地 Siri 发光 4 参数）
                 Section("AI 回答发光") {
