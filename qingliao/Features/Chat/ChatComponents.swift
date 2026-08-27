@@ -166,10 +166,9 @@ struct MessageBlockView: View {
         switch block.kind {
         case .markdown(let text):
             if streaming {
-                // v3.0.41 性能：流式中纯 Text 渲染——不做 markdown 解析/AttributedString 转换
-                //（流式高频更新下每次 body 重算都要全量解析超长文本 = 滑动卡死主因；
-                //  流式未完成的 markdown 解析无意义，落库后走完整渲染）
-                Text(text)
+                // v3.0.59 fix：流式中也走 cachedRenderText（AttributedString）——
+                // 纯 SwiftUI Text 在多段落气泡中会截断显示 "…"，改用与落库后一致的渲染路径
+                Text(cachedRenderText(text))
                     .font(.system(size: CGFloat(fontSize)))
                     .lineSpacing(aiLineSpacing)
                     .textSelection(.enabled)
@@ -667,31 +666,23 @@ struct MessageBubble: View {
     }
 
     /// v3.0.51：多气泡的单个段落气泡——每段独立圆角底 + maxWidth 366（贴左）
-    /// - streaming 为 true 时（流式中）用纯 SwiftUI Text（v3.0.41 性能：跳过 markdown 解析，末尾段持续增长）
-    /// - 落库后（streaming=false）该段走完整 markdown 分段渲染
+    /// v3.0.59 fix：流式/非流式统一走 markdown 渲染（消除 SwiftUI Text 在流式气泡中截断显示 "…" 的 bug）
     @ViewBuilder
     private func aiParagraphBubble(_ para: String, isLast: Bool, streaming: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if streaming {
-                Text(para)
-                    .font(.system(size: CGFloat(fontSize)))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-            } else {
-                let pb = Self.blocks(for: para, serverURL: serverURL, streaming: false)
-                ForEach(0..<pb.count, id: \.self) { i in
-                    MessageBlockView(block: pb[i],
-                                    onCopy: { UIPasteboard.general.string = para },
-                                    onQuote: onQuote,
-                                    onShare: onShare,
-                                    onBigBang: onBigBang,
-                                    onDelete: onDelete,
-                                    onRegenerate: onRegenerate,
-                                    onWithdraw: nil,
-                                    onImageTap: { url in onAIImageTap(url) },
-                                    useSwiftUIText: true,
-                                    streaming: false)
-                }
+            let pb = Self.blocks(for: para, serverURL: serverURL, streaming: false)
+            ForEach(0..<pb.count, id: \.self) { i in
+                MessageBlockView(block: pb[i],
+                                onCopy: { UIPasteboard.general.string = para },
+                                onQuote: onQuote,
+                                onShare: onShare,
+                                onBigBang: onBigBang,
+                                onDelete: onDelete,
+                                onRegenerate: onRegenerate,
+                                onWithdraw: nil,
+                                onImageTap: { url in onAIImageTap(url) },
+                                useSwiftUIText: true,
+                                streaming: false)
             }
         }
         .padding(.horizontal, 12)
