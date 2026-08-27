@@ -594,8 +594,8 @@ struct ChatView: View {
                         .onTapGesture {}
             // v3.0.64：改用 iOS 26 系统原生 TabView tab bar 后，键盘避让交由系统安全区 + 原生键盘避让。
             // 旧手动 offset（kb 高度 / 76）是为自定义 DockBar（内容铺到屏幕底再叠 dock）设计，原生 tab bar 下会双重叠加冒高，故移除。
-            // v3.0.66：仅加收起时与 dock 的 10pt 呼吸间隙；弹键盘仍贴键盘 0 空隙。
-            .padding(.bottom, kb.isVisible ? 0 : 10)   // v3.0.66：收起时与 dock 留 10pt 呼吸；弹键盘仍贴键盘 0 空隙
+            // v3.0.67：输入框与 dock / 键盘均留 10pt 呼吸（Round-1「贴键盘 0」已改主意为也要留隙）。
+            .padding(.bottom, 10)   // v3.0.67：输入框与 dock / 键盘均留 10pt 呼吸——收起贴 dock、弹键盘也留隙（Round-1「贴键盘 0」已被用户改主意为也要留隙）
         }
         .animation(.easeOut(duration: kb.animationDuration), value: kb.height)
         // v2.0.96：语音授权/转写失败提示（服务器 ASR：麦克风权限或转写无结果）
