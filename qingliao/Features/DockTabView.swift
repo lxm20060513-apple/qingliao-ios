@@ -29,7 +29,7 @@ struct DockTabView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(ChatStore.self) private var chat
     @Environment(StreamClient.self) private var stream
-    @Environment(\\.horizontalSizeClass) private var hSize
+    @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
         // v3.0.64：改用 iOS 26 系统原生 TabView tab bar —— 系统自动渲染液态玻璃 tab bar，
