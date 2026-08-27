@@ -123,49 +123,46 @@ struct DockBar: View {
     @AppStorage("qingliao_dock_opacity") private var dockOpacity = 1.0
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(DockTab.allCases) { tab in
-                Button {
-                    selected = tab
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 22, weight: .medium))
-                            .scaleEffect(tab == .chat && bounce ? 1.18 : 1.0)
-                        Text(tab.title)
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background {
-                        if selected == tab {
-                            Capsule()
-                                .fill(Color.accentColor.opacity(0.12))
-                                .animation(.easeInOut(duration: 0.25), value: selected)
+        // v3.0.62：真液态玻璃 + 交互式。
+        // 关键 1：.glassEffect(.regular.interactive()) 必须加在每个 tab 的 Button 上（交互控件才有按压放大/流动折射语义，
+        //         加在 background 玻璃上不会响应触摸——这就是之前"按压没反应"的根因）。
+        // 关键 2：GlassEffectContainer 让相邻玻璃按钮统一采样/渲染/变形（官方推荐分组）。
+        // 关键 3：默认 .regular = 满强度液态玻璃；去掉按钮内 clipShape + 整条 background 玻璃，避免削弱通透。
+        GlassEffectContainer(spacing: 4) {
+            HStack(spacing: 0) {
+                ForEach(DockTab.allCases) { tab in
+                    Button {
+                        selected = tab
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 22, weight: .medium))
+                                .scaleEffect(tab == .chat && bounce ? 1.18 : 1.0)
+                            Text(tab.title)
+                                .font(.system(size: 10, weight: .semibold))
                         }
+                        .foregroundStyle(selected == tab ? Color.accentColor : Color.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background {
+                            if selected == tab {
+                                Capsule()
+                                    .fill(Color.accentColor.opacity(0.12))
+                                    .animation(.easeInOut(duration: 0.25), value: selected)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .animation(.easeOut(duration: 0.18), value: selected)
                     }
-                    .clipShape(Capsule())
-                    .contentShape(Rectangle())
-                    .animation(.easeOut(duration: 0.18), value: selected)
+                    .buttonStyle(.plain)
+                    // 真液态玻璃 + 交互（按压放大/流动折射）。放 Button 上，不放 background。
+                    .glassEffect(.regular.interactive())
+                    .padding(4)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        // v3.0.60：按 ios-26-component-modernizer skill 恢复真液态玻璃。
-        // 上次 v3.0.46→47 回滚根因 = glassEffect 乘了 dockOpacity 导致光泽/折射/高光退化 + TabView 纯色背景掐死折射。
-        // 本次：glassEffect 不乘 opacity（保持满强度液态玻璃系统默认），纯色背景一并移除。
-        .background { Capsule().glassEffect() }
-        .clipShape(Capsule())
-        .overlay {
-            Capsule().strokeBorder(
-                LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
-                               startPoint: .top, endPoint: .bottom),
-                lineWidth: 0.5
-            )
-        }
         .shadow(color: .black.opacity(0.18), radius: 16, x: 0, y: 6)
         // dockOpacity 保留控制整栏透明度（默认1.0=玻璃满强度，调低整体变淡）——避免设置页滑条失效
         .opacity(dockOpacity)
