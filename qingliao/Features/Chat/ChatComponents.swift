@@ -959,7 +959,7 @@ struct ChatInputBar: View {
                                      onBallLongPress()
                                  })
                 }
-                .padding(.bottom, 4)   // v3.0.64：原生 tab bar 下收紧——旧 12pt 是相对自定义 DockBar 顶的间距，现贴 tab bar（球底距 Dock 顶约 4pt）
+                .padding(.bottom, 0)   // v3.0.66：球态间隙由外层 ChatInputBar 统一留（键盘收起时与 Dock 约 10pt 呼吸）
                 // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出
                 .transition(.scale(1.35).combined(with: .opacity))
             } else {
