@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-22
-> 最新版本：v3.0.35（native-3.0 分支，已发版）
+> 最后更新：2026-08-27
+> 最新版本：v3.0.60（feature/handoff-301 分支，已发版）
 
 ---
 
@@ -44,6 +44,16 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.60（智谱 GLM 模型 + 后端并发优化，2026-08-27 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 后端 SYNC_ENDPOINTS 加 zai | `stream_api.py` | 新增智谱 GLM provider（open.bigmodel.cn/api/paas/v4），自有 key 直连 |
+| model-providers 并发拉取 | `stream_api.py` | 原串行7个provider×10s超时=70s挂起，改 ThreadPoolExecutor 并发（12s总超时） |
+| 版本号 | `project.yml` | 3.0.59 → 3.0.60（build 358） |
+
+> 后端部署：NAS `stream_api.py` 已更新 + `docker restart qingliao` 生效。App 侧模型管理已改为全动态渲染（allProviders ForEach），新增 provider 免改版。
 
 ### v3.0.40（富文本回滚，2026-08-23 已发版）
 
