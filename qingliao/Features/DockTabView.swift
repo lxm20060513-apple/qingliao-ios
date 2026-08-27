@@ -63,7 +63,8 @@ struct DockTabView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(Color(uiColor: .systemBackground))
+            // v3.0.60：移除紧贴内容层的纯色 systemBackground——它掐死了液态玻璃对下方内容的折射/采样。
+            // （保留 ZStack 最底层背景作兜底，Tab 页自身内容背景照常铺满，玻璃能透出页面内容。）
             .ignoresSafeArea(edges: .bottom)
             .coordinateSpace(name: "scrollspace")
             .animation(.easeInOut(duration: 0.28), value: selected)
@@ -153,9 +154,10 @@ struct DockBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
-        // v3.0.44：透明度可调（设置→外观→Dock 透明度，默认1.0=3.0.43原物质感）
-        // v3.0.47：回滚——真液态玻璃 glassEffect 效果不好，恢复 ultraThinMaterial 毛玻璃
-        .background(.ultraThinMaterial.opacity(dockOpacity))
+        // v3.0.60：按 ios-26-component-modernizer skill 恢复真液态玻璃。
+        // 上次 v3.0.46→47 回滚根因 = glassEffect 乘了 dockOpacity 导致光泽/折射/高光退化 + TabView 纯色背景掐死折射。
+        // 本次：glassEffect 不乘 opacity（保持满强度液态玻璃系统默认），纯色背景一并移除。
+        .background { Capsule().glassEffect() }
         .clipShape(Capsule())
         .overlay {
             Capsule().strokeBorder(
@@ -164,7 +166,9 @@ struct DockBar: View {
                 lineWidth: 0.5
             )
         }
-        .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.18), radius: 16, x: 0, y: 6)
+        // dockOpacity 保留控制整栏透明度（默认1.0=玻璃满强度，调低整体变淡）——避免设置页滑条失效
+        .opacity(dockOpacity)
         .onReceive(NotificationCenter.default.publisher(for: .qingliaoSent)) { _ in
             withAnimation(.spring(duration: 0.25, bounce: 0.5)) {
                 bounce = true
