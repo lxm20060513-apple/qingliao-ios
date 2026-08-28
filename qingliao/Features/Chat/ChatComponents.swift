@@ -910,15 +910,6 @@ struct ChatInputBar: View {
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
     // v2.0.109b：onChanged 记录按下瞬间键盘可见状态（down 时键盘未弹/已弹，比时间戳推断可靠）
     var onLongPressInput: (Bool) -> Void = { _ in }
-    // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
-    var onBallLongPress: () -> Void = {}
-    // v3.0.68 第3条：录音中松手（抬起）→ 收尾上屏
-    var onRelease: () -> Void = {}
-    // v3.0.x：语音对讲——长按球进入对讲（多轮），对讲中轻点球=结束；非对讲=展开输入框
-    var voiceChatActive: Bool = false
-    var onExitVoiceChat: () -> Void = {}
-    // v3.0.x：AI 朗读中 → 智能球呈"说话"粒子态
-    var isSpeaking: Bool = false
     // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
@@ -936,54 +927,18 @@ struct ChatInputBar: View {
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
                 VStack(spacing: 8) {
-                    // v3.0.68 第1条：对讲激活全程显示引导提示（录音中改"松开上屏"，不再消失）
-                    if voiceChatActive {
-                        Text(voiceMode || isRecording ? "🎙️ 对我说 · 松开上屏" :
-                             (transcribing ? "🎙️ 正在识别…" : "🎙️ 可语音对话 · 按住球说话 · 轻点球结束"))
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12).padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .transition(.opacity)
-                    }
                     HStack(spacing: 34) {
-                    // v2.0.129 智能球保持原交互（单击展开输入框 / 长按语音转文字）
-                    SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
-                                 transcribing: transcribing,
-                                 thinking: streaming,
-                                 isSpeaking: isSpeaking,
+                    // v2.0.129 智能球：单击展开输入框（语音功能已移除）
+                    SiriBallView(thinking: streaming,
                                  onTap: {
-                                     // 转写中点击不响应（避免打断）
-                                     guard !transcribing else { return }
-                                     // v3.0.x：对讲中轻点球 = 结束对讲（不展开输入框）
-                                     if voiceChatActive {
-                                         onExitVoiceChat()
-                                         return
-                                     }
-                                     // v2.0.130：炫酷展开 —— 全屏粒子爆发 + 输入框从球心缩放展开
                                      onFullBurst()
                                      withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                                          ballExpanded = true
                                      }
                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                         focused = true   // 键盘动画与展开动画串行，衔接平滑
+                                         focused = true
                                      }
-                                 },
-                                 onLongPress: {
-                                     // v3.0.19：长按球 = 语音指令（ASR 后自动发送执行 + TTS 播报）
-                                     // v3.0.4：云端模式无语音 → 长按球展开输入框（等同点击）
-                                     guard voiceEnabled else {
-                                         onFullBurst()
-                                         withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
-                                             ballExpanded = true
-                                         }
-                                         return
-                                     }
-                                     guard !transcribing else { return }
-                                     onBallLongPress()
-                                 },
-                                 // v3.0.68 第3条：录音中松手 → 收尾上屏
-                                 onRelease: onRelease)
+                                 })
                     }
                 }
                 .padding(.bottom, 0)   // v3.0.66：球态间隙由外层 ChatInputBar 统一留（键盘收起时与 Dock 约 10pt 呼吸）
@@ -993,18 +948,6 @@ struct ChatInputBar: View {
                 fullInputBar
                     // v2.0.130：输入框从球心缩放展开——v2.0.132 优化：同样去掉 blurReplace
                     .transition(.scale(0.5).combined(with: .opacity))
-            }
-        }
-        // v2.0.129：球态下语音转写完成（transcribing true→false 且已有转写文字）→ 自动展开输入框 + 弹键盘
-        .onChange(of: transcribing) { _, newVal in
-            if ballInput, !ballExpanded, !newVal, !text.isEmpty {
-                withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
-                    ballExpanded = true
-                }
-                // v2.0.133e：与点击路径统一——等展开动画结束再弹键盘（0.35s+0.05 余量），串行不抢帧
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    focused = true   // 转写完成弹键盘（用户细节③确认）
-                }
             }
         }
         // v3.0.68 第6条：智能球开关下默认显示球——键盘收起且输入框为空 → 自动收回成球
@@ -1304,123 +1247,40 @@ struct BurstCanvas: View {
 /// 单击 → 展开输入框；长按 → 语音转文字（球保持特效）。
 /// ⚠️ 手势用 ExclusiveGesture(LongPress, Tap) 互斥（v2.0.98 SIGTRAP 教训：勿叠加 onTap+onLongPress）。
 struct SiriBallView: View {
-    var isRecording: Bool = false
-    var voiceMode: Bool = false
-    var transcribing: Bool = false   // v2.0.129：转写中显示转圈
     // v3.0.12：思考球——流式回答中 orbits(点点旋转) / 空闲 ring(缓慢脉动)
     var thinking: Bool = false
-    // v3.0.x：AI 朗读中 → "说话"粒子态
-    var isSpeaking: Bool = false
     var onTap: () -> Void = {}
-    var onLongPress: () -> Void = {}
-    // v3.0.68 第3条：录音中松手（抬起）→ 收尾上屏
-    var onRelease: () -> Void = {}
 
     var body: some View {
-        // v2.0.132 优化：球呼吸降到 30fps（TimelineView(.animation) 每帧重绘 AngularGradient+blur 常驻开销大；30fps 肉眼无差）
-        // v2.0.133g：schedule 提为显式类型变量（同 FullScreenBurst，防 CI 泛型推断失败）
         let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 30.0)
         TimelineView(schedule) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            // v2.0.132：语音激活（录音/转写中）→ 珊瑚红渐变 + 加速呼吸（一眼可辨）；
-            // 默认 Siri 蓝紫粉淡雅
-            let active = isRecording || transcribing
-            let breathe = active
-                ? 0.5 + 0.35 * (sin(t * 4.5) + 1) / 2    // 语音中呼吸加速
-                : 0.35 + 0.30 * (sin(t * 2.2) + 1) / 2
-            let glowColors: [Color] = active
-                ? [.red.opacity(0.65 * breathe), .orange.opacity(0.55 * breathe),
-                   .pink.opacity(0.55 * breathe), .red.opacity(0.65 * breathe)]
-                : [.blue.opacity(0.55 * breathe), .indigo.opacity(0.5 * breathe),
-                   .pink.opacity(0.5 * breathe), .purple.opacity(0.42 * breathe),
-                   .blue.opacity(0.55 * breathe)]
-            let bodyColors: [Color] = active
-                ? [.red.opacity(0.92 * breathe), .orange.opacity(0.85 * breathe),
-                   .pink.opacity(0.85 * breathe), .red.opacity(0.92 * breathe)]
-                : [.blue.opacity(0.85 * breathe), .indigo.opacity(0.8 * breathe),
-                   .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
-                   .blue.opacity(0.85 * breathe)]
+            let breathe = 0.35 + 0.30 * (sin(t * 2.2) + 1) / 2
+            let glowColors: [Color] = [
+                .blue.opacity(0.55 * breathe), .indigo.opacity(0.5 * breathe),
+                .pink.opacity(0.5 * breathe), .purple.opacity(0.42 * breathe),
+                .blue.opacity(0.55 * breathe)]
+            let bodyColors: [Color] = [
+                .blue.opacity(0.85 * breathe), .indigo.opacity(0.8 * breathe),
+                .pink.opacity(0.8 * breathe), .purple.opacity(0.72 * breathe),
+                .blue.opacity(0.85 * breathe)]
             ZStack {
-                // 外发光（虚化光晕）v2.0.139 性能：blur 8→6（blur 开销随半径超线性，视觉几乎无差）
                 Circle()
-                    .fill(
-                        AngularGradient(
-                            colors: glowColors,
-                            center: .center
-                        )
-                    )
+                    .fill(AngularGradient(colors: glowColors, center: .center))
                     .blur(radius: 6)
                     .frame(width: 84, height: 84)
-                // 主体球（v2.0.130：72pt = 与首页"你好，我是轻聊" Logo 同尺寸）
                 Circle()
-                    .fill(
-                        AngularGradient(
-                            colors: bodyColors,
-                            center: .center
-                        )
-                    )
+                    .fill(AngularGradient(colors: bodyColors, center: .center))
                     .frame(width: 72, height: 72)
-                    .overlay(
-                        Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1.2)
-                    )
-                    .shadow(color: (active ? Color.red : Color.indigo).opacity(0.45 * breathe), radius: 14)
-                // 中心：录音风格圆形波形 logo（声呐扩散波纹，v2.0.130 用户指定）+ 状态覆盖
-                // 默认 = 波纹扩散动画（像录音 app 的圆形 logo）；录音中 = 波形+松开结束；转写中 = 转圈
-                if transcribing {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(width: 24, height: 24)
-                } else if isRecording {
-                    // v3.0.68 第2条：语音输入中 → 声波涟漪粒子，一眼区分"正在录音"
-                    ZStack {
-                        OrbCanvasView(mode: .voiceWave, size: 60)
-                        VStack(spacing: 3) {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .shadow(color: .white.opacity(0.5), radius: 3)
-                            Text("松开上屏")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                    }
+                    .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1.2))
+                    .shadow(color: Color.indigo.opacity(0.45 * breathe), radius: 14)
+                OrbCanvasView(mode: thinking ? .orbits : .ring, size: 60)
                     .allowsHitTesting(false)
-                } else {
-                    // v3.0.12：思考球粒子画布——流式/思考中 orbits(点点旋转)，空闲 ring(缓慢脉动)
-                    // v3.0.x：朗读中 isSpeaking → orbits（"说话"粒子态）；待机/思考看 thinking
-                    OrbCanvasView(mode: (thinking || isSpeaking) ? .orbits : .ring, size: 60)
-                        .allowsHitTesting(false)
-                }
             }
         }
         .frame(width: 92, height: 92)
         .contentShape(Circle())
-        .gesture(
-            LongPressGesture(minimumDuration: 0.4)
-                .exclusively(before: TapGesture())
-                .onEnded { value in
-                    switch value {
-                    case .first:
-                        onLongPress()
-                    case .second:
-                        onTap()
-                    }
-                }
-        )
-        // v3.0.70 fix: 松手上屏——DragGesture 检测松手（simultaneous 不干扰主 ExclusiveGesture）
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0).onEnded { _ in
-                if isRecording { onRelease() }
-            }
-        )
-        // 录音中：红圈脉冲提示
-        .overlay {
-            if isRecording {
-                Circle()
-                    .stroke(Color.red.opacity(0.6), lineWidth: 2.5)
-                    .frame(width: 92, height: 92)
-            }
-        }
+        .onTapGesture { onTap() }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
     }
