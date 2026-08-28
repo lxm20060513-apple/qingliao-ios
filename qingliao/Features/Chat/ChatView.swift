@@ -1184,10 +1184,6 @@ struct ChatView: View {
             // 排队路径：消息立即显示（标记排队中），回答结束后自动发送
             var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
             msg.queued = true
-            // v3.0.19 review fix #5：排队路径也应用 🎤 标记（sendCore 开头已消费标志）
-            if isVoiceCommandSend {
-                msg.voiceCommand = true
-            }
             withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
                 chat.append(msg)
             }
@@ -1201,10 +1197,6 @@ struct ChatView: View {
         // v2.0.65：发送通知 → Dock 聊天图标轻跳
         NotificationCenter.default.post(name: .qingliaoSent, object: nil)
         var msg = ChatMessage.local(role: "user", content: text, imageDataURL: imageData)
-        // v3.0.19：语音指令触发的消息打 🎤 标记（sendCore 开头已消费标志）
-        if isVoiceCommandSend {
-            msg.voiceCommand = true
-        }
         // v2.0.59：单条插入动效（批量移除才崩，插入安全）
         withAnimation(.spring(duration: 0.25, bounce: 0.15)) {
             chat.append(msg)
