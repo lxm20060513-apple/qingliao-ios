@@ -574,6 +574,7 @@ struct ChatView: View {
             ChatInputBar(text: $inputText,
                          focused: $inputFocus,
                          streaming: stream.isStreaming,
+                         isRecording: voiceRecorder.isRecording,
                          onSend: { send() },
                          onStop: {
                              // v2.0.88：点停止 = 取消当前回答 + 清空排队消息（不再自动发）
