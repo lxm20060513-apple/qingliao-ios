@@ -1671,14 +1671,17 @@ struct ChatView: View {
         for t in voiceTurns {
             history.append(["role": t.role, "content": t.text])
         }
-        voiceStream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
-                          provider: provider, messages: history) { success, error in
-            guard self.chat.sessionId == startSid else { return }   // 防切会话污染
-            if success && !self.voiceStream.content.isEmpty {
-                self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: self.voiceStream.content))
-                self.speakVoiceChat(self.voiceStream.content)
-            } else if !success {
-                self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: "⚠️ 对讲回复失败：\(error)"))
+        let hs = history   // 不可变拷贝，供并发的 Task 安全捕获
+        Task { @MainActor in
+            await voiceStream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                                    provider: provider, messages: hs) { success, error in
+                guard self.chat.sessionId == startSid else { return }   // 防切会话污染
+                if success && !self.voiceStream.content.isEmpty {
+                    self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: self.voiceStream.content))
+                    self.speakVoiceChat(self.voiceStream.content)
+                } else if !success {
+                    self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: "⚠️ 对讲回复失败：\(error)"))
+                }
             }
         }
     }
