@@ -508,14 +508,8 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
-            // v2.0.96：语音转文字模式——半透明遮罩（视觉提示，不拦截手势）
-            if voiceMode {
-                Color.black.opacity(0.15)
-                    .allowsHitTesting(false)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.opacity)
-                // v3.0.36 分段流式：边说边出字——实时显示已转写的分段文字
-                if !voiceSegments.isEmpty {
+                // v3.0.36 分段流式：边说边出字——实时显示已转写的段落文字
+                if voiceMode && !voiceSegments.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 6) {
                             Image(systemName: "mic.fill")
@@ -536,7 +530,6 @@ struct ChatView: View {
                     .padding(.horizontal, 16)
                     .transition(.opacity)
                 }
-            }
             // 图片预览条（选图后显示）
             pendingImageBar
             // 内联附件面板（类微信 + 面板：点击回形针展开）
