@@ -534,7 +534,8 @@ struct ChatView: View {
                 messageList
             }
             // v2.0.96：语音转文字模式——点消息区空白退出（透明拦截层，不盖输入框）
-            if voiceMode && !voiceChatActive {
+            // v3.0.70 fix：voiceChatActive 时也显示，让用户点空白处停止录音
+            if voiceMode {
                 Color.black.opacity(0.001)
                     .contentShape(Rectangle())
                     .onTapGesture { exitVoiceMode() }
@@ -547,7 +548,7 @@ struct ChatView: View {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.green)
-                            Text(voiceCommandMode ? (voiceChatActive ? "对讲 · 说完轻点空白发送" : "语音指令 · 松手自动执行") : "语音转文字")
+                            Text(voiceCommandMode ? (voiceChatActive ? "对讲 · 说完轻点空白发送" : "语音指令 · 点空白处执行") : "语音转文字")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
