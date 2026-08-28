@@ -508,28 +508,28 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
-                // v3.0.36 分段流式：边说边出字——实时显示已转写的段落文字
-                if voiceMode && !voiceSegments.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "mic.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.green)
-                            Text("语音转文字")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(voiceSegments)
-                            .font(.system(size: 15))
-                            .foregroundStyle(.primary)
-                            .lineLimit(4)
+            // v3.0.36 分段流式：边说边出字——实时显示已转写的段落文字
+            if voiceMode && !voiceSegments.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.green)
+                        Text("语音转文字")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.horizontal, 16)
-                    .transition(.opacity)
+                    Text(voiceSegments)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.primary)
+                        .lineLimit(4)
                 }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+            }
             // 图片预览条（选图后显示）
             pendingImageBar
             // 内联附件面板（类微信 + 面板：点击回形针展开）
@@ -935,6 +935,7 @@ struct ChatView: View {
         // v2.0.135：ZStack 无 contentShape 时透明空白不可命中（此前只有点 logo/气泡才触发收键盘）
         // → 补 contentShape(Rectangle()) 让整片区域可命中；有消息场景由 ScrollView 自身手势兜底
         .contentShape(Rectangle())
+        .background(Color.clear)
         .onTapGesture {
             inputFocus = false
         }
