@@ -126,12 +126,14 @@ final class SpeechManager: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     // MARK: - AVAudioPlayerDelegate
 
     nonisolated func audioPlayerDidFinishPlaying(_ p: AVAudioPlayer, successfully flag: Bool) {
+        // Swift 6：non-Sendable 的 p 不能捕获进 Task @MainActor（跨域 data race）。
+        // 只传 Sendable 的 ObjectIdentifier，在 MainActor 上再比较身份。
+        let pid = ObjectIdentifier(p)
         Task { @MainActor in
-            if self.player === p {
-                self.player = nil
-                self.speakingID = nil
-                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            }
+            guard let pl = self.player, ObjectIdentifier(pl) == pid else { return }
+            self.player = nil
+            self.speakingID = nil
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
 }
