@@ -311,4 +311,40 @@ final class CloudConfig {
         if modelSupportsVision(mainModel) { return nil }
         return (visionModel, localVisionProvider)
     }
+
+    // MARK: - v3.0.x 语音引擎（TTS）配置 —— 总开关 + 模型 + 音色
+
+    private static let ttsEnabledKey = "qingliao_tts_enabled"
+    private static let ttsVoiceKey = "qingliao_tts_voice"
+    // 默认音色（与后端 mimo_default 对齐，中国集群=female 冰糖）
+    private static let ttsDefaultVoice = "mimo_default"
+
+    /// TTS 总开关（默认关 = 用系统 AVSpeechSynthesizer；开 = 用云端神经 TTS）
+    static var ttsEnabled: Bool {
+        UserDefaults.standard.object(forKey: ttsEnabledKey) as? Bool ?? false
+    }
+    /// 当前音色名（默认 mimo_default）
+    static var ttsVoice: String {
+        UserDefaults.standard.string(forKey: ttsVoiceKey) ?? ttsDefaultVoice
+    }
+
+    static func setTTsEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: ttsEnabledKey)
+    }
+    static func setTTsVoice(_ voice: String) {
+        // 空值回退默认
+        UserDefaults.standard.set(voice.isEmpty ? ttsDefaultVoice : voice, forKey: ttsVoiceKey)
+    }
+    /// 小米 mimo-v2.5-tts 预置音色（显示名, voice id）——供「语音引擎·TTS」下拉
+    static let ttsPresetVoices: [(name: String, id: String)] = [
+        ("MiMo-默认", "mimo_default"),
+        ("冰糖（女）", "冰糖"),
+        ("茉莉（女）", "茉莉"),
+        ("苏打（男）", "苏打"),
+        ("白桦（男）", "白桦"),
+        ("Mia（英·女）", "Mia"),
+        ("Chloe（英·女）", "Chloe"),
+        ("Milo（英·男）", "Milo"),
+        ("Dean（英·男）", "Dean"),
+    ]
 }

@@ -1035,6 +1035,14 @@ struct ModelSheet: View {
     @State private var localInstalled: [String] = []
     // v3.0.10：视觉模型配置弹窗（模型管理内导航）
     @State private var showVisionModelSheet = false
+    // v3.0.x：语音引擎（TTS）设置（总开关 + 音色）—— 同步回 CloudConfig 静态配置
+    @State private var ttsOn = CloudConfig.ttsEnabled
+    @State private var ttsVoice = CloudConfig.ttsVoice
+
+    /// TTS 状态文案
+    private var ttsStatusText: String {
+        ttsOn ? "已开启：\(CloudConfig.ttsPresetVoices.first { $0.id == ttsVoice }?.name ?? ttsVoice)" : "关闭（使用系统语音）"
+    }
 
     /// v2.0.131：opencode 同步模型显示名映射（无映射的用 id 本身）
     private let opencodeNames: [String: String] = [
@@ -1205,6 +1213,61 @@ struct ModelSheet: View {
                         )
                         .contentShape(Rectangle())
                         .onTapGesture { showVisionModelSheet = true }
+                    }
+                    // v3.0.x：语音引擎（TTS）—— 总开关 + 音色下拉
+                    Divider()
+                        .padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("语音引擎 · TTS")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 4)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.indigo)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("AI 语音朗读")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Text(ttsStatusText)
+                                        .font(.system(size: 10.5)).foregroundStyle(.tertiary)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $ttsOn).labelsHidden().scaleEffect(0.8).tint(.green)
+                                    .onChange(of: ttsOn) { _, new in
+                                        CloudConfig.setTTsEnabled(new)
+                                    }
+                            }
+                            if ttsOn {
+                                // 音色下拉
+                                HStack(spacing: 8) {
+                                    Text("音色")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Picker("", selection: $ttsVoice) {
+                                        ForEach(CloudConfig.ttsPresetVoices, id: \.id) { v in
+                                            Text(v.name).tag(v.id)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(.indigo)
+                                    .onChange(of: ttsVoice) { _, new in
+                                        CloudConfig.setTTsVoice(new)
+                                    }
+                                }
+                                Text("开启后 AI 回复、语音指令将对聊朗读使用小米神经语音；关闭则用系统语音。")
+                                    .font(.system(size: 10.5)).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(11)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(ttsOn ? Color.indigo.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 0.8)
+                        )
                     }
                 }
                 .padding(.bottom, 8)

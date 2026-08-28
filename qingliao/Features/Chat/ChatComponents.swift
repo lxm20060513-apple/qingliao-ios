@@ -912,6 +912,11 @@ struct ChatInputBar: View {
     var onLongPressInput: (Bool) -> Void = { _ in }
     // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
     var onBallLongPress: () -> Void = {}
+    // v3.0.x：语音对讲——长按球进入对讲（多轮），对讲中轻点球=结束；非对讲=展开输入框
+    var voiceChatActive: Bool = false
+    var onExitVoiceChat: () -> Void = {}
+    // v3.0.x：AI 朗读中 → 智能球呈"说话"粒子态
+    var isSpeaking: Bool = false
     // v3.0.4：语音功能启用开关——云端模式无后端 ASR，关闭全部语音入口（长按/按钮）
     var voiceEnabled: Bool = true
     @Environment(KeyboardObserver.self) private var kbEnv
@@ -928,14 +933,30 @@ struct ChatInputBar: View {
                 // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
-                HStack(spacing: 34) {
+                VStack(spacing: 8) {
+                    // v3.0.x：对讲中（且非录音/转写/流式）→ 顶部提示"按住说话/轻点结束"
+                    if voiceChatActive && !voiceMode && !transcribing && !streaming {
+                        Text("🎙️ 对讲中 · 按住球说话 · 轻点球结束")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12).padding(.vertical, 5)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .transition(.opacity)
+                    }
+                    HStack(spacing: 34) {
                     // v2.0.129 智能球保持原交互（单击展开输入框 / 长按语音转文字）
                     SiriBallView(isRecording: isRecording, voiceMode: voiceMode,
                                  transcribing: transcribing,
                                  thinking: streaming,
+                                 isSpeaking: isSpeaking,
                                  onTap: {
                                      // 转写中点击不响应（避免打断）
                                      guard !transcribing else { return }
+                                     // v3.0.x：对讲中轻点球 = 结束对讲（不展开输入框）
+                                     if voiceChatActive {
+                                         onExitVoiceChat()
+                                         return
+                                     }
                                      // v2.0.130：炫酷展开 —— 全屏粒子爆发 + 输入框从球心缩放展开
                                      onFullBurst()
                                      withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
@@ -958,6 +979,7 @@ struct ChatInputBar: View {
                                      guard !transcribing else { return }
                                      onBallLongPress()
                                  })
+                    }
                 }
                 .padding(.bottom, 0)   // v3.0.66：球态间隙由外层 ChatInputBar 统一留（键盘收起时与 Dock 约 10pt 呼吸）
                 // v2.0.130：球移除过渡——v2.0.132 优化：去掉 blurReplace（每帧离屏模糊最吃 GPU），只留缩放+淡出
@@ -1273,6 +1295,8 @@ struct SiriBallView: View {
     var transcribing: Bool = false   // v2.0.129：转写中显示转圈
     // v3.0.12：思考球——流式回答中 orbits(点点旋转) / 空闲 ring(缓慢脉动)
     var thinking: Bool = false
+    // v3.0.x：AI 朗读中 → "说话"粒子态
+    var isSpeaking: Bool = false
     var onTap: () -> Void = {}
     var onLongPress: () -> Void = {}
 
@@ -1342,7 +1366,8 @@ struct SiriBallView: View {
                     }
                 } else {
                     // v3.0.12：思考球粒子画布——流式/思考中 orbits(点点旋转)，空闲 ring(缓慢脉动)
-                    OrbCanvasView(mode: thinking ? .orbits : .ring, size: 60)
+                    // v3.0.x：朗读中 isSpeaking → orbits（"说话"粒子态）；待机/思考看 thinking
+                    OrbCanvasView(mode: (thinking || isSpeaking) ? .orbits : .ring, size: 60)
                         .allowsHitTesting(false)
                 }
             }

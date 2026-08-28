@@ -195,6 +195,10 @@ struct ChatView: View {
     @State private var pendingVoiceSpeakSid: String?
     // v3.0.19：一次性播报意图（sendCore 置 true，完成回调消费后清空；失败/停止路径自然不播）
     @State private var pendingVoiceSpeak = false
+    // v3.0.x：语音对讲（多轮会话）——长按智能球进入，可连续多轮；轻点智能球结束
+    @State private var voiceChatActive = false
+    // v3.0.x：AI 朗读中的粒子拟人态（对讲朗读/气泡朗读时智能球呈"说话"形态）
+    @State private var isAiSpeaking = false
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
     @State private var voiceTooShort = false   // v2.0.102：录音太短提示
@@ -530,7 +534,7 @@ struct ChatView: View {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.green)
-                            Text(voiceCommandMode ? "语音指令 · 松手自动执行" : "语音转文字")
+                            Text(voiceCommandMode ? (voiceChatActive ? "对讲 · 说完轻点空白发送" : "语音指令 · 松手自动执行") : "语音转文字")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -576,7 +580,11 @@ struct ChatView: View {
                         onCancelTranscribe: { stopTranscribe() },   // v2.0.101：停止转写
                         // v3.0.19：长按输入框 = 原语音转文字；长按智能球 = 语音指令（走 startVoiceCommand）
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
-                        onBallLongPress: { startVoiceCommand() },
+                        onBallLongPress: { handleVoiceChatLongPress() },
+                        // v3.0.x：对讲中——轻点智能球 = 结束对讲；非对讲 = 展开输入框
+                        voiceChatActive: voiceChatActive,
+                        onExitVoiceChat: { exitVoiceChat() },
+                        isSpeaking: isAiSpeaking,
                         // v3.0.4：云端模式无后端 ASR → 关闭全部语音入口
                         voiceEnabled: !CloudConfig.shared.isCloudMode,
                         // v2.0.132：点击智能球 → 全屏粒子爆发（v2.0.133b：粒子寿命延至 1.2s 放烟花闪烁，特效层同步延长）
@@ -943,6 +951,10 @@ struct ChatView: View {
             }
             .onChange(of: stream.content) {
                 scrollBottom(proxy)
+            }
+            // v3.0.x：跟踪 AI 朗读态（SpeechManager 代理的说话状态）→ 驱动智能球"说话"粒子态
+            .onReceive(SpeechManager.shared.$speakingID) { sid in
+                isAiSpeaking = (sid != nil)
             }
         }
         }
@@ -1604,6 +1616,26 @@ struct ChatView: View {
         toggleVoiceMode(keyboardWasUp: false)
     }
 
+    /// v3.0.x：长按智能球进入/续接语音对讲（多轮）。首按进入持续对讲模式并开始录音，
+    /// 前一问答完后球回到"就绪"，再长按即录下一轮。
+    private func handleVoiceChatLongPress() {
+        voiceChatActive = true
+        startVoiceCommand()
+    }
+
+    /// v3.0.x：轻点智能球结束对讲。若正录音，取消本轮回话（作废转写、丢弃未发送内容），不再发。
+    private func exitVoiceChat() {
+        voiceChatActive = false
+        if voiceMode {
+            stopVoiceSegments()
+            voiceRecorder.stop()
+            voiceCommandMode = false
+            voiceSegments = ""   // v3.0.x：丢弃时清空已累积转写，防残留进下一轮
+            stopTranscribe()   // 作废转写代次，丢弃未完成结果
+            withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
+        }
+    }
+
     /// v3.0.19：限流/服务错误 → 用户友好提示（429/rate limit/tpm exhausted → 建议换模型路由）
     static func friendlyStreamError(_ error: String) -> String {
         // v3.0.19 review：截断过长原始错误（防消息里塞整页错误日志）
@@ -1700,12 +1732,12 @@ struct ChatView: View {
         }
     }
 
-    /// v3.0.36 分段流式：录音期间每 5s 切块上传转写，文字增量追加（边说边出字）
+    /// v3.0.36 分段流式：录音期间每 2s 切块上传转写，文字增量追加（边说边出字；v3.0.x 5s→2s）
     private func startVoiceSegments() {
         stopVoiceSegments()
         segmentTask = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)   // v3.0.x：分段流式改 2s，边说边上屏更跟手
                 if Task.isCancelled { break }
                 await flushVoiceSegment()
             }
