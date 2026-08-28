@@ -912,6 +912,8 @@ struct ChatInputBar: View {
     var onLongPressInput: (Bool) -> Void = { _ in }
     // v3.0.19：长按智能球 = 语音指令（独立回调，与输入框长按的"语音转文字"区分）
     var onBallLongPress: () -> Void = {}
+    // v3.0.68 第3条：录音中松手（抬起）→ 收尾上屏
+    var onRelease: () -> Void = {}
     // v3.0.x：语音对讲——长按球进入对讲（多轮），对讲中轻点球=结束；非对讲=展开输入框
     var voiceChatActive: Bool = false
     var onExitVoiceChat: () -> Void = {}
@@ -934,9 +936,10 @@ struct ChatInputBar: View {
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
                 VStack(spacing: 8) {
-                    // v3.0.x：对讲中（且非录音/转写/流式）→ 顶部提示"按住说话/轻点结束"
-                    if voiceChatActive && !voiceMode && !transcribing && !streaming {
-                        Text("🎙️ 对讲中 · 按住球说话 · 轻点球结束")
+                    // v3.0.68 第1条：对讲激活全程显示引导提示（录音中改"松开上屏"，不再消失）
+                    if voiceChatActive {
+                        Text(voiceMode || isRecording ? "🎙️ 对我说 · 松开上屏" :
+                             (transcribing ? "🎙️ 正在识别…" : "🎙️ 可语音对话 · 按住球说话 · 轻点球结束"))
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 12).padding(.vertical, 5)
@@ -978,7 +981,9 @@ struct ChatInputBar: View {
                                      }
                                      guard !transcribing else { return }
                                      onBallLongPress()
-                                 })
+                                 },
+                                 // v3.0.68 第3条：录音中松手 → 收尾上屏
+                                 onRelease: onRelease)
                     }
                 }
                 .padding(.bottom, 0)   // v3.0.66：球态间隙由外层 ChatInputBar 统一留（键盘收起时与 Dock 约 10pt 呼吸）
@@ -999,6 +1004,15 @@ struct ChatInputBar: View {
                 // v2.0.133e：与点击路径统一——等展开动画结束再弹键盘（0.35s+0.05 余量），串行不抢帧
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     focused = true   // 转写完成弹键盘（用户细节③确认）
+                }
+            }
+        }
+        // v3.0.68 第6条：智能球开关下默认显示球——键盘收起且输入框为空 → 自动收回成球
+        //（有文字则保留输入框，防误伤正在编辑的内容）
+        .onChange(of: kbEnv.isVisible) { _, visible in
+            if ballInput, ballExpanded, !visible, text.isEmpty {
+                withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                    ballExpanded = false
                 }
             }
         }
@@ -1299,6 +1313,8 @@ struct SiriBallView: View {
     var isSpeaking: Bool = false
     var onTap: () -> Void = {}
     var onLongPress: () -> Void = {}
+    // v3.0.68 第3条：录音中松手（抬起）→ 收尾上屏
+    var onRelease: () -> Void = {}
 
     var body: some View {
         // v2.0.132 优化：球呼吸降到 30fps（TimelineView(.animation) 每帧重绘 AngularGradient+blur 常驻开销大；30fps 肉眼无差）
@@ -1355,15 +1371,20 @@ struct SiriBallView: View {
                         .tint(.white)
                         .frame(width: 24, height: 24)
                 } else if isRecording {
-                    VStack(spacing: 3) {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .shadow(color: .white.opacity(0.5), radius: 3)
-                        Text("松开结束")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white)
+                    // v3.0.68 第2条：语音输入中 → 声波涟漪粒子，一眼区分"正在录音"
+                    ZStack {
+                        OrbCanvasView(mode: .voiceWave, size: 60)
+                        VStack(spacing: 3) {
+                            Image(systemName: "waveform")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .shadow(color: .white.opacity(0.5), radius: 3)
+                            Text("松开结束")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
                     }
+                    .allowsHitTesting(false)
                 } else {
                     // v3.0.12：思考球粒子画布——流式/思考中 orbits(点点旋转)，空闲 ring(缓慢脉动)
                     // v3.0.x：朗读中 isSpeaking → orbits（"说话"粒子态）；待机/思考看 thinking
@@ -1385,6 +1406,12 @@ struct SiriBallView: View {
                         onTap()
                     }
                 }
+        )
+        // v3.0.68 第3条：录音中松手（抬起）→ 收尾上屏（simultaneous 不干扰主 ExclusiveGesture 的 tap/长按）
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0).onEnded { _ in
+                if isRecording { onRelease() }
+            }
         )
         // 录音中：红圈脉冲提示
         .overlay {
@@ -1938,5 +1965,85 @@ struct SessionCardView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy年M月d日 HH:mm"
         return f.string(from: Date())
+    }
+}
+// MARK: - v3.0.68 语音对讲浮层
+
+struct VoiceChatOverlay: View {
+    let turns: [VoiceChatTurn]
+    let liveContent: String
+    let isStreaming: Bool
+    let liveTranscribe: String
+    let onExit: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("🎙️ 语音对讲")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(action: onExit) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(turns) { t in
+                            bubble(t)
+                        }
+                        if isStreaming {
+                            if liveContent.isEmpty {
+                                Text("AI 正在思考…")
+                                    .font(.system(size: 12)).foregroundStyle(.tertiary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                bubble(VoiceChatTurn(role: "assistant", text: liveContent))
+                            }
+                        }
+                        Color.clear.frame(height: 1).id("bottom")
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                }
+                .onChange(of: liveContent) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: turns.count) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+
+            if !liveTranscribe.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 11)).foregroundStyle(.green)
+                    Text(liveTranscribe)
+                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+        }
+        .background(Color(uiColor: .systemBackground).opacity(0.94))
+    }
+
+    @ViewBuilder
+    private func bubble(_ t: VoiceChatTurn) -> some View {
+        HStack {
+            if t.isUser { Spacer(minLength: 44) }
+            Text(t.text)
+                .font(.system(size: 15))
+                .foregroundStyle(t.isUser ? .white : .primary)
+                .padding(.horizontal, 13).padding(.vertical, 9)
+                .background(t.isUser ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(maxWidth: 280, alignment: t.isUser ? .trailing : .leading)
+            if !t.isUser { Spacer(minLength: 44) }
+        }
+        .frame(maxWidth: .infinity, alignment: t.isUser ? .trailing : .leading)
     }
 }

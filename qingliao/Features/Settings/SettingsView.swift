@@ -1035,13 +1035,23 @@ struct ModelSheet: View {
     @State private var localInstalled: [String] = []
     // v3.0.10：视觉模型配置弹窗（模型管理内导航）
     @State private var showVisionModelSheet = false
-    // v3.0.x：语音引擎（TTS）设置（总开关 + 音色）—— 同步回 CloudConfig 静态配置
+    // v3.0.68：语音引擎（TTS）设置（总开关 + 模型 + 音色）—— 同步回 CloudConfig 静态配置
     @State private var ttsOn = CloudConfig.ttsEnabled
+    @State private var ttsProvider = CloudConfig.ttsProvider
+    @State private var ttsModel = CloudConfig.ttsModel
     @State private var ttsVoice = CloudConfig.ttsVoice
 
     /// TTS 状态文案
     private var ttsStatusText: String {
-        ttsOn ? "已开启：\(CloudConfig.ttsPresetVoices.first { $0.id == ttsVoice }?.name ?? ttsVoice)" : "关闭（使用系统语音）"
+        ttsOn ? "已开启：\(CloudConfig.ttsVoicesFor(provider: ttsProvider, model: ttsModel).first { $0.id == ttsVoice }?.name ?? ttsVoice)" : "关闭（使用系统语音）"
+    }
+    /// TTS 模型下拉选项（从用户模型列表筛支持 TTS 的；未同步则显示已知模型保底）
+    private var ttsModelOptions: [(provider: String, model: String, label: String)] {
+        CloudConfig.ttsModelOptions(from: allProviders)
+    }
+    /// 当前模型音色列表
+    private var ttsVoiceOptions: [(name: String, id: String)] {
+        CloudConfig.ttsVoicesFor(provider: ttsProvider, model: ttsModel)
     }
 
     /// v2.0.131：opencode 同步模型显示名映射（无映射的用 id 本身）
@@ -1240,14 +1250,42 @@ struct ModelSheet: View {
                                     }
                             }
                             if ttsOn {
-                                // 音色下拉
+                                // 模型下拉（从用户模型列表筛支持 TTS 的）
+                                HStack(spacing: 8) {
+                                    Text("模型")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Picker("", selection: Binding(
+                                        get: { "\(ttsProvider)|\(ttsModel)" },
+                                        set: { raw in
+                                            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+                                            let pp = parts.count > 0 ? parts[0] : ttsProvider
+                                            let mm = parts.count > 1 ? parts[1] : ttsModel
+                                            ttsProvider = pp; ttsModel = mm
+                                            CloudConfig.setTTs(provider: pp, model: mm)
+                                            // 切模型 → 重置为该模型默认音色
+                                            let def = CloudConfig.ttsVoicesFor(provider: pp, model: mm).first?.id ?? ""
+                                            ttsVoice = def
+                                            CloudConfig.setTTsVoice(def)
+                                        }
+                                    )) {
+                                        ForEach(ttsModelOptions.indices, id: \.self) { idx in
+                                            let opt = ttsModelOptions[idx]
+                                            Text(opt.label).tag("\(opt.provider)|\(opt.model)")
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(.indigo)
+                                }
+                                // 音色下拉（随模型联动）
                                 HStack(spacing: 8) {
                                     Text("音色")
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                     Spacer()
                                     Picker("", selection: $ttsVoice) {
-                                        ForEach(CloudConfig.ttsPresetVoices, id: \.id) { v in
+                                        ForEach(ttsVoiceOptions, id: \.id) { v in
                                             Text(v.name).tag(v.id)
                                         }
                                     }
@@ -1257,7 +1295,7 @@ struct ModelSheet: View {
                                         CloudConfig.setTTsVoice(new)
                                     }
                                 }
-                                Text("开启后 AI 回复、语音指令将对聊朗读使用小米神经语音；关闭则用系统语音。")
+                                Text("开启后 AI 回复、语音指令将对讲朗读使用所选模型的神经语音；关闭则用系统语音。")
                                     .font(.system(size: 10.5)).foregroundStyle(.tertiary)
                             }
                         }

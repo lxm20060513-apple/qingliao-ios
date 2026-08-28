@@ -199,6 +199,10 @@ struct ChatView: View {
     @State private var voiceChatActive = false
     // v3.0.x：AI 朗读中的粒子拟人态（对讲朗读/气泡朗读时智能球呈"说话"形态）
     @State private var isAiSpeaking = false
+    // v3.0.68 第4条：语音对讲浮层——独立流式 voiceStream + 轮次数组（对讲不写主 session 消息）
+    @State private var voiceTurns: [VoiceChatTurn] = []
+    @State private var voiceStream = StreamClient()
+    @State private var voiceTurnSeq = 0
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
     @State private var voiceTooShort = false   // v2.0.102：录音太短提示
@@ -519,9 +523,18 @@ struct ChatView: View {
                 .padding(.vertical, 4)
                 .transition(.opacity)
             }
-            messageList
+            if voiceChatActive {
+                // v3.0.68 第4条：语音对讲浮层——对讲轮次 + 流式回复 + 实时转写（不写主 session）
+                VoiceChatOverlay(turns: voiceTurns,
+                                 liveContent: voiceStream.content,
+                                 isStreaming: voiceStream.isStreaming,
+                                 liveTranscribe: voiceSegments,
+                                 onExit: { exitVoiceChat() })
+            } else {
+                messageList
+            }
             // v2.0.96：语音转文字模式——点消息区空白退出（透明拦截层，不盖输入框）
-            if voiceMode {
+            if voiceMode && !voiceChatActive {
                 Color.black.opacity(0.001)
                     .contentShape(Rectangle())
                     .onTapGesture { exitVoiceMode() }
@@ -581,6 +594,8 @@ struct ChatView: View {
                         // v3.0.19：长按输入框 = 原语音转文字；长按智能球 = 语音指令（走 startVoiceCommand）
                         onLongPressInput: { keyboardWasUp in toggleVoiceMode(keyboardWasUp: keyboardWasUp) },
                         onBallLongPress: { handleVoiceChatLongPress() },
+                        // v3.0.68 第3条：录音中松手 → 收尾上屏（停止录音+转写+上屏/发送）
+                        onRelease: { exitVoiceMode() },
                         // v3.0.x：对讲中——轻点智能球 = 结束对讲；非对讲 = 展开输入框
                         voiceChatActive: voiceChatActive,
                         onExitVoiceChat: { exitVoiceChat() },
@@ -1634,6 +1649,51 @@ struct ChatView: View {
             stopTranscribe()   // 作废转写代次，丢弃未完成结果
             withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
         }
+        stopVoiceStream()
+        // v3.0.68 第4条B：把整段对讲合并成 1 条「🎙️ 对讲记录」存进聊天（不刷屏、可回看）
+        guard !voiceTurns.isEmpty else { return }
+        let lines = voiceTurns.map { t -> String in
+            let who = t.isUser ? "我" : "AI"
+            return "\(who)：\(t.text)"
+        }
+        let record = "🎙️ 对讲记录\n" + lines.joined(separator: "\n")
+        let msg = ChatMessage.local(role: "assistant", content: record)
+        withAnimation(.spring(duration: 0.25, bounce: 0.15)) { chat.append(msg) }
+        Task { await chat.saveToServer(auth: auth) }
+        voiceTurns = []
+    }
+
+    /// v3.0.68 第4条：对讲发起 AI 回复——独立 voiceStream，不写主 session 消息（带主会话背景）
+    private func startVoiceReply() {
+        guard !voiceTurns.isEmpty else { return }
+        let startSid = chat.sessionId
+        var history = chat.historyPayload()   // 方案B：带主会话最近历史作背景
+        for t in voiceTurns {
+            history.append(["role": t.role, "content": t.text])
+        }
+        voiceStream.start(auth: auth, sessionId: chat.sessionId, model: modelName,
+                          provider: provider, messages: history) { success, error in
+            guard self.chat.sessionId == startSid else { return }   // 防切会话污染
+            if success && !self.voiceStream.content.isEmpty {
+                self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: self.voiceStream.content))
+                self.speakVoiceChat(self.voiceStream.content)
+            } else if !success {
+                self.voiceTurns.append(VoiceChatTurn(role: "assistant", text: "⚠️ 对讲回复失败：\(error)"))
+            }
+        }
+    }
+
+    /// v3.0.68 第4条：对讲 AI 回复朗读（唯一 TTS 播报点，id 递增防重复打断）
+    private func speakVoiceChat(_ reply: String) {
+        guard !reply.isEmpty, !reply.hasPrefix("⚠️") else { return }
+        SpeechManager.shared.toggle(reply, id: "voice-chat-\(voiceTurnSeq)")
+        voiceTurnSeq += 1
+    }
+
+    private func stopVoiceStream() {
+        voiceStream.stop(auth: auth)
+        voiceStream.content = ""
+        voiceStream.isDone = true
     }
 
     /// v3.0.19：限流/服务错误 → 用户友好提示（429/rate limit/tpm exhausted → 建议换模型路由）
@@ -1717,11 +1777,18 @@ struct ChatView: View {
             guard token == transcribeToken else { return }
             if !finalText.isEmpty {
                 if isVoiceCommand {
-                    // v3.0.19：语音指令闭环——转文字后直接发送执行（不确认，说→干）
-                    // v3.0.36：finalText = 分段流式累积 + 尾巴
-                    pendingVoiceSpeakSid = chat.sessionId   // 回复完成后 TTS 播报
-                    sendCore(text: finalText, imageData: nil)
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    if voiceChatActive {
+                        // v3.0.68 第3/4条：语音对讲——转写上屏到浮层（不落库主 session），AI 在浮层流式回复
+                        voiceTurns.append(VoiceChatTurn(role: "user", text: finalText))
+                        startVoiceReply()
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else {
+                        // v3.0.19：语音指令闭环——转文字后直接发送执行（不确认，说→干）
+                        // v3.0.36：finalText = 分段流式累积 + 尾巴
+                        pendingVoiceSpeakSid = chat.sessionId   // 回复完成后 TTS 播报
+                        sendCore(text: finalText, imageData: nil)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
                 } else if inputText.isEmpty {
                     inputText = finalText   // v2.0.102：用户已在输入时不覆盖（分段流式已回填则跳过）
                     UINotificationFeedbackGenerator().notificationOccurred(.success)

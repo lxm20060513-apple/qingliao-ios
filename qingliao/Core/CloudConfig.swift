@@ -312,39 +312,69 @@ final class CloudConfig {
         return (visionModel, localVisionProvider)
     }
 
-    // MARK: - v3.0.x 语音引擎（TTS）配置 —— 总开关 + 模型 + 音色
+    // MARK: - v3.0.68 语音引擎（TTS）配置 —— 总开关 + 模型 + 音色
 
     private static let ttsEnabledKey = "qingliao_tts_enabled"
+    private static let ttsProviderKey = "qingliao_tts_provider"
+    private static let ttsModelKey = "qingliao_tts_model"
     private static let ttsVoiceKey = "qingliao_tts_voice"
-    // 默认音色（与后端 mimo_default 对齐，中国集群=female 冰糖）
+    // 默认：小米 mimo-v2.5-tts
+    private static let ttsDefaultProvider = "xiaomi"
+    private static let ttsDefaultModel = "mimo-v2.5-tts"
     private static let ttsDefaultVoice = "mimo_default"
 
     /// TTS 总开关（默认关 = 用系统 AVSpeechSynthesizer；开 = 用云端神经 TTS）
     static var ttsEnabled: Bool {
         UserDefaults.standard.object(forKey: ttsEnabledKey) as? Bool ?? false
     }
-    /// 当前音色名（默认 mimo_default）
+    static var ttsProvider: String {
+        UserDefaults.standard.string(forKey: ttsProviderKey) ?? ttsDefaultProvider
+    }
+    static var ttsModel: String {
+        UserDefaults.standard.string(forKey: ttsModelKey) ?? ttsDefaultModel
+    }
+    /// 当前音色名（默认随所选模型）
     static var ttsVoice: String {
-        UserDefaults.standard.string(forKey: ttsVoiceKey) ?? ttsDefaultVoice
+        UserDefaults.standard.string(forKey: ttsVoiceKey) ?? ttsVoicesFor(provider: ttsProvider, model: ttsModel).first?.id ?? ttsDefaultVoice
     }
 
     static func setTTsEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: ttsEnabledKey)
     }
-    static func setTTsVoice(_ voice: String) {
-        // 空值回退默认
-        UserDefaults.standard.set(voice.isEmpty ? ttsDefaultVoice : voice, forKey: ttsVoiceKey)
+    static func setTTs(provider: String, model: String) {
+        UserDefaults.standard.set(provider, forKey: ttsProviderKey)
+        UserDefaults.standard.set(model, forKey: ttsModelKey)
     }
-    /// 小米 mimo-v2.5-tts 预置音色（显示名, voice id）——供「语音引擎·TTS」下拉
-    static let ttsPresetVoices: [(name: String, id: String)] = [
-        ("MiMo-默认", "mimo_default"),
-        ("冰糖（女）", "冰糖"),
-        ("茉莉（女）", "茉莉"),
-        ("苏打（男）", "苏打"),
-        ("白桦（男）", "白桦"),
-        ("Mia（英·女）", "Mia"),
-        ("Chloe（英·女）", "Chloe"),
-        ("Milo（英·男）", "Milo"),
-        ("Dean（英·男）", "Dean"),
+    static func setTTsVoice(_ voice: String) {
+        UserDefaults.standard.set(voice, forKey: ttsVoiceKey)
+    }
+
+    /// v3.0.68：支持 TTS 的模型（从用户模型列表筛）。provider + model + 展示名
+    static let ttsSupported: [(provider: String, model: String, label: String)] = [
+        ("xiaomi", "mimo-v2.5-tts", "小米 MiMo"),
+        ("zai", "glm-tts", "智谱 GLM"),
     ]
+
+    /// 小米 mimo-v2.5-tts 预置音色
+    static let xiaomiTtsVoices: [(name: String, id: String)] = [
+        ("MiMo-默认", "mimo_default"), ("冰糖（女）", "冰糖"), ("茉莉（女）", "茉莉"),
+        ("苏打（男）", "苏打"), ("白桦（男）", "白桦"), ("Mia（英·女）", "Mia"),
+        ("Chloe（英·女）", "Chloe"), ("Milo（英·男）", "Milo"), ("Dean（英·男）", "Dean"),
+    ]
+    /// 智谱 glm-tts 预置音色（官方合法 id：female/male）
+    static let zaiTtsVoices: [(name: String, id: String)] = [
+        ("女声", "female"), ("男声", "male"),
+    ]
+
+    /// 按模型返回音色列表
+    static func ttsVoicesFor(provider: String, model: String) -> [(name: String, id: String)] {
+        provider == "zai" ? zaiTtsVoices : xiaomiTtsVoices
+    }
+    /// 按 provider/model 过滤支持 TTS 的模型（allProviders 传入）——只显示已同步到模型列表（=配置了 key）的，防选了但调用失败
+    static func ttsModelOptions(from providers: [(id: String, models: [String])]) -> [(provider: String, model: String, label: String)] {
+        let configured = providers.filter { !$0.models.isEmpty }
+        return ttsSupported.filter { opt in
+            configured.contains { $0.id == opt.provider && $0.models.contains(opt.model) }
+        }
+    }
 }

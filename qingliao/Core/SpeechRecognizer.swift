@@ -81,8 +81,10 @@ final class SpeechManager: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
         do {
             let voice = CloudConfig.ttsVoice
+            let provider = CloudConfig.ttsProvider
+            let model = CloudConfig.ttsModel
             let (data, resp) = try await auth.request("/api/tts", method: "POST",
-                body: ["text": clean, "voice": voice])
+                body: ["text": clean, "voice": voice, "provider": provider, "model": model])
             // 代次校验：请求期间用户已停止/切到别的朗读 → 丢弃过期结果
             guard gen == ttsGeneration else { return }
             guard resp.statusCode == 200,

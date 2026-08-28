@@ -152,14 +152,44 @@ func frameRing(size: CGFloat, t: CGFloat, opts: OrbOpts) -> OrbFrame {
     return finalizeFrame(dots: dots, rMin: opts.rMin)
 }
 
+// MARK: - VoiceWave（语音输入中 — 从球心向外扩散的声波涟漪，一眼区分"正在录音"）
+
+func frameVoiceWave(size: CGFloat, t: CGFloat, opts: OrbOpts) -> OrbFrame {
+    let cx = size / 2, cy = size / 2
+    let R = (size / 2) * 0.92
+    let rs = radiusScale(size, opts.rsPow)
+    var dots: [OrbDot] = []
+    let rings = 6
+    let segs = opts.segs
+    // 多圈声波涟漪，半径随相位扩散，越外越淡；中心一颗亮核
+    for r in 0..<rings {
+        let phase = (t * 0.35) + CGFloat(r) / CGFloat(rings)
+        let prog = phase - floor(phase)   // 0..1 扩散进度
+        let rad = R * prog
+        let baseAlpha = (1 - prog) * 0.85
+        for k in 0..<segs {
+            let a = (CGFloat(k) / CGFloat(segs)) * 2 * .pi
+            let x = cx + cos(a) * rad
+            let y = cy + sin(a) * rad
+            dots.append(OrbDot(
+                x: x, y: y, z: 0,
+                r: (1.4 + 0.6 * (1 - prog)) * rs,
+                white: 0.6, alpha: baseAlpha))
+        }
+    }
+    dots.append(OrbDot(x: cx, y: cy, z: 0, r: 2.2 * rs, white: 0.9, alpha: 0.9))
+    return finalizeFrame(dots: dots, rMin: opts.rMin)
+}
+
 // MARK: - 渲染
 
-enum OrbMode { case orbits, ring }
+enum OrbMode { case orbits, ring, voiceWave }
 
 func renderOrb(size: CGFloat, time: CGFloat, mode: OrbMode, dark: Bool, opts: OrbOpts) -> OrbFrame {
     switch mode {
-    case .orbits: return frameOrbits(size: size, t: time, opts: opts)
-    case .ring:   return frameRing(size: size, t: time, opts: opts)
+    case .orbits:    return frameOrbits(size: size, t: time, opts: opts)
+    case .ring:      return frameRing(size: size, t: time, opts: opts)
+    case .voiceWave: return frameVoiceWave(size: size, t: time, opts: opts)
     }
 }
 
