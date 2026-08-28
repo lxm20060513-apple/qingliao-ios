@@ -533,12 +533,11 @@ struct ChatView: View {
             } else {
                 messageList
             }
-            // v2.0.96：语音转文字模式——点消息区空白退出（透明拦截层，不盖输入框）
-            // v3.0.70 fix：voiceChatActive 时也显示，让用户点空白处停止录音
+            // v2.0.96：语音转文字模式——点消息区空白退出（半透明视觉提示层）
+            // v3.0.70 fix：不接受命中测试，松手由球的 DragGesture 处理
             if voiceMode {
-                Color.black.opacity(0.001)
-                    .contentShape(Rectangle())
-                    .onTapGesture { exitVoiceMode() }
+                Color.black.opacity(0.15)
+                    .allowsHitTesting(false)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
                 // v3.0.36 分段流式：边说边出字——实时显示已转写的分段文字
@@ -548,7 +547,7 @@ struct ChatView: View {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.green)
-                            Text(voiceCommandMode ? (voiceChatActive ? "对讲 · 说完轻点空白发送" : "语音指令 · 点空白处执行") : "语音转文字")
+                            Text(voiceCommandMode ? (voiceChatActive ? "对讲 · 说完轻点空白发送" : "语音指令 · 松手自动执行") : "语音转文字")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }

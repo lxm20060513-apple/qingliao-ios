@@ -936,9 +936,9 @@ struct ChatInputBar: View {
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
                 VStack(spacing: 8) {
-                    // v3.0.68 第1条：对讲激活全程显示引导提示（录音中改"点空白上屏"，不再消失）
+                    // v3.0.68 第1条：对讲激活全程显示引导提示（录音中改"松开上屏"，不再消失）
                     if voiceChatActive {
-                        Text(voiceMode || isRecording ? "🎙️ 正在听 · 点空白处发送" :
+                        Text(voiceMode || isRecording ? "🎙️ 对我说 · 松开上屏" :
                              (transcribing ? "🎙️ 正在识别…" : "🎙️ 可语音对话 · 按住球说话 · 轻点球结束"))
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(.secondary)
@@ -1042,7 +1042,7 @@ struct ChatInputBar: View {
                 // 录音中：红点 + 提示
                 HStack(spacing: 5) {
                     Circle().fill(Color.red).frame(width: 7, height: 7)
-                    Text("正在录音")
+                    Text("松开上屏")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.red)
                 }
@@ -1379,7 +1379,7 @@ struct SiriBallView: View {
                                 .font(.system(size: 24, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .shadow(color: .white.opacity(0.5), radius: 3)
-                            Text("正在听")
+                            Text("松开上屏")
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white)
                         }
@@ -1407,8 +1407,12 @@ struct SiriBallView: View {
                     }
                 }
         )
-        // v3.0.70 fix：移除松手自动停止录音的 DragGesture——用户期望松手后录音继续+流式上屏，
-        // 停止录音由 ChatView 的「点空白处 exitVoiceMode()」触发（voiceMode 透明拦截层 onTapGesture）
+        // v3.0.70 fix: 松手上屏——DragGesture 检测松手（simultaneous 不干扰主 ExclusiveGesture）
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0).onEnded { _ in
+                if isRecording { onRelease() }
+            }
+        )
         // 录音中：红圈脉冲提示
         .overlay {
             if isRecording {
