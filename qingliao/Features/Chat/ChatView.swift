@@ -575,7 +575,6 @@ struct ChatView: View {
                          focused: $inputFocus,
                          streaming: stream.isStreaming,
                          onSend: { send() },
-                         isRecording: voiceRecorder.isRecording,
                          onStop: {
                              // v2.0.88：点停止 = 取消当前回答 + 清空排队消息（不再自动发）
                              clearPendingQueue()
@@ -587,6 +586,7 @@ struct ChatView: View {
                              }
                          },
                          onCamera: { showCameraPicker = true },
+                         isRecording: voiceRecorder.isRecording,
                         // v2.0.96：语音转文字（长按发送按钮）
                         voiceMode: voiceMode,
                         onVoiceModeToggle: { toggleVoiceMode(keyboardWasUp: kb.isVisible) },   // v2.0.109b：长按发送键保持键盘状态
