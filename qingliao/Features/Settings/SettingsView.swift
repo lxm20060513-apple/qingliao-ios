@@ -1026,6 +1026,14 @@ enum ModelProvidersCache {
     }
 }
 
+// MARK: - v3.0.74 自定义 provider 模型组（用户自主添加 BASE_URL/API Key，后端 custom_providers.json 存储，免更新 App）
+struct CustomProviderItem: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let baseURL: String
+    let models: [String]
+}
+
 // MARK: - 模型管理（复刻 PWA/OpenCode Go 面板：分组 + 设为当前 + 同步列表）
 
 struct ModelSheet: View {
@@ -1044,6 +1052,9 @@ struct ModelSheet: View {
     @State private var sensenovaModels: [String] = []
     // v3.0.4：通用 provider 列表（后端 model-providers 聚合——新增 provider 免改版）
     @State private var allProviders: [(id: String, models: [String])] = []
+    // v3.0.74：自定义 provider 模型组（后端 custom_providers.json——用户自主增删，免更新 App）
+    @State private var customProviders: [CustomProviderItem] = []
+    @State private var showAddCustomProvider = false
     // v3.0.4：用户手动隐藏的 provider（存 UserDefaults，可恢复）
     @State private var hiddenProviders: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_providers") ?? [])
     // v3.0.4：用户手动隐藏的单个模型（"provider:model" 形式）
@@ -1196,7 +1207,9 @@ struct ModelSheet: View {
                     // 跳过已在上面硬编码渲染的 provider（避免重复），只渲染新增/未知的（如 xiaomi）
                     ForEach(allProviders, id: \.id) { p in
                         let hardcoded = ["opencode", "opencode-apple", "deepseek", "stepfun", "sensenova", "local"]
-                        if !hardcoded.contains(p.id) && !hiddenProviders.contains(p.id) && !p.models.isEmpty {
+                        // v3.0.74：自定义 provider 单独渲染（见 customProvidersSection），此处跳过避免重复
+                        let customIDs = Set(customProviders.map { $0.id })
+                        if !hardcoded.contains(p.id) && !customIDs.contains(p.id) && !hiddenProviders.contains(p.id) && !p.models.isEmpty {
                             groupSection(providerDisplayName(p.id),
                                          models: p.models.filter { !hiddenModels.contains("\(p.id):\($0)") }.map {
                                          ($0, providerModelDisplayName(p.id, $0), p.id) },
@@ -1216,6 +1229,10 @@ struct ModelSheet: View {
                         .buttonStyle(.plain)
                         .padding(.top, 4)
                     }
+                    // v3.0.74：自定义模型组（用户自主添加 BASE_URL/API Key 模型组，存后端，免更新 App）
+                    Divider()
+                        .padding(.vertical, 4)
+                    customProvidersSection
                     // v3.0.10：视觉模型配置（模型管理内导航）
                     Divider()
                         .padding(.vertical, 4)
@@ -1384,17 +1401,26 @@ struct ModelSheet: View {
                 }
                 Task { await loadAllProviders() }
             }
+            // v3.0.74：拉取自定义 provider（含 name/base_url/models，用于「自定义模型」管理区块渲染）
+            Task { await loadCustomProviders() }
         }
         // v3.0.10：视觉模型配置弹窗（模型管理内导航）
         .sheet(isPresented: $showVisionModelSheet) {
             VisionModelSheet()
+        }
+        // v3.0.74：添加自定义模型组表单弹窗（保存成功后刷新自定义区块）
+        .sheet(isPresented: $showAddCustomProvider) {
+            CustomProviderEditSheet {
+                Task { await loadCustomProviders() }
+            }
         }
         }
     }
 
     /// 分组标题 + 模型行（v3.0.4：可选 onHideProvider 显示分组隐藏按钮）
     private func groupSection(_ group: String, models: [(String, String, String)],
-                              onHideProvider: (() -> Void)? = nil) -> some View {
+                              onHideProvider: (() -> Void)? = nil,
+                              onDeleteProvider: (() -> Void)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(group)
@@ -1408,6 +1434,16 @@ struct ModelSheet: View {
                         Image(systemName: "eye.slash")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let onDeleteProvider {
+                    Button {
+                        onDeleteProvider()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red.opacity(0.8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1559,6 +1595,72 @@ struct ModelSheet: View {
         ModelProvidersCache.save(result)
     }
 
+
+    /// v3.0.74：拉取自定义 provider 列表（后端定制 JSON，含 name/base_url/models）
+    private func loadCustomProviders() async {
+        guard let j = try? await auth.json("/api/stream/custom-providers"),
+              let list = j["providers"] as? [[String: Any]] else { return }
+        var arr: [CustomProviderItem] = []
+        for p in list {
+            guard let id = p["id"] as? String else { continue }
+            let n = (p["name"] as? String) ?? ""
+            let b = (p["base_url"] as? String) ?? ""
+            let m = (p["models"] as? [String]) ?? []
+            arr.append(CustomProviderItem(id: id, name: n, baseURL: b, models: m))
+        }
+        customProviders = arr
+        // 同步刷新聚合 provider 列表（保证模型加载一致）
+        await loadAllProviders()
+    }
+
+    /// v3.0.74：删除一个自定义 provider（后端删除 + 刷新）
+    private func deleteCustomProvider(_ id: String) {
+        Task {
+            guard let j = try? await auth.json("/api/stream/custom-providers", method: "POST",
+                                               body: ["action": "delete", "id": id]),
+                  (j["ok"] as? Bool) == true else { return }
+            await loadCustomProviders()
+        }
+    }
+
+    /// v3.0.74：自定义模型管理区块（列表 + 添加入口）
+    private var customProvidersSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("自定义模型")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    showAddCustomProvider = true
+                } label: {
+                    Label("添加", systemImage: "plus")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.leading, 4)
+            if customProviders.isEmpty {
+                Text("添加你自己的模型组（Base URL + API Key），自定义厂商/模型免更新 App 即用")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 4)
+            } else {
+                ForEach(customProviders) { cp in
+                    customProviderGroup(cp)
+                }
+            }
+        }
+    }
+
+    /// v3.0.74：单个自定义模型组（复用 groupSection，组头带删除按钮）
+    private func customProviderGroup(_ cp: CustomProviderItem) -> some View {
+        groupSection(cp.name.isEmpty ? cp.id : cp.name,
+                     models: cp.models.map { ($0, $0, cp.id) },
+                     onDeleteProvider: { deleteCustomProvider(cp.id) })
+    }
+
     /// v3.0.10：视觉模型显示文案（模型管理内导航行）
     private var visionModelDisplay: String {
         let mainModel = UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
@@ -1569,6 +1671,103 @@ struct ModelSheet: View {
     }
 }
 
+
+
+// MARK: - v3.0.74 添加自定义模型组表单（对齐云端 CloudProviderSheet 风格）
+
+struct CustomProviderEditSheet: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    let onSaved: () -> Void
+
+    @State private var name = ""
+    @State private var baseURL = ""
+    @State private var apiKey = ""
+    @State private var modelsText = ""
+    @State private var saving = false
+    @State private var errMsg: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("连接信息") {
+                    TextField("名称（如 我的厂商）", text: $name)
+                    TextField("Base URL（https://.../v1）", text: $baseURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("API Key", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section("模型名（每行一个）") {
+                    TextEditor(text: $modelsText)
+                        .frame(minHeight: 120)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .overlay(alignment: .topLeading) {
+                            if modelsText.isEmpty {
+                                Text("deepseek-v4-flash\nglm-5.2\n…")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 5)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                }
+                if let errMsg {
+                    Text(errMsg)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                }
+                Section {
+                    Button(saving ? "保存中…" : "保存") {
+                        Task { await save() }
+                    }
+                    .disabled(name.isEmpty || baseURL.isEmpty || apiKey.isEmpty
+                              || modelsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                }
+            }
+            .navigationTitle("添加自定义模型")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func save() async {
+        saving = true
+        errMsg = nil
+        defer { saving = false }
+        let models = modelsText.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let provider: [String: Any] = [
+            "id": "custom-\(Int(Date().timeIntervalSince1970))",
+            "name": name,
+            "base_url": baseURL,
+            "api_key": apiKey,
+            "models": models
+        ]
+        do {
+            let j = try await auth.json("/api/stream/custom-providers", method: "POST",
+                                        body: ["action": "add", "provider": provider])
+            if (j["ok"] as? Bool) == true {
+                onSaved()
+                dismiss()
+            } else {
+                errMsg = "保存失败：\(j["error"] as? String ?? "未知错误")"
+            }
+        } catch {
+            errMsg = "保存失败：\(error.localizedDescription)"
+        }
+    }
+}
 // MARK: - 关于轻聊（软件介绍页）
 
 struct AboutView: View {
