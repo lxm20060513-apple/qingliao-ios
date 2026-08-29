@@ -259,9 +259,14 @@ struct DashboardView: View {
                                 onRefresh: { Task { await loadRouter() } })
                         .onAppear { Task { await loadRouter() } }
 
-                    // v3.0.74：钉一钉（聊天消息钉到看板）
-                    if !pinStore.pins.isEmpty {
-                        sectionTitle("钉一钉")
+                    // v3.0.74：钉一钉（聊天消息钉到看板）——始终显示
+                    sectionTitle("钉一钉")
+                    if pinStore.pins.isEmpty {
+                        Text("长按聊天消息 → 钉一钉")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 8)
+                    } else {
                         ForEach(pinStore.pins) { pin in
                             PinCard(pin: pin) {
                                 pinStore.delete(pin)
@@ -355,6 +360,8 @@ struct DashboardView: View {
         .task {
             // v2.0.86：硬件温度（CPU / NVMe）首屏加载
             await loadHw()
+            // v3.0.74：从 NAS 加载钉一钉数据
+            await pinStore.loadFromServer()
             // 30s 自动刷新（v2.0.87c：10→30s，省电省流量，看板数据变化不敏感）
             // v2.0.133f：仅看板可见时刷——隐藏页轮询会抢 TabView 切页动画帧
             while !Task.isCancelled {

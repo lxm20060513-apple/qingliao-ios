@@ -271,6 +271,8 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
+    // v3.0.74：钉一钉（长按菜单钉到看板）
+    var onPin: (() -> Void)? = nil
     // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
     var onAIImageTap: (String) -> Void = { _ in }
     // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标
@@ -492,6 +494,7 @@ struct MessageBubble: View {
                                                                                     onDelete: onDelete,
                                                                                     onRegenerate: onRegenerate,
                                                                                     onWithdraw: nil,
+                                                                                    onPin: onPin,
                                                                                     onImageTap: { url in onAIImageTap(url) },   // v2.0.128：AI 图片点击打开大图
                                                                                     useSwiftUIText: true,
                                                                                     streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
@@ -690,6 +693,7 @@ struct MessageBubble: View {
                                 onDelete: onDelete,
                                 onRegenerate: onRegenerate,
                                 onWithdraw: nil,
+                                onPin: onPin,
                                 onImageTap: { url in onAIImageTap(url) },
                                 useSwiftUIText: true,
                                 streaming: false)

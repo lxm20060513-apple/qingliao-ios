@@ -143,6 +143,7 @@ struct ChatView: View {
     @Environment(StreamClient.self) private var stream
     @Environment(KeyboardObserver.self) private var kb
     @Environment(BotStore.self) private var botStore   // v3.0.7：Bot Mode
+    @State private var pinStore = PinStore.shared   // v3.0.74：钉一钉
 
     @State private var inputText = ""
     @FocusState private var inputFocus: Bool
@@ -754,6 +755,9 @@ struct ChatView: View {
             retryMessage(msg)
         } onWithdraw: {
             withdrawMessage(msg)
+        } onPin: {
+            pinStore.add(content: msg.content, sourceSessionId: chat.sessionId, sourceRole: msg.role)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } onAIImageTap: { url in
             openAIImage(url)
         }
