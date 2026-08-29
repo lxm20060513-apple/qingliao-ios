@@ -15,6 +15,8 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     func start() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
+            // v3.0.74：先释放旧会话再激活（避免上次录音未释放导致 setCategory 失败）
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
         } catch {
