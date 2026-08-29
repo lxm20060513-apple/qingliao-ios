@@ -10,6 +10,8 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
 
     private var recorder: AVAudioRecorder?
     private var audioURL: URL?
+    /// v3.0.78 诊断：AVAudioRecorder.record() 返回值（false=录音未真正开始，多因麦克风权限/会话未激活）
+    private(set) var lastRecordOK: Bool? = nil
 
     /// v3.0.76：每个录音段用独立文件名（避免分段流式反复 stop/resume 同一 URL 的数据竞争 / 读到空段）
     private func makeURL() -> URL {
@@ -44,7 +46,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
         do {
             let r = try AVAudioRecorder(url: url, settings: settings)
             r.delegate = self
-            r.record()
+            let ok = r.record()
+            lastRecordOK = ok
+            NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent)")
             recorder = r
             audioURL = url
             isRecording = true
@@ -59,8 +63,12 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     /// 停止录音，返回音频文件（用于上传转写）
     /// v2.0.102：恢复音频会话为 playback 并停用——否则 TTS 朗读无声（setCategory(.record) 未恢复）
     func stop() -> URL? {
-        recorder?.stop()
+        if let r = recorder { r.stop() }
         isRecording = false
+        if let u = audioURL {
+            let sz: Int = (try? FileManager.default.attributesOfItem(atPath: u.path))?[.size] as? Int ?? -1
+            NSLog("[VOICE] stop() url=\(u.lastPathComponent) size=\(sz)")
+        }
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
@@ -92,7 +100,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
         do {
             let r = try AVAudioRecorder(url: url, settings: settings)
             r.delegate = self
-            r.record()
+            let ok = r.record()
+            lastRecordOK = ok
+            NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent)")
             recorder = r
             audioURL = url
             isRecording = true

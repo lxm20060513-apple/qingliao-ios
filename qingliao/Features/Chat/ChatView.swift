@@ -187,6 +187,7 @@ struct ChatView: View {
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
     @State private var voiceTooShort = false   // v2.0.102：录音太短提示
+    @State private var voiceDiag = ""   // v3.0.78 诊断：录音链路诊断信息
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State private var pendingQueue: [PendingSend] = []
     // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
@@ -566,7 +567,7 @@ struct ChatView: View {
         .alert("录音太短", isPresented: $voiceTooShort) {
             Button("好的", role: .cancel) {}
         } message: {
-            Text("说话时间太短，请按住说话至少 1 秒再松手。")
+            Text("说话时间太短，请按住说话至少 1 秒再松手。\n[诊断 v3.0.78] \(voiceDiag)")
         }
         // v2.0.102：AI 回答中发文件提示
         .alert("AI 回答中", isPresented: $fileSendBlocked) {
@@ -1567,12 +1568,23 @@ struct ChatView: View {
     ///          语音转文字恒判"录音太短"。改回整段录音一次转写（v3.0.35 稳定方式）。
     private func uploadAndTranscribe() {
         // 整段录音：松手后取完整音频一次 ASR（不依赖分段 voiceSegments）
-        guard let url = voiceRecorder.stop(),
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url), data.count > 100 else {
+        guard let url = voiceRecorder.stop() else {
+            voiceDiag = "stop()=nil recordOK=\(String(describing: voiceRecorder.lastRecordOK))"
+            NSLog("[VOICE] \(voiceDiag)")
             voiceTooShort = true
             return
         }
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int ?? -1
+        voiceDiag = "size=\(sz) exists=\(exists) recordOK=\(String(describing: voiceRecorder.lastRecordOK)) ver=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
+        NSLog("[VOICE] \(voiceDiag)")
+        guard exists, let data = try? Data(contentsOf: url), data.count > 100 else {
+            voiceDiag += " → data≤100B"
+            NSLog("[VOICE] tooShort \(voiceDiag)")
+            voiceTooShort = true
+            return
+        }
+        NSLog("[VOICE] OK data.count=\(data.count)")
         transcribeToken += 1
         let token = transcribeToken
         transcribing = true
