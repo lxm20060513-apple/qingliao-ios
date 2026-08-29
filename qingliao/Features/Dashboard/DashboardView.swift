@@ -266,6 +266,13 @@ struct DashboardView: View {
                             PinCard(pin: pin) {
                                 pinStore.delete(pin)
                             }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    pinStore.delete(pin)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }

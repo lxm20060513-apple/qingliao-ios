@@ -97,19 +97,27 @@ final class PinStore {
         }
     }
 
+    // MARK: - 注入 AuthStore（由 App 启动时注入）
+    weak var auth: AuthStore?
+
+    func attach(auth: AuthStore) {
+        self.auth = auth
+    }
+
     // MARK: - 文件读写（通过后端 API）
 
     private func writeToFile(data: Data) async {
-        // 通过后端 API 写入
+        guard let auth else { return }
         let body: [String: Any] = [
             "path": pinsFilePath,
             "data": data.base64EncodedString()
         ]
-        _ = try? await AuthStore.shared.json("/api/files/pin_write", method: "POST", body: body)
+        _ = try? await auth.json("/api/files/pin_write", method: "POST", body: body)
     }
 
     private func readFromFile() async -> Data? {
-        guard let j = try? await AuthStore.shared.json("/api/files/pin_read?path=\(pinsFilePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pinsFilePath)"),
+        guard let auth else { return nil }
+        guard let j = try? await auth.json("/api/files/pin_read?path=\(pinsFilePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pinsFilePath)"),
               let b64 = j["data"] as? String,
               let data = Data(base64Encoded: b64) else {
             return nil

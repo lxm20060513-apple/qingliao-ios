@@ -35,6 +35,8 @@ struct QingliaoApp: App {
                     LocalToolRunner.authStore = auth
                     // v3.0.x：注入 AuthStore 到朗读管理（语音引擎 TTS 经 /api/tts 需带 token）
                     SpeechManager.shared.attach(auth: auth)
+                    // v3.0.74：注入 AuthStore 到钉一钉存储
+                    PinStore.shared.attach(auth: auth)
                 }
                 // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）
                 .onChange(of: scenePhase) { _, phase in

@@ -18,6 +18,13 @@ struct SettingsView: View {
     @State private var memoryCount = 0
     @State private var showTasks = false
     @State private var showLogs = false
+    // v3.0.74：钉一钉存储路径
+    @State private var showPinPath = false
+    @State private var pinPathEdit = ""
+    private var pinPathDisplay: String {
+        let p = PinStore.shared.storagePath
+        return p.isEmpty ? "默认路径" : (p.count > 20 ? "..." + p.suffix(17) : p)
+    }
     @State private var showAppearanceOptions = false
     @State private var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
     @State private var scrollPos = ScrollPosition()
@@ -215,8 +222,26 @@ struct SettingsView: View {
             Divider().padding(.leading, 52)
             SettingRow(icon: "doc.text.fill", iconColor: .orange, title: "日志", chevron: true)
                 .onTapGesture { showLogs = true }
+            // v3.0.74：钉一钉存储路径
+            Divider().padding(.leading, 52)
+            SettingRow(icon: "pin.fill", iconColor: .indigo, title: "钉一钉存储",
+                       value: pinPathDisplay, chevron: true)
+                .onTapGesture { showPinPath = true }
         }
         .glassListCard()
+        .alert("钉一钉存储路径", isPresented: $showPinPath) {
+            TextField("默认: /volume1/.../轻聊app", text: $pinPathEdit)
+            Button("确定") {
+                PinStore.shared.storagePath = pinPathEdit.trimmingCharacters(in: .whitespaces)
+            }
+            Button("恢复默认", role: .destructive) {
+                pinPathEdit = ""
+                PinStore.shared.storagePath = ""
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("NAS 上的存储目录路径，pins.json 保存在此目录下")
+        }
     }
 
     @ViewBuilder private var agentSection: some View {
