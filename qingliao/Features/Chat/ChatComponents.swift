@@ -76,8 +76,8 @@ struct MessageBlockView: View {
     var onDelete: () -> Void = {}
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
-    // v3.0.74：钉一钉（长按菜单钉到看板）
-    var onPin: (() -> Void)? = nil
+    // v3.0.74：钉一钉（长按菜单钉到看板）——传当前段落/选中文字
+    var onPin: ((String) -> Void)? = nil
     // v2.0.128：AI 图片点击打开大图（传图片 URL/data URL）
     var onImageTap: (String) -> Void = { _ in }
     // v3.0.17：流式输出中用 SwiftUI Text 渲染（UITextView 在流式高频更新下有锁旧窄布局/字体缩放 bug 家族，
@@ -157,10 +157,17 @@ struct MessageBlockView: View {
                 Label("撤回", systemImage: "arrow.uturn.backward")
             }
         }
-        // v3.0.74：钉一钉（钉到看板）
+        // v3.0.74：钉一钉（钉到看板）——传当前段落文字
         if let onPin {
             Button {
-                onPin()
+                let text: String
+                switch block.kind {
+                case .markdown(let s): text = s
+                case .code(let s): text = s
+                case .table(let rows): text = rows.map { $0.joined(separator: " | ") }.joined(separator: "\n")
+                case .image(let url): text = url
+                }
+                onPin(text)
             } label: {
                 Label("钉一钉", systemImage: "pin.fill")
             }
@@ -271,8 +278,8 @@ struct MessageBubble: View {
     var onImageTap: () -> Void = {}   // v2.0.36 图片点击查看大图
     var onRetry: () -> Void = {}      // v2.0.59 发送失败重试
     var onWithdraw: () -> Void = {}   // v2.0.92 消息撤回（10 秒内）
-    // v3.0.74：钉一钉（长按菜单钉到看板）
-    var onPin: (() -> Void)? = nil
+    // v3.0.74：钉一钉（长按菜单钉到看板）——传当前段落/选中文字
+    var onPin: ((String) -> Void)? = nil
     // v2.0.128：AI 消息内图片点击（传 URL/data URL，打开大图）
     var onAIImageTap: (String) -> Void = { _ in }
     // v3.0.15：AI 流式输出中——头像显示粒子球（orbits 流动），替代静态脑形标

@@ -755,8 +755,8 @@ struct ChatView: View {
             retryMessage(msg)
         } onWithdraw: {
             withdrawMessage(msg)
-        } onPin: {
-            pinStore.add(content: msg.content, sourceSessionId: chat.sessionId, sourceRole: msg.role)
+        } onPin: { text in
+            pinStore.add(content: text, sourceSessionId: chat.sessionId, sourceRole: msg.role)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } onAIImageTap: { url in
             openAIImage(url)

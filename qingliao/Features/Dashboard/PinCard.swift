@@ -48,5 +48,19 @@ struct PinCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
         )
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = pin.content
+            } label: {
+                Label("复制内容", systemImage: "doc.on.doc")
+            }
+            if let onDelete {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("删除", systemImage: "trash")
+                }
+            }
+        }
     }
 }
