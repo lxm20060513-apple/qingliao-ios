@@ -943,7 +943,9 @@ struct ChatInputBar: View {
 
     var body: some View {
         Group {
-            if ballInput && !ballExpanded {
+            if ballInput && !ballExpanded && !voiceMode {
+                // v3.0.76：语音转文字/指令激活时保持输入框（不显示球）——原 v3.0.68 收球逻辑会在语音转文字期间收成球，
+                // 用户反馈"触发语音转文字跳到智能球"，此处排除 voiceMode，语音转文字全程保持输入框形态。
                 // 🟣 v2.0.129 球态：Siri 多彩光晕圆球居中（单击展开输入框 / 长按语音转文字）
                 // 语音转文字/转写过程中球保持特效，转写完成自动展开（onChange 处理）
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
@@ -973,8 +975,10 @@ struct ChatInputBar: View {
         }
         // v3.0.68 第6条：智能球开关下默认显示球——键盘收起且输入框为空 → 自动收回成球
         //（有文字则保留输入框，防误伤正在编辑的内容）
+        // v3.0.76：语音转文字/指令激活期间（voiceMode）不收球——否则语音转文字→收键盘会触发此处收球，
+        //          导致"触发语音转文字跳到智能球"。语音模式结束后（voiceMode=false）恢复正常收球。
         .onChange(of: kbEnv.isVisible) { _, visible in
-            if ballInput, ballExpanded, !visible, text.isEmpty {
+            if ballInput, ballExpanded, !visible, text.isEmpty, !voiceMode {
                 withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                     ballExpanded = false
                 }

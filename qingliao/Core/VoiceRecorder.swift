@@ -11,12 +11,20 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     private var recorder: AVAudioRecorder?
     private var audioURL: URL?
 
+    /// v3.0.76：每个录音段用独立文件名（避免分段流式反复 stop/resume 同一 URL 的数据竞争 / 读到空段）
+    private func makeURL() -> URL {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let name = "voice_asr_\(Int(Date().timeIntervalSince1970 * 1000)).m4a"
+        return dir.appendingPathComponent(name)
+    }
+
     /// 开始录音（返回是否成功；失败=无麦克风权限）
     func start() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
-            // v3.0.74：先释放旧会话再激活（避免上次录音未释放导致 setCategory 失败）
-            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            // v3.0.76：回退 v3.0.74 的 setActive(false, .notifyOthersOnDeactivation)——
+            // 该改动实测导致录音采不到字节（松手必弹"录音太短"）。改回直接 setCategory(.record)+setActive(true)；
+            // 会话还原交由 stop()（已设为 playback + 停用）。
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
         } catch {
@@ -25,8 +33,7 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
             audioURL = nil
             return false
         }
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = dir.appendingPathComponent("voice_asr.m4a")
+        let url = makeURL()
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             // v2.0.107：44.1k→16k 采样（whisper 原生 16k，识别质量无损；文件小 2.7 倍，蜂窝上传更快）
@@ -62,6 +69,7 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
 
     /// v3.0.36 分段流式：暂停当前段并返回音频（保留 record 会话，供立即重录下一段）
     /// 仅切换 AVAudioRecorder 实例，不切 AVAudioSession——避免 stop() 的会话重置开销
+    /// v3.0.76：每段用独立文件名（resumeSegment 生成新 URL），杜绝 stop→读→resume 同一文件的覆盖竞争
     func stopCurrentSegment() -> URL? {
         guard let r = recorder else { return nil }
         r.stop()
@@ -72,9 +80,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     }
 
     /// v3.0.36 分段流式：续录新段（沿用 start 的会话设置，快速重建 recorder）
+    /// v3.0.76：改独立文件名，不再复用 voice_asr.m4a（配合 flushVoiceSegment 先读后 resume）
     func resumeSegment() -> Bool {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = dir.appendingPathComponent("voice_asr.m4a")
+        let url = makeURL()
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: 16000,
