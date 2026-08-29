@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-27
-> 最新版本：v3.0.60（feature/handoff-301 分支，已发版）
+> 最后更新：2026-08-29
+> 最新版本：v3.0.75（feature/handoff-301 分支，已发版，钉一钉功能+后台流式恢复+tab动画）
 
 ---
 
@@ -11,6 +11,7 @@
 
 - **仓库**：https://github.com/lxm20060513-svg/qingliao-ios
 - **主分支**：`native-3.0`（v3.x 开发线）
+- **开发分支**：`feature/handoff-301`（当前活跃）
 - **旧分支**：`native-2.0`（v2.0.140 已冻结，带 tag `v2.0.140`）
 - **Tag 规范**：`v3.0.XX`，CI 自动触发构建
 
@@ -22,206 +23,163 @@
 | 网络层 | 注入式 HttpClient 协议，测试可 mock |
 | 流式输出 | SSEStreamDecoder（SSE 逐 token 推送） |
 | 数据层 | @Observable ViewModel + FileManager JSON 持久化 |
-| 语音 | WhisperKit 本地 ASR + AVSpeechSynthesizer TTS |
+| 语音 | AVAudioRecorder 本地录音 + 后端 ASR 转写（输入栏长按触发） |
 | 云端工具 | CloudToolLoop + LocalToolRunner（日历/提醒/计时器/天气/剪贴板/计算器/通知） |
 
 ### 关键源文件
 
 | 文件 | 职责 |
 |---|---|
-| `QingliaoApp.swift` | 入口 + GlobalEnvironment + 主题初始化 + 主题切换动画 |
+| `QingliaoApp.swift` | 入口 + GlobalEnvironment + 主题初始化 + 主题切换动画 + scenePhase 后台恢复 |
 | `ContentView.swift` | 主界面 + 导航逻辑 |
 | `ChatViewModel.swift` | 核心聊天逻辑，local/cloud 双模式 + 7 个工具 |
-| `ChatComponents.swift` | MessageBubble / ModelPickerSheet / MessageDetailSheet / BubbleTheme / MarkdownTableView |
+| `ChatComponents.swift` | MessageBubble / ChatInputBar / SiriBallView / BubbleTheme / MarkdownTableView |
 | `ChatStore.swift` | 聊天数据持久化 + 导出功能（txt/Markdown/PDF） |
-| `ChatView.swift` | 聊天页面 + 消息列表 + 导出菜单（三选：纯文本/Markdown/PDF） |
+| `ChatView.swift` | 聊天页面 + 消息列表 + 语音转文字 + 导出菜单 + 钉一钉回调 |
+| `VoiceRecorder.swift` | AVAudioRecorder 录音 + 分段管理 |
+| `StreamClient.swift` | SSE 流式轮询 + restartPolling 后台恢复 |
+| `PinStore.swift` | 钉一钉数据层（CRUD + NAS JSON 持久化 + UserDefaults 兜底） |
+| `PinCard.swift` | 钉一钉卡片组件（长按复制/删除） |
+| `DockTabView.swift` | Tab 切换 + 淡入缩放动画 |
 | `MarkdownRenderer.swift` | 正则解析 Markdown，渐进渲染 + 逐字显示 |
 | `LiquidGlass.swift` | 主题系统 + AI 推荐卡片 + BubbleTheme + DashboardCardStyle |
-| `DashboardView.swift` | 智能看板（NAS/HA/路由器/网络） |
+| `DashboardView.swift` | 智能看板（NAS/HA/路由器/钉一钉） |
 | `Models.swift` | 所有数据模型（含 cpuText/pctText/maxDiskPctText 预格式化） |
-| `SettingsView.swift` | 设置页（8 个 @ViewBuilder section + 输入校验） |
+| `SettingsView.swift` | 设置页（8 个 @ViewBuilder section + 输入校验 + 钉一钉存储路径） |
 
 ---
 
 ## 二、版本历史
 
-### v3.0.60（智谱 GLM 模型 + 后端并发优化，2026-08-27 已发版）
+### v3.0.75（2026-08-29 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 后端 SYNC_ENDPOINTS 加 zai | `stream_api.py` | 新增智谱 GLM provider（open.bigmodel.cn/api/paas/v4），自有 key 直连 |
-| model-providers 并发拉取 | `stream_api.py` | 原串行7个provider×10s超时=70s挂起，改 ThreadPoolExecutor 并发（12s总超时） |
-| 版本号 | `project.yml` | 3.0.59 → 3.0.60（build 358） |
+| 自定义 provider 模型组 | `SettingsView.swift` | App 模型管理页新增「自定义模型」区块 + 添加表单，用户自主增删模型组（Base URL / API Key / 模型名），免更新 App |
+| 后端自定义 provider 接口 | `stream_api.py` | 存储 + 聚合合并 + GET/POST /api/stream/custom-providers；本地 AI 聊天 `_agent_endpoint`/`_worker` 均支持自定义 provider |
+| 版本号 | `project.yml` | 3.0.75 / build 372 |
+### v3.0.74（2026-08-29 已发版）
 
-> 后端部署：NAS `stream_api.py` 已更新 + `docker restart qingliao` 生效。App 侧模型管理已改为全动态渲染（allProviders ForEach），新增 provider 免改版。
-
-### v3.0.40（富文本回滚，2026-08-23 已发版）
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| 富文本输入回滚 | `ChatComponents.swift` + 删除 `MarkdownToolbarInput.swift` | v3.0.37-39 的 UITextView 桥接+格式工具栏**整体移除**（键盘体验问题，用户要求复原）：恢复原 TextField(axis:.vertical) 输入框（placeholder overlay/长按语音转文字/focused/自动增高全还原）；图片持久化 + 灵动岛位置保留 |
-
-> 教训：v3.0.37 富文本输入（路线 B）UITextView 桥接引发键盘弹不出（updateUIView 重渲染竞态 resign），两次修复（FocusState 写回、移除 resign）后键盘可弹但体验不佳 → 用户决定移除回滚。SwiftUI 输入框改造需谨慎，宁可保留 TextField 也不动核心交互。
-
-### v3.0.37（图片持久化 + 灵动岛位置修正 + 富文本输入，2026-08-23 已发版）
+钉一钉功能完整实现 + 后台流式恢复 + tab 切换动画 + 录音修复。
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 图片持久化 | `ChatView.swift` + `ChatComponents.swift` + `ChatStore.swift` + 后端 `files_api.py` | 发送图片前 base64 自动上传 NAS → URL 替代 base64 入库（跨设备可见/重启不丢/省内存）；ChatComponents 用户图支持 http URL；后端 upload 返回相对 url + download 上传目录匿名可读；实测上传→匿名下载全链路通过 |
-| 灵动岛发光位置 | `LiquidGlass.swift` | 光晕下移 10pt（`-6 → +4`），贴合真实灵动岛位置 |
-| 富文本输入（路线 B） | `MarkdownToolbarInput.swift`（新）+ `ChatComponents.swift` | UITextView 桥接替代 TextField(axis:.vertical)（TextField 无选区 API）：支持选区读取 + 格式工具栏（B / I / `代码` / 链接 / 列表 / 引用），对选中文字包 Markdown 标记，发送仍走 Markdown 源码；placeholder/长按语音/焦点语义保留；应用格式后光标定位到标记内 |
+| 钉一钉数据层 | `PinStore.swift` | CRUD + NAS JSON 持久化（pin_write/pin_read API）+ UserDefaults 兜底 |
+| 钉一钉卡片 | `PinCard.swift` | 长卡片组件（对齐看板风格），长按菜单：复制内容 / 删除 |
+| 钉一钉看板集成 | `DashboardView.swift` | 路由器下方显示钉一钉区段（始终显示，空态有引导文案）；.task 加载 NAS 数据 |
+| 钉一钉聊天集成 | `ChatComponents.swift` | MessageBlockView + MessageBubble 的 onPin 参数（传当前段落文字） |
+| 钉一钉聊天调用 | `ChatView.swift` | 长按菜单「钉一钉」→ 钉当前段落到看板 |
+| 钉一钉设置 | `SettingsView.swift` | 数据与自动化 section 新增「钉一钉存储」路径编辑 |
+| 后端 API | `files_api.py`（NAS） | POST /api/files/pin_write + GET /api/files/pin_read（base64 JSON） |
+| 后台流式恢复 | `StreamClient.swift` | restartPolling()：后台回来停旧 Task + 起新轮询 |
+| 后台流式恢复 | `QingliaoApp.swift` | scenePhase .active 时检查 isStreaming && !isDone → 调 restartPolling |
+| 录音修复 | `VoiceRecorder.swift` | 录音前先 setActive(false) 释放旧音频会话（解决多次录音后 setCategory 失败） |
+| tab 切换动画 | `DockTabView.swift` | TabTransitionModifier：scaleEffect 0.97→1 + 0.2s easeInOut（保留原生玻璃 tab bar） |
+| AuthStore 注入 | `PinStore.swift` + `QingliaoApp.swift` | weak var auth + attach(auth:) 注入式（替代 AuthStore.shared） |
+| 版本号 | `project.yml` | 3.0.73 → 3.0.74（build 371） |
 
-### v3.0.36（看板大版本：磁盘系统盘+模型用量+Hermes重启+分段流式语音+灵动岛发光，2026-08-22 已发版）
+### v3.0.73（2026-08-29 已发版）
 
-**v3.0.36 功能改动**
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| 磁盘系统盘分区 | `DashboardView.swift` + `Models.swift` | NASDisk 加 `kind` 字段（system/data），DisksSheet 分组显示；后端 `/:/host_root:ro` 挂载 + 宿主视角 8 分区（/boot/rootfs/ugreen/mnt_factory/overlay + /volume1/2/3） |
-| 模型使用量栏 | `DashboardView.swift` + `Models.swift` + 后端 `usage_api.py` | ProviderUsage 模型 + UsageCard 卡片：DeepSeek ¥36.55（/user/balance）、StepFun ¥15（/v1/accounts）、OpenCode percent 配额（/zen/go/v1/usage：rolling/weekly/monthly + resetsAt）、小米/商汤 unsupported 降级；新接口 `/api/nas/providers-usage` |
-| Hermes 网关卡重启 | `DashboardView.swift` + 后端 `stream_api.py` | ServiceControlSheet 泛化支持 qingliao/hermes 双服务（hermes 隐藏停止卡）；后端 `/api/nas/service/restart` 支持 service=hermes（docker exec hermes-hermes-1 重启，stop 拒绝 400） |
-| 分段流式语音 | `ChatView.swift` + `VoiceRecorder.swift` | 录音中每 5s 切块上传转写，文字增量追加"边说边出字"毛玻璃条；VoiceRecorder `stopCurrentSegment`/`resumeSegment`；转文字/语音指令双模式；修复 read-before-resume 竞态 |
-| 灵动岛发光 | `LiquidGlass.swift` + `QingliaoApp.swift` + `CloudSettingsView.swift` | IslandGlowOverlay（顶部胶囊呼吸光晕，复用 Siri 发光 4 参数）+ 外观弹窗独立开关（本地+云端共用弹窗自动统一） |
-| version | `project.yml` | 3.0.35 → 3.0.36（build 334） |
-
-**v3.0.36 发版后 3 个线上 bug 修复（2026-08-23 全部验证通过）**
-
-| Bug | 根因 | 修复 |
-|---|---|---|
-| Hermes 网关显示已停止 | qingliao 容器极简镜像**无 pgrep/ps** → FileNotFoundError → hermes 恒 null | stream_api.py 改 curl 健康检查 + `docker exec hermes-hermes-1 ps` 取内存 |
-| 智能家居卡片刷不出 | compose 的 QL_HA_TOKEN 是 **30 分钟过期 JWT**（误存 access token），HA 端 8-11 后令牌重置，全链路 401 | 用户新提供长期令牌 → 更新 compose/重建容器 + ha_config.json + Hermes 侧 .ha_token（4 处） |
-| opencode 卡片 error | 容器内 getent 优先解析 **IPv6**（2606:4700:78::）而 v6 路由不通 → 连接超时 | usage_api.py query_opencode 强制 IPv4（socket.getaddrinfo AF_INET）+ 短超时 8s；实测 1.1-1.5s 稳定 |
-
-**部署注意**：compose env 变更必须 `docker compose up -d --force-recreate`（`docker restart` 不重新注入 env）；容器内无 pgrep/ps/不能直接 docker.sock，验证用宿主 python urllib+sudo PTY。
-
-### v3.0.35（模型列表加载优化，2026-08-22 已发版）
+智能球语音功能全部移除（-335 行），仅保留核心交互。
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 微信通道/Agent 弹窗不再无限转圈 | `SettingsView.swift` + `AgentModelSheet` | 打开先显示缓存（UserDefaults 新 ModelProvidersCache）；`/api/channel/model` 与 model-providers 改 async let 并发（原串行）；失败态+重试按钮（原 try? 静默吞错→永远"正在加载模型列表…"）；新增手动刷新按钮 |
-| 通用 provider 接缓存 | `ModelSheet`/`VisionModelSheet` | 打开先显示缓存、后台刷新替换；缓存非空才写，防后端临时故障刷空缓存 |
-| 版本号 | `project.yml` | 3.0.34 → 3.0.35（build 333） |
+| SiriBallView 精简 | `ChatComponents.swift` | 移除 isRecording/voiceMode/transcribing/isSpeaking/onLongPress/onRelease + LongPressGesture/DragGesture；保留点击展开输入框 + 思考动画 |
+| ChatInputBar 参数清理 | `ChatComponents.swift` | 移除 onBallLongPress/onRelease/voiceChatActive/onExitVoiceChat/isSpeaking + onChange(of: transcribing) 自动展开 |
+| ChatView 语音对讲清理 | `ChatView.swift` | 移除 voiceCommandMode/voiceChatActive/voiceTurns/voiceStream/isAiSpeaking/pendingVoiceSpeak 状态 + startVoiceCommand/handleVoiceChatLongPress/exitVoiceChat/startVoiceReply/speakVoiceChat/stopVoiceStream 等函数 |
+| 灰色遮罩清除 | `ChatView.swift` | 移除 Color.black.opacity(0.15) overlay + messageList .background(Color.clear) |
+| 保留：输入栏语音转文字 | `ChatComponents.swift` + `ChatView.swift` | 发送键长按 / 输入框长按 → toggleVoiceMode → 录音 → 松手停止 → ASR 转写上屏 |
+| 保留：键盘收起自动回球 | `ChatComponents.swift` | onChange(of: kbEnv.isVisible) 键盘收起 + 输入框空 → 自动收回成球 |
+| 版本号 | `project.yml` | 3.0.72 → 3.0.73（build 370） |
 
-### v3.0.34（模型列表同步并发优化，2026-08-22 已发版）
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| 模型列表同步并发优化 | `SettingsView.swift` + `VisionModelSheet.swift` | ModelSheet/VisionModelSheet 的 4 provider sync-models 改 async let 并行（最坏 40s → ~10s，失效 key 快速失败）；loadAllProviders 去掉空 models 逐个补拉的 N+1（聚合接口已并发+5min 缓存，补拉纯拖慢） |
-| 版本号 | `project.yml` | 3.0.33 → 3.0.34（build 332） |
-
-### v3.0.33（Agent 模型覆盖提示，2026-08-22 已发版）
+### v3.0.72（2026-08-28 已发版，被 v3.0.73 取代）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 模型管理弹窗加 Agent 覆盖提示 | `SettingsView.swift` | ModelSheet 顶部条件显示提示：Agent 开关开且配置了 agent 模型时聊天实际走 agent 模型（视觉模型 > Agent 模型 > 主模型），此时在模型管理选主模型不生效；提示条说明原因并引导去 Agent 设置改为跟随主模型 |
-| 版本号 | `project.yml` | 3.0.32 → 3.0.33（build 331） |
+| 透明 overlay 松手修复 | `ChatView.swift` | overlay 改 allowsHitTesting(false)；恢复球的 DragGesture 检测松手。根因：透明拦截层(.contentShape+.onTapGesture)覆盖全屏，SwiftUI 把手指抬起事件路由到 overlay 的 onTapGesture |
 
-### v3.0.32（视觉模型判定补全，2026-08-22 已发版）
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| 视觉模型判定补全 | `CloudConfig.swift` | modelSupportsVision 补全：minimax M 系列全系（M1/M2/M2.x/M3）+ glm-5.x 全系判为支持视觉，避免主模型选 M3/GLM-5 时发图被视觉模型顶替 |
-| 版本号 | `project.yml` | 3.0.31 → 3.0.32（build 330） |
-| 清理旧脚本 | `scripts/` | 删除 watch_ci_v3030.sh / watch_v3028.py |
-
-### v3.0.31（流式任务恢复，2026-08-22 已发版）
+### v3.0.71（2026-08-28 已发版，被 v3.0.72 取代）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 流式任务恢复 | `StreamClient.swift` | poll 404 时 tryRecover 一次（换新 taskId / 磁盘内容续接 / done 即收尾），避免 qingliao 重启后长任务白等 |
-| recover 请求封装 | `AuthStore.swift` | 新增 streamRecover，poll 404 时抛 APIError.server(code) |
-| 版本号 | `project.yml` | 3.0.30 → 3.0.31（build 329） |
+| 语音录音松手继续 | `ChatComponents.swift` | 移除 SiriBallView DragGesture.onEnded 松手停止录音逻辑 |
+| voiceChatActive 透明层 | `ChatView.swift` | 放开 voiceChatActive 时隐藏点击退出层的限制 |
 
-### v3.0.30（Agent 模型修复，2026-08-21 已发版）
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| Agent 模型列表加载不出来 | `SettingsView.swift` | AgentModelSheet 端点写错（用了不存在的 `/api/models/providers`，改为 `/api/stream/model-providers?with_models=1`）；hardcoded 过滤把 opencode/deepseek/stepfun/sensenova 全滤掉只剩空列表，已移除 |
-| 「跟随主模型」选了不生效 | `ChatView.swift` | `regenerate()` / `sendFile()` 两处流式入口直接读主模型未读 agent 设置；已统一优先级=视觉模型 > agent模型 > 主模型 |
-| 版本号 | `project.yml` | 3.0.29 → 3.0.30 |
-
-### v3.0.29（Agent 模型自定义，2026-08-21 已发版）
+### v3.0.70（2026-08-28 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| Agent 模型自定义 | `SettingsView.swift` | 新增 `AgentModelSheet`，独立于主模型，可单独指定 Agent 使用的模型；设置页拉取 `/api/models/providers` 分组展示，含"跟随主模型"清空选项 |
-| Agent 模型优先级 | `ChatView.swift` | startStream 优先级 = 视觉模型 > agent模型 > 主模型（agent 开启且配置了独立模型时生效） |
-| 会话列表显示 | `SessionsView.swift` | BotCard displayModel 同步显示 agent 模型（配置了独立 agent 模型时） |
-| 版本号 | `project.yml` | 3.0.28 → 3.0.29 |
+| 语音对讲松手修复 | `ChatComponents.swift` | ChatView 调用 ChatInputBar 时漏传 isRecording，导致 SiriBallView 的 DragGesture.onEnded 松手检测与声波粒子分支全因 isRecording 恒 false 静默失效。补传 isRecording: voiceRecorder.isRecording |
+| 后端 nginx /api/tts | nginx conf | 三个轻聊 server 块补 /api/tts → 9132 location |
 
-### v3.0.28（视觉模型统一，2026-08-21 已发版）
+### v3.0.69（2026-08-28 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 视觉模型配置统一 | `VisionModelSheet.swift` | 原「App 本地视觉模型」与「微信通道视觉模型」两份独立配置合并为**一份共享配置**；模型行点选打勾即同时设置 App + 微信通道（写入 CloudConfig 本地 + 后端 /api/channel/vision-model → wechat-profile auxiliary.vision，自动重启 gateway） |
-| 版本号 | `project.yml` | 3.0.27 → 3.0.28 |
-| 后端 | 无改动 | 复用既有 GET/POST/DELETE /api/channel/vision-model（channel_api.py 9152） |
+| 语音对讲浮层 | `ChatComponents.swift` + `ChatView.swift` | 声波涟漪粒子 + TTS 模型选择（小米mimo/智谱glm-tts）+ 键盘回球 |
 
-### v3.0.27（已发版）
+### v3.0.68（2026-08-28 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 视觉模型自动切换 | `ChatViewModel.swift` | 主模型支持视觉时自动用主模型，不支持时用配置的视觉模型 |
-| 视觉模型配置 UI | `SettingsView.swift` | 本地AI设置→模型管理底部新增视觉模型配置，可选择独立视觉模型 |
-| 视觉模型配置移入模型管理弹窗 | `SettingsView.swift` | 视觉模型配置从独立入口移入模型管理统一弹窗 |
-| 微信通道视觉模型 | `VisionModelSheet.swift` | 微信通道支持独立视觉模型配置（v3.0.22 起） |
+| 神经 TTS | `ChatComponents.swift` + `ChatView.swift` | 语音对讲多轮 + 粒子拟人表情 |
 
-### v3.0.26
+### v3.0.67（2026-08-27 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 视觉模型自动切换 | `ChatViewModel.swift` | 主模型支持视觉时自动用主模型，不支持时用配置的视觉模型 |
-| 视觉模型配置 UI | `SettingsView.swift` | 本地AI设置→模型管理底部新增视觉模型配置，可选择独立视觉模型 |
+| 输入框与键盘留 10pt | `ChatView.swift` | `.padding(.bottom, kb.isVisible ? 0 : 10)` 改常量 10——键盘也要留隙 |
+| 版本号 | `project.yml` | 3.0.66 → 3.0.67（build 364） |
 
-### v3.0.25
-
-| 改动 | 文件 | 说明 |
-|---|---|---|
-| 视觉模型配置移入模型管理弹窗 | `SettingsView.swift` | 本地AI视觉模型配置从独立入口移入模型管理统一弹窗 |
-| 微信通道视觉模型 | `ChatViewModel.swift` + `SettingsView.swift` | 微信通道支持独立视觉模型配置 |
-
-### v3.0.24
-
-改动：本地AI视觉模型配置功能上线。
-
-### v3.0.23
-
-改动：外观弹窗（AppearanceSheet）统一为半屏卡片样式，添加 `.presentationDetents([.medium, .large])`。
-
-涉及文件：`SettingsView.swift`（设置页入口）、`CloudSettingsView.swift`（云端模式入口）。
-
-### v3.0.22
+### v3.0.66（2026-08-27 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 主题切换过渡动画 | `QingliaoApp.swift` | 0.3s easeInOut，深浅切换不再硬切 |
-| ServerSheet 输入校验 | `SettingsView.swift` | URL 格式/端口 1-65535/非法字符，红色错误提示 |
-| hwCpuText/hwSsdText 预格式化 | `Models.swift` | 跟 cpuText/pctText 同模式 |
-| 导出菜单升级为三选 | `ChatView.swift` | 纯文本/Markdown/PDF 三种格式 |
-| exportMarkdown() | `ChatStore.swift` | Markdown 结构化导出 |
-| ChatMarkdownDocument + ChatPDFDocument | `ChatComponents.swift` | A4 排版，UIKit 绘制 |
-| 项目版本号更新 | `project.yml` | 4 处 MARKETING_VERSION 从 3.0.20 更新 |
+| 输入框与 dock 留 10pt | `ChatView.swift` | 键盘收起时留 10pt 呼吸间距 |
+| 智能球与 dock 间距 | `ChatComponents.swift` | 球态自 padding 4→0，间隙由外层统一留 |
+| 版本号 | `project.yml` | 3.0.65 → 3.0.66（build 363） |
 
-### v3.0.21
-
-中间版本，已合并到 v3.0.22。
-
-### v3.0.20
+### v3.0.65（2026-08-27 已发版）
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 看板卡片统一 | `LiquidGlass.swift` | 新增 `DashboardCardStyle` 修饰符 |
-| 看板空态折叠 | `DashboardView.swift` | 智慧场景/自动化无数据时收为单行 |
-| 气泡颜色集中 | `LiquidGlass.swift` + `ChatComponents.swift` | 新增 `BubbleTheme` 消除 6 处硬编码色值 |
-| 模型层预格式化 | `Models.swift` | 新增 `cpuText`/`pctText`/`maxDiskPctText` |
-| SettingsView 拆分 | `SettingsView.swift` | body 从 500 行拆为 8 个 @ViewBuilder 计算属性 |
+| 输入框贴键盘 | `ChatView.swift` | 移除手动键盘高度 padding，改原生键盘避让 |
+| 移除 Dock 设置项 | `SettingsView.swift` + `CloudSettingsView.swift` | 移除「隐藏 Dock 栏」开关 + 「Dock 透明度」滑条 + DockVisibility 死类 |
+| 版本号 | `project.yml` | 3.0.64 → 3.0.65（build 362，修复 build 号漂移） |
 
-### v3.0.19 及更早
+### v3.0.64（2026-08-27 已发版）
 
-- v3.0.0：云端模式上线（本地 AI / 云端 AI 双模式）
-- v3.0.7：Bot Mode + @Observable 切页卡顿根治
-- v3.0.18：AI 消息挤小框根治 + 云端工具调用（7 工具）
-- v3.0.19：语音指令闭环 + 微信窗通道模型方案 B
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| Dock 改原生 TabView | `DockTabView.swift` | 弃自定义 DockBar，改用 iOS 26 系统 TabView 原生液态玻璃 tab bar。用户拍板定版。 |
+
+> **Dock 演进复盘**：v3.0.61 恢复真液态玻璃 → v3.0.62 每 tab 各自 glassEffect（否决）→ v3.0.63 整条玻璃+手动按压（嫌弃非原生）→ v3.0.64 改用系统原生 tab bar。**核心结论：要原生液态玻璃别手搓，直接上 iOS 26 系统组件。**
+
+### v3.0.59-63（2026-08-27 已发版）
+
+详见 v3.0.64 演进复盘。主要改动：流式气泡文本截断修复 / 智谱 GLM 模型 / 灵动岛发光微调 / 免费模型开关 / 云端厂商删除。
+
+### v3.0.51（2026-08-26 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 多气泡段落流式 | `ChatComponents.swift` + `ChatView.swift` | AI 长回复按空行拆成多个独立气泡 |
+| 图片持久化增强 | `ChatStore.swift` + `ChatView.swift` | retryPendingImageUploads 指数退避重传 |
+| 长会话分页 | `ChatView.swift` | 极长会话只渲染尾部 300 条 + 顶部「加载更早」 |
+| 会话标签 | `SessionTagStore.swift` + `SessionsView.swift` | 预置 工作/学习/生活 + 自定义，彩色小胶囊 |
+
+### v3.0.50（2026-08-25 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 扫码球整体移除 | `ScanOrbView.swift`(整删) + 多文件 | 用户拍板「全部拿掉」；保留 SiriBallView 智能球 |
+| ChatMessage.id 稳定化 | `Models.swift` | djb2 稳定哈希替代 content.hashValue |
+| StreamClient 竞态修复 | `StreamClient.swift` | generation 递增防旧流污染新流 |
+| 超长消息折叠 | `ChatComponents.swift` | >600 字 AI 消息默认折叠 |
+
+### v3.0.49 及更早
+
+详见历史版本记录。
 
 ---
 
@@ -229,42 +187,42 @@
 
 ### 触发条件
 
-`native-3.0` 分支上推送 `v*` tag 会自动触发 `.github/workflows/build-ios.yml`。
+`feature/handoff-301` 分支上推送 `v*` tag 会自动触发 `.github/workflows/build-ios.yml`。
 
 ### 完整流程
 
 ```bash
 # 1. 进入本地仓库
-cd /tmp/qingliao-ios
+cd /opt/data/qingliao_ios
 
-# 2. 确保代码已提交并 push
-git push origin native-3.0
+# 2. check_swift 语法检查
+bash check_swift.sh
 
-# 3. 获取最新 tag，递增
-git fetch --tags
-git tag -l 'v3.0.*' | sort -V | tail -1  # 例如 v3.0.26
-git tag v3.0.27
-git push origin v3.0.27
+# 3. 改版本号（project.yml 4 处同步）
+sed -i 's/X.Y.Z/A.B.C/g; s/\"OLD_BUILD\"/\"NEW_BUILD\"/g' project.yml
 
-# 4. 等待 CI 完成（约 3-5 分钟）
-gh run list --limit 5 --repo lxm20060513-svg/qingliao
+# 4. commit + push
+git add -A && git commit -m "fix: ... (vA.B.C)"
+git tag vA.B.C
+git -c http.version=HTTP/1.1 -c http.lowSpeedLimit=0 -c http.lowSpeedTime=999 push origin feature/handoff-301 vA.B.C
 
-# 5. 下载 IPA
-gh run download <RUN_ID> --name qingliao-ipa \
-  --repo lxm20060513-svg/qingliao \
-  -D /tmp/qingliao-artifact
+# 5. 等 CI 完成（~15-20 分钟）
+curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?per_page=2"
 
-# 6. 上传到 NAS（paramiko base64 管道）
+# 6. 下载 IPA + 转存 NAS
+# SFTP put 到 docker/hermes/_upload.ipa，然后 sudo cp 到目标目录
 ```
 
 ### 关键点
 
-- **gh 使用 lxm20060513 的 PAT**（不是 svg 的），因为 release artifact 下载需要仓库 owner 权限
-- **NAS SFTP chroot**：根目录是 `/volume1/`，所以路径用 `docker/hermes/...`（相对路径），不要用 `/volume1/docker/...`（绝对路径会 ENOENT）
-- **NAS SSH 端口**：22（9122 已不通，2026-08-20 起）
-- **NAS 凭据文件**：`/opt/data/.nas_cred`，格式单行密码
-- **GitHub PAT 文件**：`/opt/data/.gh_cred`，格式 `token:xxxxx`（base64）
-- **watch_ipa_ci.py**：自动监听 CI + 下载 IPA，需先创建目标目录
+- **project.yml 版本号 4 处**：MARKETING_VERSION / CURRENT_PROJECT_VERSION / CFBundleShortVersionString / CFBundleVersion
+- **NAS SFTP chroot**：根目录是 `/volume1/`，SFTP 用相对路径 `docker/hermes/...`
+- **NAS 上传**：SFTP put 到 `docker/hermes/_upload.ipa` → sudo cp 到目标 → chmod 644
+- **NAS 凭据**：`/opt/data/.nas_cred`（单行纯密码，含 @ 勿截断）
+- **GitHub 凭据**：`/opt/data/.gh_cred`（明文 40 字符 token）
+- **git push 重试**：`for i in $(seq 1 8); do git -c http.version=HTTP/1.1 ... && break; sleep 10; done`
+- **盯 CI cron**：构建成功后删 cron，勿空转复读
+- **paramiko venv**：`/opt/data/paramiko_old/bin/python3`
 
 ---
 
@@ -272,8 +230,9 @@ gh run download <RUN_ID> --name qingliao-ipa \
 
 | 路径 | 内容 |
 |---|---|
-| `/docker/hermes/微信文件/轻聊web/backend/` | 后端代码（API 服务器） |
+| `/docker/hermes/微信文件/轻聊web/backend/` | 后端代码（API 服务器，容器 qingliao） |
 | `/docker/hermes/微信文件/轻聊web/frontend/` | Web 前端 |
+| `/docker/hermes/微信文件/轻聊web/data/` | 钉一钉数据（pins.json，容器可写） |
 | `/docker/hermes/微信文件/轻聊app/` | iOS IPA 文件存放 |
 | `/docker/hermes/微信文件/轻聊app/qingliao.app/` | SideStore 打包用的 .app 目录 |
 
@@ -281,49 +240,55 @@ gh run download <RUN_ID> --name qingliao-ipa \
 
 ## 五、踩坑经验
 
-### 1. GitHub PAT 过期
-- **现象**：`git push` 返回 401
-- **修复**：更新 remote URL 里的 PAT 或设置 `GH_TOKEN` 环境变量
+### 1. project.yml 版本号
+- 4 处必须同步（MARKETING_VERSION / CURRENT_PROJECT_VERSION / CFBundleShortVersionString / CFBundleVersion）
+- `info.properties` 的 CFBundleVersion 会覆盖 settings 的 CURRENT_PROJECT_VERSION
+- **发版前 grep 两处都对齐**，并解包产物核对 Info.plist
 
-### 2. gh run download 权限问题
-- **原因**：用了 svg 的 PAT，但 release artifact 下载需要仓库 owner 的 PAT
-- **修复**：`export GH_TOKEN=lxm20060513 的 PAT`
+### 2. NAS SFTP 路径
+- SFTP chroot 到 `/volume1/`，用相对路径 `docker/hermes/...`
+- 绝对路径 `/volume1/docker/...` 会 ENOENT
+- 目标目录属主 root → 需 sudo cp
 
-### 3. Xcode Archive 编译失败
-- **常见原因**：Swift 语法错误（多/少 `}`）
-- **排查**：GitHub API 查 workflow run jobs
+### 3. NAS 上传流程
+- SFTP put 到可写路径（`docker/hermes/_upload.ipa`）→ sudo cp 到目标 → chmod 644
+- exec_command cat + stdin 大文件会 Socket closed → 用 SFTP
+- sudo -S 必须立即 stdin.write 密码
 
-### 4. NAS SFTP 路径
-- **现象**：`/volume1/docker/hermes/...` 返回 ENOENT
-- **原因**：SFTP chroot 根目录是 `/volume1/`
-- **修复**：用相对路径 `docker/hermes/...`
+### 4. Git push 卡死
+- `git -c http.version=HTTP/1.1 -c http.lowSpeedLimit=0 -c http.lowSpeedTime=999 push`
+- 重试循环最多 8 次，间隔 10s
 
-### 5. NAS SSH 端口变更
-- **端口 22**：当前可用（9122 已不通）
+### 5. CI 失败重发
+- 删 tag 重建 + 重推：`git push origin :refs/tags/vX` + 本地 `git tag -d` + `git tag vX` + push
 
-### 6. watch_ipa_ci.py 下载失败（目录不存在）
-- **现象**：CI 成功但 FileNotFoundError
-- **修复**：先 mkdir -p 创建目标目录，或下载到本地再 paramiko 上传
+### 6. 智能球语音功能（v3.0.73 已全部移除）
+- v3.0.70-72 三次尝试修复语音松手上屏 bug 均失败
+- 根因链：DragGesture 移除 → 透明 overlay 拦截松手 → overlay 改 allowsHitTesting(false) → 仍有问题
+- 最终方案：球的语音功能全部移除，语音转文字只保留在输入栏（send 按钮/输入框长按）
 
-### 7. project.yml 版本号
-- `project.yml` 里有 4 处版本号需要同步更新
-- **发版 checklist**：改代码 → 改 project.yml → commit → push → 打 tag
+### 7. 容器文件系统只读
+- NAS 容器对 `/volume1/docker/hermes/微信文件/轻聊app/` 是只读的
+- 钉一钉数据存储在 `/volume1/docker/hermes/微信文件/轻聊web/data/`（容器可写）
+- 后端 API（files_api.py）通过 pin_write/pin_read 端点读写
+
+### 8. 音频会话未释放
+- 多次录音后 `AVAudioSession.setCategory(.record)` 可能失败（上次录音未正确释放）
+- 修复：录音前先 `try? session.setActive(false, options: .notifyOthersOnDeactivation)`
 
 ---
 
 ## 六、下一步计划（待实现）
 
-> ✅ 已完成：图片持久化上传（v3.0.37 已发版）、长文目录/折叠（v3.0.27 已实现，右上菜单"长文目录"）
-
 | 优先级 | 功能 | 难度 | 说明 |
 |---|---|---|---|
-| 中 | 用量统计 | 低 | 解析 usage 字段，做图表 |
-| 中 | 桌面小组件 | 中 | WidgetKit |
-| 中 | 会话文件夹/标签 | 中 | 新增 Category 模型 |
+| 中 | 桌面小组件 | 中 | WidgetKit 主屏幕小组件 |
+| 中 | 会话文件夹 | 中 | 新增 Category 模型（文件夹） |
 | 中 | LaTeX 公式 | 中 | 检测 `$...$`，内嵌 WKWebView + KaTeX |
 | 中 | @ 引用历史消息 | 中 | 输入框检测 @ + 弹列表 |
-| 低 | 流式语音对话 | 高 | ASR 流式 + 按句 TTS |
-| 低 | 富文本输入 | 高 | UITextView 替换 TextEditor |
+| 低 | 用量图表 | 中 | 已有 providers-usage 数值卡，可加图表 |
+
+**已实现（从待办剔除）**：图片持久化上传（v3.0.37）、长文目录（v3.0.27）、长文折叠（v3.0.50）、会话标签（v3.0.51）、语音对讲（v3.0.68-69，v3.0.73 移除）、钉一钉（v3.0.74）、后台流式恢复（v3.0.74）。
 
 ---
 
