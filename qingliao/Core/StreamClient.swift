@@ -175,6 +175,13 @@ final class StreamClient {
     // MARK: - v2.0.61 杀后台流式恢复
 
     /// App 进后台时持久化流式状态（taskId/offset/content），重开后恢复轮询
+    /// v3.0.73：后台回来恢复轮询——停旧 Task + 起新轮询（generation 不变，续接原任务）
+    func restartPolling(auth: AuthStore) async {
+        guard isStreaming, !isDone, !taskId.isEmpty else { return }
+        stopPolling()
+        startPolling(auth: auth)
+    }
+
     func persistState(sessionId: String) {
         guard isStreaming, !taskId.isEmpty else { return }
         let d: [String: Any] = [

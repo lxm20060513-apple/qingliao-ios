@@ -476,3 +476,53 @@ final class CategoryStore {
         return categories.first { $0.id == catId }
     }
 }
+
+// MARK: - 钉一钉（v3.0.74：聊天消息钉到看板）
+
+struct PinItem: Identifiable, Codable {
+    let id: String
+    let content: String
+    let sourceSessionId: String?
+    let sourceRole: String?   // user / assistant
+    let createdAt: Date
+
+    init(id: String = UUID().uuidString, content: String,
+         sourceSessionId: String? = nil, sourceRole: String? = nil,
+         createdAt: Date = Date()) {
+        self.id = id
+        self.content = content
+        self.sourceSessionId = sourceSessionId
+        self.sourceRole = sourceRole
+        self.createdAt = createdAt
+    }
+
+    /// 按天分组用 "2026-08-29"
+    var dateKey: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: createdAt)
+    }
+
+    /// 显示用时间 "14:30"
+    var timeText: String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: createdAt)
+    }
+
+    /// 内容截断（卡片用）
+    var preview: String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count <= 120 { return trimmed }
+        return String(trimmed.prefix(120)) + "…"
+    }
+
+    /// 来源标签
+    var sourceLabel: String {
+        switch sourceRole {
+        case "user": return "👤 我说的"
+        case "assistant": return "🤖 AI 说的"
+        default: return ""
+        }
+    }
+}

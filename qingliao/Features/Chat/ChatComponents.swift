@@ -76,6 +76,8 @@ struct MessageBlockView: View {
     var onDelete: () -> Void = {}
     var onRegenerate: (() -> Void)? = nil
     var onWithdraw: (() -> Void)? = nil
+    // v3.0.74：钉一钉（长按菜单钉到看板）
+    var onPin: (() -> Void)? = nil
     // v2.0.128：AI 图片点击打开大图（传图片 URL/data URL）
     var onImageTap: (String) -> Void = { _ in }
     // v3.0.17：流式输出中用 SwiftUI Text 渲染（UITextView 在流式高频更新下有锁旧窄布局/字体缩放 bug 家族，
@@ -153,6 +155,14 @@ struct MessageBlockView: View {
                 onWithdraw()
             } label: {
                 Label("撤回", systemImage: "arrow.uturn.backward")
+            }
+        }
+        // v3.0.74：钉一钉（钉到看板）
+        if let onPin {
+            Button {
+                onPin()
+            } label: {
+                Label("钉一钉", systemImage: "pin.fill")
             }
         }
         Button(role: .destructive) {

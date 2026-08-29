@@ -40,6 +40,8 @@ struct DashboardView: View {
     @State private var diagnoseSummary = ""
     @State private var diagnoseError = ""
     @State private var diagnosing = false
+    // v3.0.74：钉一钉
+    @State private var pinStore = PinStore.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -256,6 +258,16 @@ struct DashboardView: View {
                                 onStop: { clashAction("stop") },
                                 onRefresh: { Task { await loadRouter() } })
                         .onAppear { Task { await loadRouter() } }
+
+                    // v3.0.74：钉一钉（聊天消息钉到看板）
+                    if !pinStore.pins.isEmpty {
+                        sectionTitle("钉一钉")
+                        ForEach(pinStore.pins) { pin in
+                            PinCard(pin: pin) {
+                                pinStore.delete(pin)
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 100)

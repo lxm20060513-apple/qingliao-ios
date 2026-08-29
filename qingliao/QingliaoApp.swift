@@ -44,6 +44,10 @@ struct QingliaoApp: App {
                     // v2.0.87t：前台恢复自动重连（蜂窝 IPv6 会话后台过期 → 重建，免手动飞行模式）
                     if phase == .active {
                         Task { await auth.refreshConnection() }
+                        // v3.0.73：后台回来时恢复流式轮询（iOS 挂起会杀 Task.sleep → 轮询静默死亡）
+                        if stream.isStreaming, !stream.isDone {
+                            Task { await stream.restartPolling(auth: auth) }
+                        }
                     }
                 }
         }
