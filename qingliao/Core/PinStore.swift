@@ -22,7 +22,7 @@ final class PinStore {
     /// 钉一钉数据文件的完整路径（NAS 上）
     private var pinsFilePath: String {
         let base = storagePath.isEmpty
-            ? "/volume1/docker/hermes/微信文件/轻聊app"
+            ? "/volume1/docker/hermes/微信文件/轻聊web/data"
             : storagePath
         return "\(base)/\(defaultFileName)"
     }
