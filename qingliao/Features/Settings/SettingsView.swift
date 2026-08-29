@@ -229,18 +229,9 @@ struct SettingsView: View {
                 .onTapGesture { showPinPath = true }
         }
         .glassListCard()
-        .alert("钉一钉存储路径", isPresented: $showPinPath) {
-            TextField("默认: /volume1/.../轻聊app", text: $pinPathEdit)
-            Button("确定") {
-                PinStore.shared.storagePath = pinPathEdit.trimmingCharacters(in: .whitespaces)
-            }
-            Button("恢复默认", role: .destructive) {
-                pinPathEdit = ""
-                PinStore.shared.storagePath = ""
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("NAS 上的存储目录路径，pins.json 保存在此目录下")
+        .sheet(isPresented: $showPinPath) {
+            PinPathSheet()
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -747,6 +738,76 @@ struct ServerSheet: View {
                 .replacingOccurrences(of: "https://", with: "")
         }
         }
+    }
+}
+
+
+// MARK: - 钉一钉存储路径（v3.0.77：由系统 .alert 改为 App 统一底部 sheet，对齐 PasswordSheet 风格）
+
+struct PinPathSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var path: String = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextField("默认: /volume1/.../轻聊app", text: $path)
+                    .font(.system(size: 14))
+                    .padding(12)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+
+                Text("NAS 上的存储目录路径，pins.json 保存在此目录下")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+
+                Button {
+                    PinStore.shared.storagePath = path.trimmingCharacters(in: .whitespaces)
+                    dismiss()
+                } label: {
+                    Text("确定")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 18)
+                .padding(.top, 12)
+
+                Button {
+                    PinStore.shared.storagePath = ""
+                    dismiss()
+                } label: {
+                    Text("恢复默认")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+
+                Spacer()
+            }
+            .background(Color(uiColor: .systemBackground))
+            .navigationTitle("钉一钉存储路径")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .onAppear { path = PinStore.shared.storagePath }
     }
 }
 

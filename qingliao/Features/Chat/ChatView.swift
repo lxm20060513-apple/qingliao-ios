@@ -183,10 +183,6 @@ struct ChatView: View {
     @State private var voiceMode = false
     @State private var transcribing = false   // v2.0.100：语音转文字转换中（动画）
     @State private var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
-    // v3.0.36：分段流式语音转文字——录音中每 5s 切块上传转写，文字增量追加（边说边出字）
-    // voiceSegments 累积已转写的段落文字；segmentTask 是录音期间的分段定时循环
-    @State private var voiceSegments = ""
-    @State private var segmentTask: Task<Void, Never>?
     @State private var voiceAuthFailed = false
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
@@ -509,28 +505,7 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
-            // v3.0.36 分段流式：边说边出字——实时显示已转写的段落文字
-            if voiceMode && !voiceSegments.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.green)
-                        Text("语音转文字")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(voiceSegments)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.primary)
-                        .lineLimit(4)
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 16)
-                .transition(.opacity)
-            }
+            // v3.0.77：移除 v3.0.36 分段流式（边说边出字实时显示）——改回整段录音一次转写
             // 图片预览条（选图后显示）
             pendingImageBar
             // 内联附件面板（类微信 + 面板：点击回形针展开）
@@ -1566,10 +1541,8 @@ struct ChatView: View {
     /// v3.0.19：语音指令模式退出 → 停止录音 → 转写 → 自动发送（uploadAndTranscribe 内分支）
     private func exitVoiceMode() {
         guard voiceMode else { return }
-        stopVoiceSegments()   // v3.0.36：先停分段定时循环，再收最后一段
-        voiceRecorder.stop()
         withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
-        uploadAndTranscribe()
+        uploadAndTranscribe()   // v3.0.77 整段录音：uploadAndTranscribe 内统一 stop() 取完整音频
     }
 
     /// v3.0.19：限流/服务错误 → 用户友好提示（429/rate limit/tpm exhausted → 建议换模型路由）
@@ -1590,21 +1563,13 @@ struct ChatView: View {
     /// v2.0.96c：上传录音转写（服务器 faster-whisper）
     /// v2.0.100：transcribing 动画（输入框「语音转换中…」+ 按钮转圈）+ 完成/失败震动
     /// v2.0.101：停止按钮（transcribeToken 代次——停止/重录使旧 Task 结果作废，杜绝竞态回填）
-    /// v3.0.36 分段流式：录音期间每 5s 由 startVoiceSegments 切块上传转写追加 voiceSegments；
-    ///          松手时收尾最后一段（<5s 尾巴），合并后按模式送出发送/回填。
-    ///          尾段失败但已有分段文字仍可用（不整体报错）。
+    /// v3.0.77：移除 v3.0.36 分段流式——分段每 2s 对录音器 stop/resume（局部/独立文件名）导致段音频读不到，
+    ///          语音转文字恒判"录音太短"。改回整段录音一次转写（v3.0.35 稳定方式）。
     private func uploadAndTranscribe() {
-        stopVoiceSegments()
-        // v3.0.36：收最后一段（不足 5s 的尾巴）
-        let tailURL = voiceRecorder.stopCurrentSegment()
-        let lastData: Data?
-        if let tailURL, FileManager.default.fileExists(atPath: tailURL.path) {
-            lastData = try? Data(contentsOf: tailURL)
-        } else {
-            lastData = nil
-        }
-        // 分段为空且尾巴也没有内容 → 录音太短
-        if voiceSegments.isEmpty && (lastData == nil || (lastData?.count ?? 0) <= 100) {
+        // 整段录音：松手后取完整音频一次 ASR（不依赖分段 voiceSegments）
+        guard let url = voiceRecorder.stop(),
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url), data.count > 100 else {
             voiceTooShort = true
             return
         }
@@ -1612,79 +1577,27 @@ struct ChatView: View {
         let token = transcribeToken
         transcribing = true
         Task {
-            var finalText = voiceSegments
-            // 尾巴转写（若有足够内容）
-            if let lastData, lastData.count > 100 {
-                do {
-                    let tailText = try await auth.asrTranscribe(lastData)
-                    guard token == transcribeToken else { return }
-                    if !tailText.isEmpty { finalText += tailText }
-                } catch {
-                    transcribing = false
-                    guard token == transcribeToken else { return }
-                    // 尾巴失败但已有分段文字 → 仍可用，不整体报错
+            do {
+                let text = try await auth.asrTranscribe(data)
+                guard token == transcribeToken else { return }
+                transcribing = false
+                if !text.isEmpty {
+                    if inputText.isEmpty {
+                        inputText = text
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                } else {
+                    voiceTooShort = true
                 }
-            }
-            transcribing = false
-            guard token == transcribeToken else { return }
-            if !finalText.isEmpty {
-                if inputText.isEmpty {
-                    inputText = finalText
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
-            } else {
+            } catch {
+                transcribing = false
+                guard token == transcribeToken else { return }
                 voiceTooShort = true
             }
         }
     }
 
-    /// v3.0.36 分段流式：录音期间每 2s 切块上传转写，文字增量追加（边说边出字；v3.0.x 5s→2s）
-    private func startVoiceSegments() {
-        stopVoiceSegments()
-        segmentTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)   // v3.0.x：分段流式改 2s，边说边上屏更跟手
-                if Task.isCancelled { break }
-                await flushVoiceSegment()
-            }
-        }
-    }
-
-    /// v3.0.36：切一块上传转写，结果追加 voiceSegments；转文字模式直接流式回填输入框
-    /// 段失败静默（不打断录音，松手后整体成败再报）
-    /// 注意：分段不递增共享 transcribeToken（分段间是串行累积，不能互相作废）；
-    ///       只有松手 uploadAndTranscribe 递增 token + 父 Task 取消 → 未完成分段结果作废。
-    private func flushVoiceSegment() {
-        guard voiceMode, let url = voiceRecorder.stopCurrentSegment() else { return }
-        // ⚠️ 必须先读文件再 resume：resumeSegment 用同一文件名重录，先 resume 会读到新段开头
-        guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url), data.count > 100 else {
-            _ = voiceRecorder.resumeSegment()
-            return
-        }
-        _ = voiceRecorder.resumeSegment()   // 数据已进内存，续录下一段（录音不中断）
-        Task { @MainActor in   // child task：segmentTask 取消时继承取消
-            do {
-                let text = try await auth.asrTranscribe(data)
-                guard !Task.isCancelled else { return }
-                if !text.isEmpty {
-                    voiceSegments += text
-                    // 非语音指令（转文字）→ 边说边出字：实时回填输入框
-                    if inputText.isEmpty {
-                        inputText = voiceSegments
-                    }
-                }
-            } catch {
-                // 段失败静默
-            }
-        }
-    }
-
-    /// v3.0.36：停止分段定时循环（幂等）
-    private func stopVoiceSegments() {
-        segmentTask?.cancel()
-        segmentTask = nil
-    }
+    // v3.0.77：移除 v3.0.36 分段流式（startVoiceSegments/flushVoiceSegment/stopVoiceSegments）——整段录音无分段循环
 
     /// v2.0.101：停止转写（代次递增使旧 Task 结果作废 + 立即隐藏转换动画）
     private func stopTranscribe() {
@@ -1717,9 +1630,6 @@ struct ChatView: View {
                     }
                 }
                 withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
-                // v3.0.36：分段流式——录音中每 5s 切块上传转写，文字增量追加（边说边出字）
-                voiceSegments = ""
-                startVoiceSegments()
             } else {
                 // v3.0.19 review fix #2：麦克风失败 → 重置语音指令标志（防残留劫持下次转文字）
 
