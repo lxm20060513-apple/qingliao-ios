@@ -55,21 +55,20 @@ struct DockTabView: View {
                         .tabItem { Label(DockTab.chat.title, systemImage: DockTab.chat.icon) }
                 }
                 SessionsView(onOpenSession: { selected = .chat })
-                    .tag(DockTab.sessions)
-                    .tabItem { Label(DockTab.sessions.title, systemImage: DockTab.sessions.icon) }
+                    .tabTransition(for: .sessions, selected: $selected)
                 if CloudConfig.shared.isCloudMode {
-                    CloudDashboardView().tag(DockTab.dashboard)
-                        .tabItem { Label(DockTab.dashboard.title, systemImage: DockTab.dashboard.icon) }
+                    CloudDashboardView()
+                        .tabTransition(for: .dashboard, selected: $selected)
                 } else {
-                    DashboardView().tag(DockTab.dashboard)
-                        .tabItem { Label(DockTab.dashboard.title, systemImage: DockTab.dashboard.icon) }
+                    DashboardView()
+                        .tabTransition(for: .dashboard, selected: $selected)
                 }
                 if CloudConfig.shared.isCloudMode {
-                    CloudSettingsView().tag(DockTab.settings)
-                        .tabItem { Label(DockTab.settings.title, systemImage: DockTab.settings.icon) }
+                    CloudSettingsView()
+                        .tabTransition(for: .settings, selected: $selected)
                 } else {
-                    SettingsView().tag(DockTab.settings)
-                        .tabItem { Label(DockTab.settings.title, systemImage: DockTab.settings.icon) }
+                    SettingsView()
+                        .tabTransition(for: .settings, selected: $selected)
                 }
             }
             // v3.0.60 回顾：系统 tab bar 自行处理滚动边缘玻璃；此处不再加纯色背景掐死折射
@@ -93,5 +92,36 @@ struct DockTabView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Tab 切换过渡动画（淡入 + 轻微缩放，保留原生玻璃 tab bar）
+private struct TabTransitionModifier: ViewModifier {
+    let tab: DockTab
+    @Binding var selected: DockTab
+    @State private var appeared = false
+
+    func body(content: Content) -> some View {
+        content
+            .tag(tab)
+            .tabItem { Label(tab.title, systemImage: tab.icon) }
+            .scaleEffect(appeared ? 1 : 0.97, anchor: .center)
+            .animation(.easeInOut(duration: 0.2), value: appeared)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    appeared = true
+                }
+            }
+            .onChange(of: selected) { _, newVal in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    appeared = (newVal == tab)
+                }
+            }
+    }
+}
+
+extension View {
+    func tabTransition(for tab: DockTab, selected: Binding<DockTab>) -> some View {
+        modifier(TabTransitionModifier(tab: tab, selected: selected))
     }
 }
