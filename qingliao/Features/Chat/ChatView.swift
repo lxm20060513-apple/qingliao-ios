@@ -506,6 +506,14 @@ struct ChatView: View {
                 .transition(.opacity)
             }
             messageList
+                .overlay {
+                    // v3.0.79：点按空白处停止录音（exitVoiceMode 注释原本就写"按钮/空白点击共用"，此处补上空白点击）
+                    if voiceMode && voiceRecorder.isRecording {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { exitVoiceMode() }
+                    }
+                }
             // v3.0.77：移除 v3.0.36 分段流式（边说边出字实时显示）——改回整段录音一次转写
             // 图片预览条（选图后显示）
             pendingImageBar

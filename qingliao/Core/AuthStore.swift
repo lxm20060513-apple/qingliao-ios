@@ -338,8 +338,15 @@ final class AuthStore {
             headers["X-Auth-Token"] = token
         }
         let uid = RelayIdentity.uid(for: currentStreamSessionId)
-        let (data, code) = try await relay.directRequest(method: "POST", path: "/r/asr/transcribe/\\(uid)",
+        // v3.0.79：加 isCellular 分流——蜂窝 CFStream /r/asr（已通）；WiFi URLSession /api/asr（修复 WiFi 仍太短）
+        let (data, code): (Data, Int)
+        if NetworkMonitor.shared.isCellular {
+            (data, code) = try await relay.directRequest(method: "POST", path: "/r/asr/transcribe/\(uid)",
                                                          headers: headers, body: audioData, timeout: 90)
+        } else {
+            (data, code) = try await directHTTP(method: "POST", path: "/api/asr/transcribe",
+                                                headers: headers, body: audioData)
+        }
         guard (200..<300).contains(code),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw APIError.badResponse
