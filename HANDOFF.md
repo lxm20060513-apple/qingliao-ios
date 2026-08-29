@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-29
-> 最新版本：v3.0.78（feature/handoff-301 分支，已发版，钉一钉功能+后台流式恢复+tab动画）
+> 最新版本：v3.0.79（feature/handoff-301 分支，已发版，钉一钉功能+后台流式恢复+tab动画）
 
 ---
 
@@ -51,6 +51,13 @@
 
 ## 二、版本历史
 
+### v3.0.79（2026-08-30 已发版）
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 语音转文字 WiFi 分流修复 | `AuthStore.swift` | asrTranscribe 加 isCellular 分流：蜂窝走 CFStream /r/asr（已通）；WiFi 走 URLSession /api/asr——修复「蜂窝能转写、WiFi 仍报太短」（根因：asrTranscribe 漏网络分流） |
+| 点按空白处停止录音 | `ChatView.swift` | 录音中（voiceMode&&isRecording）点消息区空白处 → exitVoiceMode（停止+转写），补上 exitVoiceMode 注释原本的「按钮/空白点击共用」 |
+| 版本号 | `project.yml` | 3.0.79 / build 376 |
 ### v3.0.78（2026-08-29 已发版）
 
 | 改动 | 文件 | 说明 |
