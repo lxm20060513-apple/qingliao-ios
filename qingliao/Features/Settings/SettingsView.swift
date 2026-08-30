@@ -5,35 +5,35 @@ import LocalAuthentication
 
 struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
-    @AppStorage("qingliao_appearance") private var appearance = "system"   // dark/light/system（默认跟随系统）
+    @AppStorage("qingliao_appearance") var appearance = "system"   // dark/light/system（默认跟随系统）
 
     // v2.0.83c：连接设置二级页（服务器地址/测试连接/会话存储位置收进二级）
-    @State private var showConnSettings = false
-    @State private var showPasswordSheet = false
-    @State private var showSecrets = false
+    @State var showConnSettings = false
+    @State var showPasswordSheet = false
+    @State var showSecrets = false
     // v2.0.81：知识库页面
-    @State private var showKB = false
+    @State var showKB = false
     // v2.0.87：AI 记忆
-    @State private var showMemory = false
-    @State private var memoryCount = 0
-    @State private var showTasks = false
-    @State private var showLogs = false
+    @State var showMemory = false
+    @State var memoryCount = 0
+    @State var showTasks = false
+    @State var showLogs = false
     // v3.0.74：钉一钉存储路径
-    @State private var showPinPath = false
-    @State private var pinPathEdit = ""
+    @State var showPinPath = false
+    @State var pinPathEdit = ""
     private var pinPathDisplay: String {
         let p = PinStore.shared.storagePath
         return p.isEmpty ? "默认路径" : (p.count > 20 ? "..." + p.suffix(17) : p)
     }
-    @State private var showAppearanceOptions = false
-    @State private var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
+    @State var showAppearanceOptions = false
+    @State var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
     @State private var scrollPos = ScrollPosition()
-    @State private var showModelSheet = false
-    @State private var showBotManage = false   // v3.0.7：Bot 管理
-    @State private var showWechatChannel = false   // v3.0.19：微信窗通道模型设置
-    @State private var showAbout = false
-    @State private var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
-    @State private var secretCount = 0
+    @State var showModelSheet = false
+    @State var showBotManage = false   // v3.0.7：Bot 管理
+    @State var showWechatChannel = false   // v3.0.19：微信窗通道模型设置
+    @State var showAbout = false
+    @State var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
+    @State var secretCount = 0
     @State private var showHASettings = false
     @State private var haAddress = ""
     // v3.0.17：聊天字体大小从一级菜单移除（外观二级菜单持有），fontSize 声明一并清理
@@ -52,27 +52,27 @@ struct SettingsView: View {
     // v2.0.116：执行历史弹窗
     @State private var showHistory = false
     // v2.0.117：本地模型（Ollama 断网兜底）
-    @AppStorage("qingliao_local_model") private var localModelOn = false
+    @AppStorage("qingliao_local_model") var localModelOn = false
     @State private var localStatusText = "未开启"
-    @State private var localUpdateText = "断网兜底用本地模型"
-    @State private var localChecking = false
+    @State var localUpdateText = "断网兜底用本地模型"
+    @State var localChecking = false
     // v2.0.118：本地模型管理弹窗
-    @State private var showLocalModels = false
+    @State var showLocalModels = false
     // v3.0.10：视觉模型配置弹窗（已移至模型管理弹窗内）
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
-    @AppStorage("qingliao_push_weixin") private var pushWeixin = true
+    @AppStorage("qingliao_push_weixin") var pushWeixin = true
     // v3.0.81：上下文管理
-    @AppStorage("qingliao_context_auto_compress") private var contextAutoCompress = false
-    @AppStorage("qingliao_context_threshold") private var contextThreshold = 4000
+    @AppStorage("qingliao_context_auto_compress") var contextAutoCompress = false
+    @AppStorage("qingliao_context_threshold") var contextThreshold = 4000
     // v2.0.87ax：输入框流光光效开关
-    @AppStorage("qingliao_input_glow") private var glowOn = true
+    @AppStorage("qingliao_input_glow") var glowOn = true
     // v2.0.87bb：Siri 边框发光开关
-    @AppStorage("qingliao_siri_glow") private var siriGlowOn = true
+    @AppStorage("qingliao_siri_glow") var siriGlowOn = true
     // v2.0.90a：Siri 动效自定义参数（默认 = v2.0.87bn 定稿效果）
-    @AppStorage("qingliao_siri_glow_brightness") private var glowBrightness = 1.0
-    @AppStorage("qingliao_siri_glow_freq") private var glowFreq = 2.2
-    @AppStorage("qingliao_siri_glow_amp") private var glowAmp = 0.18
-    @AppStorage("qingliao_siri_glow_width") private var glowWidth = 22.0
+    @AppStorage("qingliao_siri_glow_brightness") var glowBrightness = 1.0
+    @AppStorage("qingliao_siri_glow_freq") var glowFreq = 2.2
+    @AppStorage("qingliao_siri_glow_amp") var glowAmp = 0.18
+    @AppStorage("qingliao_siri_glow_width") var glowWidth = 22.0
     // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
     @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
     @State private var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
