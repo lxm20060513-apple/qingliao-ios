@@ -143,23 +143,23 @@ struct ChatView: View {
     @Environment(StreamClient.self) var stream
     @Environment(KeyboardObserver.self) var kb
     @Environment(BotStore.self) var botStore   // v3.0.7：Bot Mode
-    @State private var pinStore = PinStore.shared   // v3.0.74：钉一钉
+    @State var pinStore = PinStore.shared   // v3.0.74：钉一钉
 
     @State var inputText = ""
     @FocusState var inputFocus: Bool
     @State var sentOK = false
-    @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）
+    @State var serverOnline: Bool?   // 服务器连接状态（真实绿点）
     // v2.0.36：引用回复 / 图片查看器 / 导出
     @State var quotedMessage: ChatMessage?
     @State var viewerPayload: ImageViewPayload?
-    @State private var showMoreMenu = false
-    @State private var showExporter = false
-    @State private var showMarkdownExporter = false
-    @State private var showPDFExporter = false
-    @State private var exportText = ""
-    @State private var exportMarkdown = ""
-    @State private var exportPDFData: Data?
-    @State private var clearing = false          // v2.0.40 清空会话两步走标志
+    @State var showMoreMenu = false
+    @State var showExporter = false
+    @State var showMarkdownExporter = false
+    @State var showPDFExporter = false
+    @State var exportText = ""
+    @State var exportMarkdown = ""
+    @State var exportPDFData: Data?
+    @State var clearing = false          // v2.0.40 清空会话两步走标志
     // v2.0.43：快捷指令 / 搜索定位高亮
     @State var showQuickPrompts = false
     @State var highlightMessageID: String?
@@ -170,13 +170,13 @@ struct ChatView: View {
     @State var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
     @State var showAttachmentMenu = false
     // v2.0.96：Hermes 捷径面板（官方斜杠命令）
-    @State private var showHermesShortcut = false
+    @State var showHermesShortcut = false
     // 大爆炸（BigBang）文本炸开
-    @State private var bigBangPayload: BigBangPayload?
-    @State private var showPhotoPicker = false
-    @State private var showFileImporter = false
+    @State var bigBangPayload: BigBangPayload?
+    @State var showPhotoPicker = false
+    @State var showFileImporter = false
     @State var showCameraPicker = false   // v2.0.38 拍照输入
-    @State private var photoItem: PhotosPickerItem?
+    @State var photoItem: PhotosPickerItem?
     @State var pendingImage: UIImage?
     @State var pendingImageData: String?
     // v2.0.96：语音转文字（长按发送按钮；v2.0.96c 改服务器 ASR——录音上传转写，侧载全兼容）
@@ -185,23 +185,23 @@ struct ChatView: View {
     @State var transcribing = false   // v2.0.100：语音转文字转换中（动画）
     @State var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
     @State var voiceAuthFailed = false
-    @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
+    @State var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
     @State var fileSendBlocked = false   // v2.0.102：流式中发文件提示
     @State var voiceTooShort = false   // v2.0.102：录音太短提示
     @State var voiceDiag = ""   // v3.0.78 诊断：录音链路诊断信息
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
     @State var pendingQueue: [PendingSend] = []
     // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
-    @State private var showFullBurst = false
+    @State var showFullBurst = false
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
-    @State private var toolCards: [ToolCardItem] = []
-    @State private var toolGate = ToolConfirmGate()
+    @State var toolCards: [ToolCardItem] = []
+    @State var toolGate = ToolConfirmGate()
     // v3.0.41 性能：流式节流标记（50ms 合并一次 stream.content 更新）
-    @State private var lastStreamFlush: Date? = nil
+    @State var lastStreamFlush: Date? = nil
     // v3.0.27：长文目录
     @State var showTOCSheet = false
     // v3.0.51 A2：极长会话分页懒加载——初始只渲染尾部最近 N 条，顶部可"加载更早"
-    @State private var displayLimit = 300
+    @State var displayLimit = 300
     private static let loadMoreStep = 300
     private var visibleMessageCount: Int { min(chat.messages.count, displayLimit) }
     /// 可见窗口起始绝对索引（用于日期分隔线的 prevTs 取真实前一条）
@@ -311,7 +311,7 @@ struct ChatView: View {
     /// v3.0.11 fix（bot 串话根治）：先清排队队列、再停流——原顺序（先停流）会让 onFinished 的
     /// sendQueued 在队列清空前触发，用旧 bot 的会话/人设跨会话起新流 → 回答出现在新 bot 聊天里。
     /// 顺序与停止按钮（onStop）一致：clearPendingQueue → stream.stop。
-    private func switchBot(to id: String?) {
+    func switchBot(to id: String?) {
         guard chat.botId != id else { return }
         let fromID = chat.botId
         let snapshotID = chat.sessionId
@@ -1036,7 +1036,7 @@ struct ChatView: View {
 
     /// 思考中动画（三点跳动）
     struct TypingIndicator: View {
-        @State private var animating = false
+        @State var animating = false
         var body: some View {
             HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
@@ -1501,7 +1501,7 @@ struct ChatView: View {
     }
 
     /// v2.0.88：发送排队消息（消息已上屏——去掉排队标记复用该消息启动流式，不重复插入）
-    private func sendQueued(_ item: PendingSend) {
+    func sendQueued(_ item: PendingSend) {
         guard !stream.isStreaming else { return }
         // firstIndex = FIFO：先入队的先发（内容相同也会按入队顺序）
         if let idx = chat.messages.firstIndex(where: {
@@ -1514,7 +1514,7 @@ struct ChatView: View {
     }
 
     /// v2.0.88：取消排队（停止按钮/切换会话）——清队列 + 消息恢复"已送达"状态
-    private func clearPendingQueue() {
+    func clearPendingQueue() {
         pendingQueue.removeAll()
         for i in chat.messages.indices where chat.messages[i].queued {
             chat.messages[i].queued = false
@@ -1523,7 +1523,7 @@ struct ChatView: View {
 
     /// v2.0.62：打开图片查看器（收集会话内全部图片消息 → 相册翻页）
     /// v2.0.102：索引钳制——解码失败导致 images 比 imgMsgs 短时防越界
-    private func openImageViewer(for msg: ChatMessage) {
+    func openImageViewer(for msg: ChatMessage) {
         let imgMsgs = chat.messages.enumerated().filter { $0.element.imageDataURL != nil }
         let images = imgMsgs.compactMap { dataURLImage($0.element.imageDataURL ?? "") }
         guard !images.isEmpty,
@@ -1534,7 +1534,7 @@ struct ChatView: View {
 
     /// v2.0.128：AI 消息内图片点击 → 打开大图查看器（单张）
     /// data URL 直接解码进查看器；http(s) URL 双通道下载（URLSession → 自签证书降级 CFStream）
-    private func openAIImage(_ url: String) {
+    func openAIImage(_ url: String) {
         if url.hasPrefix("data:image/") {
             if let img = dataURLImage(url) {
                 viewerPayload = ImageViewPayload(images: [img], index: 0)
@@ -1578,7 +1578,7 @@ struct ChatView: View {
     }
 
     /// v2.0.59：失败消息重试（移除失败标记后按原内容重发）
-    private func retryMessage(_ msg: ChatMessage) {
+    func retryMessage(_ msg: ChatMessage) {
         guard !stream.isStreaming else { return }
         if let idx = chat.messages.firstIndex(where: { $0.id == msg.id }) {
             chat.messages.remove(at: idx)
@@ -1589,7 +1589,7 @@ struct ChatView: View {
     /// v2.0.96：退出语音转文字模式（按钮/空白点击共用）
     /// v2.0.96c：停止录音 → 上传转写 → 文字回填输入框
     /// v3.0.19：语音指令模式退出 → 停止录音 → 转写 → 自动发送（uploadAndTranscribe 内分支）
-    private func regenerate(at id: String) {
+    func regenerate(at id: String) {
         guard !stream.isStreaming,
               let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
         chat.messages.removeSubrange(idx...)
@@ -1636,7 +1636,7 @@ struct ChatView: View {
     }
 
     /// ✅送达提示条（仅成功时显示，2.5s 后消失）
-    private func showSentOK() {
+    func showSentOK() {
         withAnimation(.easeOut(duration: 0.3)) { sentOK = true }
         Task {
             try? await Task.sleep(for: .seconds(2.5))
@@ -1645,7 +1645,7 @@ struct ChatView: View {
     }
 
     /// 内联附件面板按钮（类微信 + 面板样式）
-    private func attachButton(_ icon: String, _ name: String, _ color: Color,
+    func attachButton(_ icon: String, _ name: String, _ color: Color,
                               action: @escaping () -> Void) -> some View {
         Button {
             withAnimation(.spring(duration: 0.3, bounce: 0.2)) { showAttachmentMenu = false }
@@ -1667,7 +1667,7 @@ struct ChatView: View {
 
     /// v2.0.96b：发牌弹出附件按钮（idx 控制延迟，依次从底部弹出 + 回弹）
     /// v2.0.96c：onAppear 驱动（if 包裹下按钮创建即终态，值动画无效 → 子视图内部 appeared 状态）
-    private func menuButton(_ icon: String, _ name: String, _ color: Color, idx: Int,
+    func menuButton(_ icon: String, _ name: String, _ color: Color, idx: Int,
                             action: @escaping () -> Void) -> some View {
         DealAttachmentButton(icon: icon, name: name, color: color, idx: idx,
                              onPick: {
@@ -1677,7 +1677,7 @@ struct ChatView: View {
     }
 
     /// 图片压缩（PWA 同款：最长边 1280 / JPEG 0.72，超 900KB 降质）
-    private func compressImage(_ image: UIImage) -> String? {
+    func compressImage(_ image: UIImage) -> String? {
         let maxSide: CGFloat = 1280
         var w = image.size.width
         var h = image.size.height
@@ -1703,7 +1703,7 @@ struct ChatView: View {
     /// v3.0.52：蜂窝下把 base64 图压到极小，使 stream/start 的 body 能通过 CFStream 直连传输
     /// （蜂窝下 uploadImage(URLSession) 大概率失败 → 图片退回 base64 大 body → 后端 bad json 400；压小后直连可过）
     /// v3.0.53：再压狠一点 (480px/0.45) → body ~20KB，提高 CFStream 蜂窝直连通过率
-    private func compressForCellular(_ imageDataURL: String?) -> String? {
+    func compressForCellular(_ imageDataURL: String?) -> String? {
         guard let img = imageDataURL,
               NetworkMonitor.shared.isCellular,
               let comma = img.firstIndex(of: ","),
@@ -1737,7 +1737,7 @@ struct DealAttachmentButton: View {
     let color: Color
     let idx: Int
     let onPick: () -> Void
-    @State private var appeared = false
+    @State var appeared = false
 
     var body: some View {
         Button(action: onPick) {

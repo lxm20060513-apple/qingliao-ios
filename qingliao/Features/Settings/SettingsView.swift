@@ -4,7 +4,7 @@ import LocalAuthentication
 // MARK: - 设置页（iOS 设置风格分组列表，全部功能行可用）
 
 struct SettingsView: View {
-    @Environment(AuthStore.self) private var auth
+    @Environment(AuthStore.self) var auth
     @AppStorage("qingliao_appearance") var appearance = "system"   // dark/light/system（默认跟随系统）
 
     // v2.0.83c：连接设置二级页（服务器地址/测试连接/会话存储位置收进二级）
@@ -27,33 +27,33 @@ struct SettingsView: View {
     }
     @State var showAppearanceOptions = false
     @State var showAppearance = false   // v3.0.4：外观弹窗（与云端统一）
-    @State private var scrollPos = ScrollPosition()
+    @State var scrollPos = ScrollPosition()
     @State var showModelSheet = false
     @State var showBotManage = false   // v3.0.7：Bot 管理
     @State var showWechatChannel = false   // v3.0.19：微信窗通道模型设置
     @State var showAbout = false
     @State var confirmLogout = false   // v3.0.5 review fix：退出登录二次确认（与云端一致）
     @State var secretCount = 0
-    @State private var showHASettings = false
-    @State private var haAddress = ""
+    @State var showHASettings = false
+    @State var haAddress = ""
     // v3.0.17：聊天字体大小从一级菜单移除（外观二级菜单持有），fontSize 声明一并清理
     // v3.0.9：外观下天气城市已移除（天气城市设定在看板 WeatherBadge 点按处），相关状态一并清理
     // v2.0.101：Agent 使用说明内联展开
-    @State private var showAgentHelp = false
+    @State var showAgentHelp = false
     // v2.0.105：Agent 关键词管理弹窗
-    @State private var showAgentKeywords = false
+    @State var showAgentKeywords = false
     // v2.0.113：Agent 记忆弹窗 + 计数
-    @State private var showAgentMemory = false
-    @State private var agentRuleCount = 0
+    @State var showAgentMemory = false
+    @State var agentRuleCount = 0
     // v3.0.20：Agent 模型自定义（独立于主模型，可单独指定 Agent 使用的模型）
-    @State private var showAgentModelSheet = false
+    @State var showAgentModelSheet = false
     @AppStorage(UserDefaultsKey.agentModel) private var agentModel = ""
     @AppStorage(UserDefaultsKey.agentProvider) private var agentProvider = ""
     // v2.0.116：执行历史弹窗
-    @State private var showHistory = false
+    @State var showHistory = false
     // v2.0.117：本地模型（Ollama 断网兜底）
     @AppStorage("qingliao_local_model") var localModelOn = false
-    @State private var localStatusText = "未开启"
+    @State var localStatusText = "未开启"
     @State var localUpdateText = "断网兜底用本地模型"
     @State var localChecking = false
     // v2.0.118：本地模型管理弹窗
@@ -74,16 +74,16 @@ struct SettingsView: View {
     @AppStorage("qingliao_siri_glow_amp") var glowAmp = 0.18
     @AppStorage("qingliao_siri_glow_width") var glowWidth = 22.0
     // v2.0.88：Face ID 登录开关（关闭后删除 Keychain 凭据，登录页不再显示快捷按钮）
-    @AppStorage("qingliao_faceid_login") private var faceIDLogin = true
-    @State private var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
+    @AppStorage("qingliao_faceid_login") var faceIDLogin = true
+    @State var faceIDAuthFailed = false   // v2.0.89f：开关打开时系统授权失败提示
     // v2.0.92：App 锁开关（启动时 Face ID 验证）
-    @AppStorage("qingliao_app_lock") private var appLockOn = false
-    @State private var appLockAuthFailed = false
+    @AppStorage("qingliao_app_lock") var appLockOn = false
+    @State var appLockAuthFailed = false
     // v2.0.128：AI 输出行高（0-6 步进 0.5，默认 1.0 = 紧凑；滑条控制）
-    @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
-    @State private var showLineSpacingOptions = false
+    @AppStorage("qingliao_ai_line_spacing") var aiLineSpacing = 1.0
+    @State var showLineSpacingOptions = false
     // v2.0.129：Siri 圆球输入（默认开——输入框区显示多彩圆球，单击展开 / 长按语音转文字）
-    @AppStorage("qingliao_ball_input") private var ballInput = true
+    @AppStorage("qingliao_ball_input") var ballInput = true
     // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
     @AppStorage(UserDefaultsKey.agentEnabled) private var agentOn = true
 
