@@ -164,6 +164,7 @@ struct ChatView: View {
     @State private var showQuickPrompts = false
     @State private var highlightMessageID: String?
     @State private var showLongContextAlert = false
+    @State private var showCompressingAlert = false  // v3.0.81：AI 摘要压缩中
     @State private var pendingSend: (text: String, imageData: String?)?
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
@@ -523,6 +524,25 @@ struct ChatView: View {
             // v2.0.36：引用回复条（发送后自动清除）
             quotedReplyBar
             // v3.0.7 beautify：Bot 选择器已移到 header（本地模式），此处不再单独占一行
+            // v3.0.81：上下文使用率指示器
+            if chat.contextInfo.count > 10 {
+                HStack(spacing: 4) {
+                    Spacer()
+                    let usage = chat.contextUsage(maxTokens: 4000)
+                    let percent = Int(usage * 100)
+                    Circle()
+                        .fill(percent > 80 ? .red : percent > 50 ? .orange : .green)
+                        .frame(width: 6, height: 6)
+                    Text("\(percent)%")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("\(chat.contextInfo.tokens) tokens")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 2)
+            }
             ChatInputBar(text: $inputText,
                          focused: $inputFocus,
                          streaming: stream.isStreaming,
@@ -988,6 +1008,12 @@ struct ChatView: View {
         } message: {
             Text("当前会话已 \(chat.messages.count) 条消息，继续发送可能接近模型上下文上限。压缩后仅保留最近 20 条（早期内容替换为摘要标记）。")
         }
+        // v3.0.81：AI 摘要压缩中提示
+        .alert("正在压缩上下文", isPresented: $showCompressingAlert) {
+            // 无按钮，自动消失
+        } message: {
+            Text("AI 正在总结历史消息，请稍候...")
+        }
         // v2.0.36：图片大图查看器（v2.0.62 相册翻页）
         .fullScreenCover(item: $viewerPayload) { p in
             ImageViewer(images: p.images, index: p.index)
@@ -1110,6 +1136,40 @@ struct ChatView: View {
         }
         // v2.0.102：清空输入框移到发送确认之后——长上下文弹窗点"取消"时草稿保留（修复草稿丢失）
         quotedMessage = nil
+
+        // v3.0.81：上下文自动管理
+        let autoCompress = UserDefaults.standard.bool(forKey: "qingliao_context_auto_compress")
+        let threshold = UserDefaults.standard.integer(forKey: "qingliao_context_threshold")
+        let effectiveThreshold = threshold > 0 ? threshold : 4000
+
+        if autoCompress && chat.needsCompress(threshold: effectiveThreshold) {
+            // 自动压缩：先显示提示，后台执行 AI 摘要
+            pendingSend = (text, img)
+            showCompressingAlert = true
+            Task {
+                let success = await chat.compressContextWithAI(auth: auth)
+                showCompressingAlert = false
+                if success {
+                    await chat.saveToServer(auth: auth)
+                }
+                // 压缩完成后发送
+                if let p = pendingSend {
+                    inputText = ""
+                    pendingImage = nil
+                    pendingImageData = nil
+                    if p.imageData != nil {
+                        let persisted = await persistImageIfNeeded(p.imageData)
+                        sendCore(text: p.text, imageData: persisted)
+                    } else {
+                        sendCore(text: p.text, imageData: nil)
+                    }
+                    pendingSend = nil
+                }
+            }
+            return
+        }
+
+        // 原有逻辑：消息数>60 时提示
         if chat.messages.count > 60 {
             pendingSend = (text, img)
             showLongContextAlert = true

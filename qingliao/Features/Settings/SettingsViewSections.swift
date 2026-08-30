@@ -116,6 +116,31 @@ extension SettingsView {
             SettingRow(icon: "brain.head.profile", iconColor: .pink, title: "AI 记忆", value: "\(memoryCount) 条", chevron: true)
                 .onTapGesture { showMemory = true }
             Divider().padding(.leading, 52)
+            // v3.0.81：上下文自动管理
+            toggleRow(icon: "arrow.down.circle.fill", iconColor: .purple,
+                      title: "上下文自动压缩", subtitle: "token超限时AI摘要压缩历史消息", isOn: $contextAutoCompress)
+                .onChange(of: contextAutoCompress) { _, new in
+                    UserDefaults.standard.set(new, forKey: "qingliao_context_auto_compress")
+                }
+            if contextAutoCompress {
+                Divider().padding(.leading, 52)
+                HStack {
+                    Text("压缩阈值")
+                        .font(.system(size: 15))
+                    Spacer()
+                    Text("\(contextThreshold) tokens")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                    Stepper("", value: $contextThreshold, in: 1000...16000, step: 500)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .onChange(of: contextThreshold) { _, new in
+                    UserDefaults.standard.set(new, forKey: "qingliao_context_threshold")
+                }
+            }
+            Divider().padding(.leading, 52)
             toggleRow(icon: "message.badge.filled.fill", iconColor: .green,
                       title: "微信推送", subtitle: "自动化执行结果推送到微信", isOn: $pushWeixin)
                 .onChange(of: pushWeixin) { _, new in

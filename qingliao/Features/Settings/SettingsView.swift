@@ -61,6 +61,9 @@ struct SettingsView: View {
     // v3.0.10：视觉模型配置弹窗（已移至模型管理弹窗内）
     // v2.0.113：微信推送开关（同步后端 push_settings.json）
     @AppStorage("qingliao_push_weixin") private var pushWeixin = true
+    // v3.0.81：上下文管理
+    @AppStorage("qingliao_context_auto_compress") private var contextAutoCompress = false
+    @AppStorage("qingliao_context_threshold") private var contextThreshold = 4000
     // v2.0.87ax：输入框流光光效开关
     @AppStorage("qingliao_input_glow") private var glowOn = true
     // v2.0.87bb：Siri 边框发光开关

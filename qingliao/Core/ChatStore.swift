@@ -322,6 +322,87 @@ final class ChatStore {
         return true
     }
 
+    /// AI 摘要压缩：用 AI 总结旧消息，替换为一条摘要，保留最近 keepLast 条
+    /// 返回 true = 压缩成功，false = 无需压缩或失败
+    @MainActor
+    func compressContextWithAI(auth: AuthStore, keepLast: Int = 20) async -> Bool {
+        guard messages.count > keepLast + 1 else { return false }
+        let oldMessages = Array(messages.prefix(messages.count - keepLast))
+        let recentMessages = Array(messages.suffix(keepLast))
+
+        // 构建摘要请求：把旧消息拼成文本让 AI 总结
+        let conversationText = oldMessages.map { m in
+            let role = m.isUser ? "用户" : "AI"
+            let content = m.content.prefix(200) // 截断过长消息
+            return "\(role): \(content)"
+        }.joined(separator: "\n")
+
+        let summaryPrompt = "请用简洁的要点总结以下对话内容（保留关键信息、结论、待办，不超过200字）：\n\n\(conversationText)"
+
+        // 调用 AI 摘要（用当前模型）
+        let model = UserDefaults.standard.string(forKey: "qingliao_model") ?? "deepseek-v4-flash"
+        let provider = UserDefaults.standard.string(forKey: "qingliao_provider") ?? "deepseek"
+
+        do {
+            let summary: String = try await withCheckedThrowingContinuation { continuation in
+                // 用非流式请求获取摘要
+                Task {
+                    let payload: [String: Any] = [
+                        "model": model,
+                        "provider": provider,
+                        "messages": [["role": "user", "content": summaryPrompt]],
+                        "stream": false
+                    ]
+                    do {
+                        let j = try await auth.json("/api/stream/chat", method: "POST", body: payload)
+                        if let content = j["content"] as? String {
+                            continuation.resume(returning: content)
+                        } else if let choices = j["choices"] as? [[String: Any]],
+                                  let first = choices.first,
+                                  let message = first["message"] as? [String: Any],
+                                  let content = message["content"] as? String {
+                            continuation.resume(returning: content)
+                        } else {
+                            continuation.resume(returning: "")
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+
+            guard !summary.isEmpty else {
+                // 摘要失败，降级为本地压缩
+                print("[ContextCompress] AI摘要为空，降级本地压缩")
+                return compressContext(keepLast: keepLast)
+            }
+
+            // 用摘要替换旧消息
+            let marker = ChatMessage(role: "system",
+                                     content: "（AI 摘要：\(summary)）",
+                                     timestamp: oldMessages.first?.timestamp)
+            messages = [marker] + recentMessages
+            print("[ContextCompress] AI摘要压缩成功：\(oldMessages.count)条→摘要 + \(recentMessages.count)条")
+            return true
+
+        } catch {
+            // AI 调用失败，降级为本地压缩
+            print("[ContextCompress] AI摘要失败(\(error.localizedDescription))，降级本地压缩")
+            return compressContext(keepLast: keepLast)
+        }
+    }
+
+    /// 检查是否需要压缩（基于 token 阈值）
+    /// 返回 true = 需要压缩
+    func needsCompress(threshold: Int = 4000) -> Bool {
+        return contextInfo.tokens > threshold
+    }
+
+    /// 上下文使用率（0.0 ~ 1.0+）
+    func contextUsage(maxTokens: Int = 8000) -> Double {
+        return Double(contextInfo.tokens) / Double(maxTokens)
+    }
+
     /// 按角色+内容前缀查找消息索引（搜索定位用，内容太长时前缀匹配）
     func indexOfMessage(role: String, contentPrefix: String) -> Int? {
         let prefix = String(contentPrefix.prefix(60))
