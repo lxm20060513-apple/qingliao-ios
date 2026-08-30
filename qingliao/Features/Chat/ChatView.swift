@@ -84,7 +84,7 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
 // 换 GeometryReader + PreferenceKey：滚动时上报内容区 minY，取负后语义同 scrollPos.y
 
 /// v2.0.88：排队待发消息（AI 回答中发送，当前回答结束后自动逐条发送）
-private struct PendingSend {
+struct PendingSend {
     let text: String
     let imageData: String?
 }
@@ -150,8 +150,8 @@ struct ChatView: View {
     @State var sentOK = false
     @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）
     // v2.0.36：引用回复 / 图片查看器 / 导出
-    @State private var quotedMessage: ChatMessage?
-    @State private var viewerPayload: ImageViewPayload?
+    @State var quotedMessage: ChatMessage?
+    @State var viewerPayload: ImageViewPayload?
     @State private var showMoreMenu = false
     @State private var showExporter = false
     @State private var showMarkdownExporter = false
@@ -161,13 +161,13 @@ struct ChatView: View {
     @State private var exportPDFData: Data?
     @State private var clearing = false          // v2.0.40 清空会话两步走标志
     // v2.0.43：快捷指令 / 搜索定位高亮
-    @State private var showQuickPrompts = false
-    @State private var highlightMessageID: String?
-    @State private var showLongContextAlert = false
-    @State private var showCompressingAlert = false  // v3.0.81：AI 摘要压缩中
-    @State private var pendingSend: (text: String, imageData: String?)?
-    @State private var showModelSheet = false   // 模型快速切换
-    @State private var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
+    @State var showQuickPrompts = false
+    @State var highlightMessageID: String?
+    @State var showLongContextAlert = false
+    @State var showCompressingAlert = false  // v3.0.81：AI 摘要压缩中
+    @State var pendingSend: (text: String, imageData: String?)?
+    @State var showModelSheet = false   // 模型快速切换
+    @State var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
     @State var showAttachmentMenu = false
     // v2.0.96：Hermes 捷径面板（官方斜杠命令）
     @State private var showHermesShortcut = false
@@ -175,10 +175,10 @@ struct ChatView: View {
     @State private var bigBangPayload: BigBangPayload?
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
-    @State private var showCameraPicker = false   // v2.0.38 拍照输入
+    @State var showCameraPicker = false   // v2.0.38 拍照输入
     @State private var photoItem: PhotosPickerItem?
-    @State private var pendingImage: UIImage?
-    @State private var pendingImageData: String?
+    @State var pendingImage: UIImage?
+    @State var pendingImageData: String?
     // v2.0.96：语音转文字（长按发送按钮；v2.0.96c 改服务器 ASR——录音上传转写，侧载全兼容）
     @StateObject var voiceRecorder = VoiceRecorder()
     @State var voiceMode = false
@@ -199,7 +199,7 @@ struct ChatView: View {
     // v3.0.41 性能：流式节流标记（50ms 合并一次 stream.content 更新）
     @State private var lastStreamFlush: Date? = nil
     // v3.0.27：长文目录
-    @State private var showTOCSheet = false
+    @State var showTOCSheet = false
     // v3.0.51 A2：极长会话分页懒加载——初始只渲染尾部最近 N 条，顶部可"加载更早"
     @State private var displayLimit = 300
     private static let loadMoreStep = 300
@@ -1103,7 +1103,7 @@ struct ChatView: View {
     // MARK: - 发送
 
     /// v2.0.116：AI 总结会话（菜单按钮 → 自动发总结请求走正常流式）
-    private func summarizeSession() {
+    func summarizeSession() {
         guard !chat.messages.isEmpty else { return }
         guard !stream.isStreaming else { return }
         sendCore(text: "请用简洁的要点总结我们这次对话（分点列出，突出结论和待办）", imageData: nil)
@@ -1111,7 +1111,7 @@ struct ChatView: View {
 
     /// v3.0.37：图片持久化——base64 图片上传 NAS 换 URL（节省内存/跨设备可见/重启不丢）
     /// 已是 http 或非数据 URL 原样返回；上传失败降级回 base64（保证发送不中断）
-    private func persistImageIfNeeded(_ imageDataURL: String?) async -> String? {
+    func persistImageIfNeeded(_ imageDataURL: String?) async -> String? {
         guard let img = imageDataURL, !img.hasPrefix("http") else { return imageDataURL }
         // v3.0.55：蜂窝不再 await URL 上传——v3.0.54 阻塞路径卡在分片末屏响应导致图不上屏/不发。
         // 蜂窝直接短路返回，交给 sendCore 的 compressForCellular（压缩 base64）立即上屏发送，不挂起。
@@ -1124,7 +1124,7 @@ struct ChatView: View {
         return await chat.uploadImage(data, auth: auth) ?? img
     }
 
-    private func send() {
+    func send() {
         var text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let img = pendingImageData
         // v2.0.88f：去掉 isStreaming 拦截——AI 回答中发送走 sendCore 排队路径
@@ -1192,7 +1192,7 @@ struct ChatView: View {
     /// v2.0.59：发送核心（send / 失败重试共用）
     /// v2.0.88：AI 回答中发送不再被拦截——消息上屏 + 入队，当前回答结束后自动逐条发送
     /// v2.0.102：sendingLock 同步置位——防极快双击时 isStreaming 尚未置位导致双流竞态
-    private func sendCore(text: String, imageData: String?) {
+    func sendCore(text: String, imageData: String?) {
         // v3.0.52：蜂窝下 base64 图 body 过大 → 先超强压缩（uploadImage 蜂窝大概率失败退回 base64 大 body，
         // 导致 CFStream/relay 载不动 → 后端 bad json 400；压小后直连可过）
         let imageData = compressForCellular(imageData)
@@ -1248,7 +1248,7 @@ struct ChatView: View {
     /// v2.0.88：启动流式回答（消息已在列表；失败标记/回复完成/队列联动统一在这里）
     /// v2.0.102：记录发起会话——回答期间切换会话则丢弃结果（防跨会话污染）；完成回调释放 sendingLock
     /// v3.0：云端模式走 CloudBackend 直连 SSE（不经过 NAS 后端）
-    private func startStream(for msg: ChatMessage) {
+    func startStream(for msg: ChatMessage) {
         // v3.0 云端模式：直连大模型 API
         if CloudConfig.shared.isCloudMode {
             startCloudStream(for: msg)
@@ -1615,7 +1615,7 @@ struct ChatView: View {
 
     /// 模型优先级：免费模型 > 视觉模型 > Agent 模型 > 主模型
     /// - Parameter hasImage: 当前消息是否包含图片（触发视觉模型优先）
-    private func resolveModel(hasImage: Bool = false) -> (String, String) {
+    func resolveModel(hasImage: Bool = false) -> (String, String) {
         // v3.0.57：免费模型开关——优先级最高
         if UserDefaults.standard.bool(forKey: UserDefaultsKey.freeModel) {
             let freeName = UserDefaults.standard.string(forKey: UserDefaultsKey.freeModelName) ?? "nemotron-3.5-lightning-free"

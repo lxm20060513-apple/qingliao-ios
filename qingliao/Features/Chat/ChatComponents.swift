@@ -427,7 +427,7 @@ struct FileMessageInfo {
 
 extension MessageBubble {
     /// 解析文件消息文本（[文件: name]（状态）/[PDF: name]（状态）…）
-    private func parseFileMessage(_ content: String) -> FileMessageInfo? {
+    func parseFileMessage(_ content: String) -> FileMessageInfo? {
         guard content.hasPrefix("[文件:") || content.hasPrefix("[PDF:") || content.hasPrefix("[图片:") else { return nil }
         // 提取方括号内文件名（v2.0.102：按实际前缀长度截断——[文件:/[图片: 4 字符，[PDF: 5 字符，原 drop 3 会把冒号带进文件名）
         let drop: Int = content.hasPrefix("[PDF:") ? 5 : 4
