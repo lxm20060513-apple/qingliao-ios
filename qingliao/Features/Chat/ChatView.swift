@@ -138,11 +138,11 @@ struct ToolCardView: View {
 }
 
 struct ChatView: View {
-    @Environment(AuthStore.self) private var auth
-    @Environment(ChatStore.self) private var chat
-    @Environment(StreamClient.self) private var stream
-    @Environment(KeyboardObserver.self) private var kb
-    @Environment(BotStore.self) private var botStore   // v3.0.7：Bot Mode
+    @Environment(AuthStore.self) var auth
+    @Environment(ChatStore.self) var chat
+    @Environment(StreamClient.self) var stream
+    @Environment(KeyboardObserver.self) var kb
+    @Environment(BotStore.self) var botStore   // v3.0.7：Bot Mode
     @State private var pinStore = PinStore.shared   // v3.0.74：钉一钉
 
     @State var inputText = ""
