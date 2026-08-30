@@ -9,6 +9,7 @@ struct QingliaoApp: App {
     @State private var chat = ChatStore()
     @State private var stream = StreamClient()
     @State private var keyboard = KeyboardObserver()
+    @State private var inbox = InboxStore.shared
     // v3.0.7：Bot Mode 数据（NAS bots.json 缓存 + 选中状态）
     @State private var botStore = BotStore.shared
     // v3.0.27：会话分类
@@ -22,6 +23,7 @@ struct QingliaoApp: App {
                 .environment(chat)
                 .environment(stream)
                 .environment(keyboard)
+                .environment(inbox)
                 .environment(botStore)
                 .environment(categoryStore)
                 .environment(SessionTagStore.shared)   // v3.0.51 B7：会话标签
@@ -37,6 +39,9 @@ struct QingliaoApp: App {
                     SpeechManager.shared.attach(auth: auth)
                     // v3.0.74：注入 AuthStore 到钉一钉存储
                     PinStore.shared.attach(auth: auth)
+                    // v3.0.82：注入收件箱依赖 + 启动推送轮询（Hermes 主动推消息到 App）
+                    InboxStore.shared.attach(auth: auth, chat: chat)
+                    InboxStore.shared.startPolling()
                 }
                 // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）
                 .onChange(of: scenePhase) { _, phase in
@@ -52,6 +57,8 @@ struct QingliaoApp: App {
                             if stream.isStreaming, !stream.isDone {
                                 await stream.restartPolling(auth: auth)
                             }
+                            // v3.0.82：前台恢复立即拉取收件箱并重启推送轮询
+                            InboxStore.shared.refreshOnActive()
                         }
                     }
                 }

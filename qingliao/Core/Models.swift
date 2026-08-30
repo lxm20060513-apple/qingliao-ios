@@ -123,6 +123,7 @@ struct ChatMessage: Identifiable {
     var withdrawn: Bool = false    // v2.0.92：已撤回（显示"[已撤回]"占位）
     var agent: Bool = false        // v2.0.96b：Agent 回复标记（工具调用回复，显示标签）
     var voiceCommand: Bool = false   // v3.0.19：语音指令触发（长按智能球，显示 🎤 标记）
+    var isPush: Bool = false         // v3.0.82：Hermes 主动推送消息（本地收件箱注入，显示"推送"标签）
 
     /// v3.0.50 聊天稳定性：稳定 id——用 djb2 哈希替代 String.hashValue（后者带进程随机种子，
     /// 跨启动漂移，导致会话重开后消息去重/ForEach id/删除定位错乱）

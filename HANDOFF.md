@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-29
-> 最新版本：v3.0.79（feature/handoff-301 分支，已发版，钉一钉功能+后台流式恢复+tab动画）
+> 最后更新：2026-08-30
+> 最新版本：v3.0.83（feature/handoff-301 分支，Hermes 主动推送收件箱 inbox）
 
 ---
 
@@ -50,6 +50,21 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.83（2026-08-30 待发版）
+
+Hermes 主动推送收件箱（inbox）：让 Hermes 能主动推消息给轻聊App（此前 App 只有"请求-响应"模型，服务端无法主动塞消息）。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 后端收件箱 API | `inbox_api.py`（NAS 新增） | GET /api/inbox（App 轮询拉取）、POST /api/inbox/{id}/done（标记已读）、POST /api/inbox/push（Hermes 主动推，鉴权 X-Inbox-Token）；存储 inbox_queue.json，复用 push_api 的 RLock 队列模式 |
+| 后端路由挂载 | `unified_router.py`（NAS） | 路由表加 `/api/inbox`（已验证容器日志 `[router] /api/inbox -> inbox_api.Handler: ok`） |
+| App 收件箱轮询 | `InboxStore.swift`（新增） | 每 15s 轮询 /api/inbox，拉到消息 → 注入当前会话（assistant+isPush）→ 弹本地通知 → 标记已读 → 保存会话；方案B（进当前聊天会话，用户确认） |
+| 推送标记字段 | `Models.swift` | ChatMessage 加 `isPush: Bool` |
+| 推送标签 UI | `ChatMessageBubble.swift` | isPush 消息气泡显示「🔔 推送」蓝色小标签（区别于渐变"Agent 回复"） |
+| App 注入与轮询 | `QingliaoApp.swift` | @State inbox + .task 里 attach(auth,chat:)+startPolling() + scenePhase 前台恢复 refreshOnActive() |
+
+> ⚠️ 部署要点：后端已上线验证（md5 一致 / docker restart qingliao / 端口回读 / 容器日志确认）。App 端已过 check_swift.sh + 子代理并发 review，**本版本未发版（App 需 tag v3.0.82 编译）**。QL_INBOX_TOKEN 容器未注入（当前用默认 ql-inbox-default，属不安全，建议发版后注入强 token）。
 
 ### v3.0.79（2026-08-30 已发版）
 

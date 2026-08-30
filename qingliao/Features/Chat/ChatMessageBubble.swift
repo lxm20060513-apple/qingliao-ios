@@ -314,6 +314,16 @@ struct MessageBubble: View {
                             .background(Color.accentColor.opacity(0.12), in: Capsule())
                             .padding(.top, 1)
                     }
+                    // v3.0.82：Hermes 主动推送标签（收件箱注入，蓝色系——区别于渐变 Agent 标签）
+                    if message.isPush {
+                        Text("🔔 推送")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.10), in: Capsule())
+                            .padding(.top, 1)
+                    }
                 }
                 .padding(.horizontal, isMultiBubbleAI ? 2 : 13)
                 .padding(.vertical, isMultiBubbleAI ? 2 : 9)
