@@ -490,55 +490,59 @@ struct DashboardView: View {
     }
 
     private func refresh() async {
-        // v3.0.x：并行请求——7 个独立 API 用 TaskGroup 并发（原串行，每个等前一个完成才发下一个）
-        // Swift 6 严格并发：async let 返回非 Sendable 类型会编译失败，TaskGroup 内各自更新 @State 规避
-        await withTaskGroup(of: Void.self) { group in
-            // NAS 状态
-            group.addTask { @MainActor in
-                if let n = await self.auth.jsonOrLog("/api/nas/status") {
-                    self.nas = NASStatus.parse(n)
-                }
-            }
-            // HA 设备状态
-            group.addTask { @MainActor in
-                if let h = await self.auth.jsonArrayOrLog("/api/ha/states") {
-                    self.haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
-                }
-            }
-            // 场景列表
-            group.addTask { @MainActor in
-                if let j = await self.auth.jsonOrLog("/api/scenes/list") {
-                    self.scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
-                }
-            }
-            // 自动化列表
-            group.addTask { @MainActor in
-                if let j = await self.auth.jsonOrLog("/api/automations/list") {
-                    self.automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
-                }
-            }
-            // 智能建议
-            group.addTask { @MainActor in
-                if self.smartSuggestion.isEmpty {
-                    if let j = await self.auth.jsonOrLog("/api/agent/last_suggestion"),
-                       let sug = j["suggestion"] as? [String: Any],
-                       let text = sug["text"] as? String, !text.isEmpty {
-                        self.smartSuggestion = text
-                    } else if let cached = self.cachedSuggestion {
-                        self.smartSuggestion = cached
-                    } else if self.shouldAutoGenerate {
-                        Task { await self.loadSmartSuggestion() }
-                    }
-                }
-            }
-            // 路由器状态
-            group.addTask { @MainActor in
-                await self.loadRouter()
-            }
-            // 模型使用量
-            group.addTask { @MainActor in
-                await self.loadProviderUsage()
-            }
+        // v3.0.x：并行请求——7 个独立 API 并发（原串行，每个等前一个完成才发下一个）
+        // v3.0.81c：不用 TaskGroup+addTask{@MainActor}——Xcode 26.6 Swift 6 区域隔离检查器对
+        // 「闭包捕获 self」的这种写法直接报编译错误（checker bug）。
+        // 改为 MainActor 方法 + async let（Void 返回值无 Sendable 问题），语义同样是 7 路并发。
+        async let nasTask: Void = loadNAS()
+        async let haTask: Void = loadHA()
+        async let scenesTask: Void = loadScenes()
+        async let autosTask: Void = loadAutomations()
+        async let sugTask: Void = loadSuggestionIfNeeded()
+        async let routerTask: Void = loadRouter()
+        async let usageTask: Void = loadProviderUsage()
+        _ = await (nasTask, haTask, scenesTask, autosTask, sugTask, routerTask, usageTask)
+    }
+
+    /// NAS 状态
+    private func loadNAS() async {
+        if let n = await auth.jsonOrLog("/api/nas/status") {
+            nas = NASStatus.parse(n)
+        }
+    }
+
+    /// HA 设备状态
+    private func loadHA() async {
+        if let h = await auth.jsonArrayOrLog("/api/ha/states") {
+            haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
+        }
+    }
+
+    /// 场景列表
+    private func loadScenes() async {
+        if let j = await auth.jsonOrLog("/api/scenes/list") {
+            scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
+        }
+    }
+
+    /// 自动化列表
+    private func loadAutomations() async {
+        if let j = await auth.jsonOrLog("/api/automations/list") {
+            automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
+        }
+    }
+
+    /// 智能建议（v2.0.116 后端建议 + v2.0.132 缓存兜底 + 过期自动生成）
+    private func loadSuggestionIfNeeded() async {
+        guard smartSuggestion.isEmpty else { return }
+        if let j = await auth.jsonOrLog("/api/agent/last_suggestion"),
+           let sug = j["suggestion"] as? [String: Any],
+           let text = sug["text"] as? String, !text.isEmpty {
+            smartSuggestion = text
+        } else if let cached = cachedSuggestion {
+            smartSuggestion = cached
+        } else if shouldAutoGenerate {
+            Task { await loadSmartSuggestion() }
         }
     }
 
