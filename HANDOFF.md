@@ -51,7 +51,7 @@
 
 ## 二、版本历史
 
-### v3.0.83（2026-08-30 待发版）
+### v3.0.83（2026-08-30 已发版）
 
 Hermes 主动推送收件箱（inbox）：让 Hermes 能主动推消息给轻聊App（此前 App 只有"请求-响应"模型，服务端无法主动塞消息）。
 
@@ -59,12 +59,15 @@ Hermes 主动推送收件箱（inbox）：让 Hermes 能主动推消息给轻聊
 |---|---|---|
 | 后端收件箱 API | `inbox_api.py`（NAS 新增） | GET /api/inbox（App 轮询拉取）、POST /api/inbox/{id}/done（标记已读）、POST /api/inbox/push（Hermes 主动推，鉴权 X-Inbox-Token）；存储 inbox_queue.json，复用 push_api 的 RLock 队列模式 |
 | 后端路由挂载 | `unified_router.py`（NAS） | 路由表加 `/api/inbox`（已验证容器日志 `[router] /api/inbox -> inbox_api.Handler: ok`） |
+| **AI回复完成→推App收件箱** | `stream_api.py`（NAS） | 新增 `_maybe_push_app(st)`：AI 回复 done 且内容≥1字就调 inbox_api.push(摘要)（**不受"用户是否在看/pushEnabled"门控，每条都推**，用户选方案A）。5 个 done 路径 + 2 个异常兜底都挂载（error/cancelled 不推） |
 | App 收件箱轮询 | `InboxStore.swift`（新增） | 每 15s 轮询 /api/inbox，拉到消息 → 注入当前会话（assistant+isPush）→ 弹本地通知 → 标记已读 → 保存会话；方案B（进当前聊天会话，用户确认） |
 | 推送标记字段 | `Models.swift` | ChatMessage 加 `isPush: Bool` |
 | 推送标签 UI | `ChatMessageBubble.swift` | isPush 消息气泡显示「🔔 推送」蓝色小标签（区别于渐变"Agent 回复"） |
 | App 注入与轮询 | `QingliaoApp.swift` | @State inbox + .task 里 attach(auth,chat:)+startPolling() + scenePhase 前台恢复 refreshOnActive() |
+| 鉴权加固 | `docker-compose.yml`（NAS） | 注入 192-bit 强 `QL_INBOX_TOKEN`（旧默认 ql-inbox-default 已失效 401） |
+| Hermes 推送入口 | `profiles/wechat-profile/scripts/ql_push_app.sh` | Hermes/cron 主动推：`ql_push_app.sh "消息"` 或 stdin |
 
-> ⚠️ 部署要点：后端已上线验证（md5 一致 / docker restart qingliao / 端口回读 / 容器日志确认）。App 端已过 check_swift.sh + 子代理并发 review，**本版本未发版（App 需 tag v3.0.82 编译）**。QL_INBOX_TOKEN 容器未注入（当前用默认 ql-inbox-default，属不安全，建议发版后注入强 token）。
+> ✅ 后端已全部上线验证：inbox_api + 路由 + stream_api 的 `_maybe_push_app` + QL_INBOX_TOKEN 强 token + ql_push_app.sh（md5 一致 / docker restart / 端口回读 / 容器日志 / 端到端 `[push] App收件箱推送 True: 已推送`）。App 端已过 check_swift.sh（v3.0.83 已发版，用户装 v3.0.83 IPA 真机）。Hermes→App 主动推送 + AI回复→App收件箱 双双打通。
 
 ### v3.0.79（2026-08-30 已发版）
 
