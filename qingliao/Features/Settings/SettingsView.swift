@@ -21,7 +21,7 @@ struct SettingsView: View {
     // v3.0.74：钉一钉存储路径
     @State var showPinPath = false
     @State var pinPathEdit = ""
-    private var pinPathDisplay: String {
+    var pinPathDisplay: String {
         let p = PinStore.shared.storagePath
         return p.isEmpty ? "默认路径" : (p.count > 20 ? "..." + p.suffix(17) : p)
     }
@@ -47,8 +47,8 @@ struct SettingsView: View {
     @State var agentRuleCount = 0
     // v3.0.20：Agent 模型自定义（独立于主模型，可单独指定 Agent 使用的模型）
     @State var showAgentModelSheet = false
-    @AppStorage(UserDefaultsKey.agentModel) private var agentModel = ""
-    @AppStorage(UserDefaultsKey.agentProvider) private var agentProvider = ""
+    @AppStorage(UserDefaultsKey.agentModel) var agentModel = ""
+    @AppStorage(UserDefaultsKey.agentProvider) var agentProvider = ""
     // v2.0.116：执行历史弹窗
     @State var showHistory = false
     // v2.0.117：本地模型（Ollama 断网兜底）
@@ -85,7 +85,7 @@ struct SettingsView: View {
     // v2.0.129：Siri 圆球输入（默认开——输入框区显示多彩圆球，单击展开 / 长按语音转文字）
     @AppStorage("qingliao_ball_input") var ballInput = true
     // v2.0.98：Agent 智能回复开关（关闭后请求不带 agent 能力，走普通 LLM 回复）
-    @AppStorage(UserDefaultsKey.agentEnabled) private var agentOn = true
+    @AppStorage(UserDefaultsKey.agentEnabled) var agentOn = true
 
     var body: some View {
         VStack(spacing: 0) {
