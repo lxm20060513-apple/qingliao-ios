@@ -180,7 +180,10 @@ final class ChatStore {
             // 主模型不支持 → 开关开 + 有视觉模型配置才保留图片，否则降级文本
             return CloudConfig.visionFallbackEnabled && CloudConfig.localVisionModel != nil
         }()
-        return messages.map { m in
+        // v3.0.83fix：isPush=1 的推送消息不进模型上下文（推送被当AI回复污染对话的根治）
+        // 推送消息是 Hermes 主动注入的，不该作为历史喂给模型。保留在会话展示，但历史重放滤掉。
+        let ctxMessages = messages.filter { !$0.isPush }
+        return ctxMessages.map { m in
             var p = m.asPayload()
             if m.imageDataURL == nil {
                 p["content"] = m.content
@@ -221,6 +224,8 @@ final class ChatStore {
             }
             var p: [String: Any] = ["role": m.role, "content": content]
             if let ts = m.timestamp { p["timestamp"] = ts }
+            if m.isPush { p["isPush"] = true }    // v3.0.83fix：isPush 落库（推送标记持久化，防标签丢失/重开污染）
+            if m.agent { p["agent"] = true }      // v3.0.83fix：agent 落库
             return p
         }
         let firstUserText = msgs.first(where: { $0.isUser })?.content.prefix(30).description ?? ""

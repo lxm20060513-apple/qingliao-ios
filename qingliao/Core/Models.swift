@@ -154,7 +154,12 @@ struct ChatMessage: Identifiable {
                 text = t.isEmpty ? "[图片]" : t + "\n[图片]"
             }
         }
-        return ChatMessage(role: role, content: text, timestamp: ts)
+        let isPush = d["isPush"] as? Bool ?? false
+        let isAgent = d["agent"] as? Bool ?? false
+        var msg = ChatMessage(role: role, content: text, timestamp: ts)
+        msg.isPush = isPush
+        msg.agent = isAgent
+        return msg
     }
 
     /// 本地新消息（无时间戳）

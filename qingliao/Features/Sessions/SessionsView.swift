@@ -538,9 +538,11 @@ struct SessionsView: View {
         renameTarget = nil
         Task {
             _ = try? await auth.request("/api/sessions/merge", method: "POST", body: [
-                "sessions": [["id": t.id, "title": newName, "messages": t.messages.map { m -> [String: Any] in
+                "sessions": [[ "id": t.id, "title": newName, "messages": t.messages.map { m -> [String: Any] in
                     var p: [String: Any] = ["role": m.role, "content": m.content]
                     if let ts = m.timestamp { p["timestamp"] = ts }
+                    if m.isPush { p["isPush"] = true }    // v3.0.83fix：rename 同步补 isPush（防改名后推送标记丢失）
+                    if m.agent { p["agent"] = true }
                     return p
                 }]],
                 "deleted": [] as [Any]

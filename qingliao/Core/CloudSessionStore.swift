@@ -73,6 +73,8 @@ final class CloudSessionStore {
             }
             var p: [String: Any] = ["role": m.role, "content": content]
             if let ts = m.timestamp { p["timestamp"] = ts }
+            if m.isPush { p["isPush"] = true }    // v3.0.83fix：isPush 落库（云端）
+            if m.agent { p["agent"] = true }
             return p
         }
         let firstUserText = msgs.first(where: { $0.isUser })?.content.prefix(30).description ?? ""
@@ -90,6 +92,8 @@ final class CloudSessionStore {
                 "messages": s.messages.map { m in
                     var p: [String: Any] = ["role": m.role, "content": m.content]
                     if let ts = m.timestamp { p["timestamp"] = ts }
+                    if m.isPush { p["isPush"] = true }    // v3.0.83fix：isPush 持久化（云端磁盘）
+                    if m.agent { p["agent"] = true }
                     return p
                 }
             ]

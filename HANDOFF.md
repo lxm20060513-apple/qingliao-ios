@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-30
-> 最新版本：v3.0.83（feature/handoff-301 分支，Hermes 主动推送收件箱 inbox）
+> 最新版本：v3.0.84（feature/handoff-301 分支，isPush 落库修复 + rename 补 isPush/agent）
 
 ---
 
@@ -50,6 +50,20 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.84（2026-08-30 发版，P0#3/#P0#2 修复）
+
+code review 三项高危中的两项落地（P0#1 SafariRelay token 泄漏待定深度）。核心：**isPush 推送消息不再污染模型上下文 + 标签持久化**。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| isPush 过滤出模型上下文 | `Core/ChatStore.swift` | `historyPayload()` 新增 `messages.filter { !$0.isPush }`——推送消息（Hermes 注入的不该喂模型）不再作为历史发给模型；保留在会话 UI 展示 |
+| isPush/agent 读回 | `Core/Models.swift` | `ChatMessage.parse()` 补读 `isPush`/`agent`（此前读回丢失，重开 App 标签消失） |
+| isPush/agent 落库 | `Core/ChatStore.swift` | `saveToServer()` msgsPayload 补 `isPush`/`agent`（本地模式写后端） |
+| isPush/agent 云端落库 | `Core/CloudSessionStore.swift` | `saveChat()` + `persist()` 两处序列化补 `isPush`/`agent`（云端模式） |
+| rename 补 isPush/agent | `Features/Sessions/SessionsView.swift` | `rename()` 回传 messages 的 map 补 `isPush`/`agent`（防改名后推送标记丢失，同时修 P0#2 串库导致标记不一致） |
+
+自检：`check_swift.sh` 三项全绿（语法 / parseResponse 单测 / relay 编解码单测）。版本号升 3.0.84 / 380。
 
 ### v3.0.83（2026-08-30 已发版）
 
