@@ -63,6 +63,13 @@ final class InboxStore {
                 let id = it.id
                 guard !consumedIds.contains(id) else { continue }
                 consume(id)
+                // v3.0.87 fix：去重——AI 回复完成自动推(_maybe_push_app)的摘要与该会话流式渲染的回复重复。
+                // 当前会话最后一条 assistant(非推送) 文本已包含此推送正文 → 判定为同一条回复，不再重复注入（仅标记已读），
+                // 避免用户看到「流式回复 + 🔔推送」两条相同内容。
+                if shouldSkipDuplicate(push: it.text, in: chat.messages) {
+                    await markDone(id, auth: auth)
+                    continue
+                }
                 // 注入当前会话（assistant 角色 + 推送标记）
                 var msg = ChatMessage(role: "assistant", content: it.text,
                                       timestamp: Date().timeIntervalSince1970 * 1000)
@@ -79,6 +86,22 @@ final class InboxStore {
         } catch {
             lastError = "\(error)"
         }
+    }
+
+    /// v3.0.87 fix：收件箱推送 vs 会话内流式回复去重。
+    /// AI 回复完成时后端 `_maybe_push_app` 会把回复摘要推入收件箱，App InboxStore 又可把它注入当前会话，
+    /// 导致同一条回复出现两次（流式气泡 + 🔔推送气泡）。此方法判断：当前会话最后一条 assistant(非推送)
+    /// 消息文本是否已包含该推送正文——若包含，说明这条回复本就由本会话流式渲染，应跳过重复注入。
+    private func shouldSkipDuplicate(push text: String, in messages: [ChatMessage]) -> Bool {
+        // 后端摘要可能带尾部省略号（长文截断），去掉再比对
+        let core = text.replacingOccurrences(of: "…", with: "")
+        guard !core.isEmpty else { return false }
+        for m in messages.reversed() {
+            if m.role == "assistant" && !m.isPush {
+                return m.content.contains(core) || core.contains(m.content)
+            }
+        }
+        return false
     }
 
     // MARK: - 轮询启动/停止
