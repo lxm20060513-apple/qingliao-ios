@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-30
-> 最新版本：v3.0.84（feature/handoff-301 分支，isPush 落库修复 + rename 补 isPush/agent）
+> 最新版本：v3.0.85（feature/handoff-301 分支，P0#4/6/7 + P1#8/#13）
 
 ---
 
@@ -50,6 +50,20 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.85（2026-08-30 发版，P0#4/6/7 + P1#8/#13）
+
+code review 第二轮落地：云端功能修复 + 安全加固 + 工具循环崩溃修复。**P1#9（云端流无法停止）/ #10（不走 resolveModel）本轮不做**。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| P0#6 云端 regenerate 误打本地 | `Features/Chat/ChatView.swift` | `regenerate()` 加 `isCloudMode` 分支 → 云端走 `startCloudStream`（原直接 `stream.start` 打本地 NAS，云端重生成全废） |
+| P0#7 云端 sendFile 误打本地 | `Features/Chat/ChatViewExport.swift` | 云端文件消息走 `startCloudStream`；`startCloudStream` private→internal 供跨文件 extension 调用 |
+| P0#4 本地 token 明文存 UserDefaults | `Core/AuthStore.swift` + `ChatView.swift` | NAS token 迁 **Keychain**（kSecClassGenericPassword），UserDefaults 只留登录布尔；login/logout/后台刷新三处同步改，并清历史明文残留 |
+| P1#8 云端工具 content:nil 序列化崩溃 | `Core/CloudToolLoop.swift` | 两处 `"content": nil` 入 `[String:Any]` 字典（JSONSerialization 必崩），改为为空时不写键 |
+| P1#13 consumedIds 不持久化 | `Core/InboxStore.swift` | consumedIds 从内存 Set 改 **UserDefaults 持久化**（上限 200），重启不再重复注入/重复通知 |
+
+自检：`check_swift.sh` 三项全绿。版本号升 3.0.85 / 381。
 
 ### v3.0.84（2026-08-30 发版，P0#3/#P0#2 修复）
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Security
 
 @MainActor
 @Observable
@@ -28,10 +29,61 @@ final class AuthStore {
         cfg.timeoutIntervalForResource = 60
         cfg.waitsForConnectivity = false   // 快速失败交给重试循环
         session = URLSession(configuration: cfg)
-        token = defaults.string(forKey: tokenKey) ?? ""
+        // v3.0.84fix：NAS token 迁 Keychain（原明文存 UserDefaults plist，可被备份/越狱读取）。
+        // UserDefaults 只保留用户名/服务器/登录布尔，token 走 Keychain（复用 CloudConfig 的 genericPassword 模式）。
+        token = Self.keychainReadToken() ?? ""
         username = defaults.string(forKey: userKey) ?? ""
         serverURL = defaults.string(forKey: serverKey) ?? "https://example.com:16666"
         isLoggedIn = defaults.bool(forKey: loggedKey)
+    }
+
+    // MARK: - v3.0.84fix：token 存 Keychain（弃用 UserDefaults 明文）
+    private static let tokenService = "com.qingliao.app"
+    private static let tokenAccount = "nas_auth_token"
+
+    /// static internal：供后台刷新等无 AuthStore 实例处读 token
+    static func keychainReadToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func keychainSaveToken(_ t: String) {
+        guard !t.isEmpty else { return }
+        let data = Data(t.utf8)
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.tokenService,
+            kSecAttrAccount as String: Self.tokenAccount,
+        ]
+        let update: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let status = SecItemUpdate(base as CFDictionary, update as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = base
+            add[kSecValueData as String] = data
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+
+    private func keychainDeleteToken() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.tokenService,
+            kSecAttrAccount as String: Self.tokenAccount,
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 
     /// v2.0.55：保存服务器地址（内存 + UserDefaults 持久化）
@@ -81,7 +133,9 @@ final class AuthStore {
                     token = ""
                 }
                 defaults.set(username, forKey: userKey)
-                if !token.isEmpty { defaults.set(token, forKey: tokenKey) } else { defaults.removeObject(forKey: tokenKey) }
+                // v3.0.84fix：token 迁 Keychain，UserDefaults 不再明文存 token
+                if !token.isEmpty { keychainSaveToken(token) } else { keychainDeleteToken() }
+                defaults.removeObject(forKey: tokenKey)   // 清掉历史明文残留
                 isLoggedIn = true
                 defaults.set(true, forKey: loggedKey)
                 // v2.0.88：Face ID 登录开关开启（默认开）时保存凭据到 Keychain
@@ -101,6 +155,8 @@ final class AuthStore {
         token = ""
         isLoggedIn = false
         defaults.set(false, forKey: loggedKey)
+        // v3.0.84fix：token 迁 Keychain，登出清 Keychain + 清 UserDefaults 残留
+        keychainDeleteToken()
         defaults.removeObject(forKey: tokenKey)
     }
 

@@ -193,6 +193,13 @@ extension ChatView {
                 }
             }
             chat.append(.local(role: "user", content: content))
+            // v3.0.84fix：云端模式文件消息走 startCloudStream（原 stream.start 打本地 NAS，云端 sendFile 链路报废）
+            if CloudConfig.shared.isCloudMode {
+                let m = ChatMessage.local(role: "user", content: content)
+                chat.append(m)
+                startCloudStream(for: m)
+                return
+            }
             let history = chat.historyPayload()
             // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
             let (useModel, useProvider) = resolveModel()

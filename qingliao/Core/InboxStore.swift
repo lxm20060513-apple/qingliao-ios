@@ -22,13 +22,24 @@ final class InboxStore {
     var lastInjectedCount = 0
 
     /// 已注入的消息 id（本地防重复——App 前后台频繁轮询，done 标记有网络延迟）
-    private var consumedIds = Set<String>()
+    /// v3.0.84fix：持久化到 UserDefaults（原纯内存 Set，App 重启丢 → 未 markDone 的推送会重复注入+重复通知）
+    private var consumedIds: Set<String>
     private var pollingTask: Task<Void, Never>?
+    private let consumedKey = "qingliao_inbox_consumed_ids"
 
-    /// 推送轮询间隔（秒）。App 前台持续轮询；后台系统会冻结 task。
-    var pollInterval: Double = 15
+    private init() {
+        consumedIds = Set(UserDefaults.standard.stringArray(forKey: "qingliao_inbox_consumed_ids") ?? [])
+    }
 
-    private init() {}
+    private func consume(_ id: String) {
+        consumedIds.insert(id)
+        // 只保留最近 200 个去重 id（防无限增长；远大于队列上限 100）
+        if consumedIds.count > 200 {
+            let dropped = consumedIds.sorted().dropFirst(consumedIds.count - 200)
+            consumedIds.subtract(dropped)
+        }
+        UserDefaults.standard.set(Array(consumedIds), forKey: consumedKey)
+    }
 
     /// 注入依赖（QingliaoApp .task 调用，与 PinStore.shared.attach 一致）
     func attach(auth: AuthStore, chat: ChatStore) {
@@ -48,7 +59,7 @@ final class InboxStore {
             for it in items {
                 let id = it.id
                 guard !consumedIds.contains(id) else { continue }
-                consumedIds.insert(id)
+                consume(id)
                 // 注入当前会话（assistant 角色 + 推送标记）
                 var msg = ChatMessage(role: "assistant", content: it.text,
                                       timestamp: Date().timeIntervalSince1970 * 1000)

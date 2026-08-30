@@ -113,17 +113,16 @@ final class CloudToolLoop {
         }
 
         // 追加 assistant 消息（含 tool_calls，OpenAI 协议要求保留）
-        let assistantMsg: [String: Any] = [
-            "role": "assistant",
-            "content": full.isEmpty ? nil : full,
-            "tool_calls": calls.map { c in
-                [
-                    "id": c.id,
-                    "type": "function",
-                    "function": ["name": c.name, "arguments": c.arguments],
-                ]
-            },
-        ]
+        // v3.0.84fix：content 为空时不写入键（原写 nil 入 [String:Any] 字典，JSONSerialization 序列化必崩）
+        var assistantMsg: [String: Any] = ["role": "assistant"]
+        if !full.isEmpty { assistantMsg["content"] = full }
+        assistantMsg["tool_calls"] = calls.map { c in
+            [
+                "id": c.id,
+                "type": "function",
+                "function": ["name": c.name, "arguments": c.arguments],
+            ]
+        }
         working.append(assistantMsg)
 
         // ── 执行工具（写操作先确认）
@@ -166,11 +165,14 @@ final class CloudToolLoop {
                 accumulatedFull += text
                 events(.text(text))
             }
-            working.append(["role": "assistant", "content": text.isEmpty ? nil : text,
-                            "tool_calls": newCalls.map { c in
-                                ["id": c.id, "type": "function",
-                                 "function": ["name": c.name, "arguments": c.arguments]]
-                            }])
+            // v3.0.84fix：content 为空时不写入键（原写 nil 入字典，序列化崩溃）
+            var assistantAppend: [String: Any] = ["role": "assistant"]
+            if !text.isEmpty { assistantAppend["content"] = text }
+            assistantAppend["tool_calls"] = newCalls.map { c in
+                ["id": c.id, "type": "function",
+                 "function": ["name": c.name, "arguments": c.arguments]]
+            }
+            working.append(assistantAppend)
             for c in newCalls {
                 let needsConfirm = LocalToolRunner.needsConfirm(name: c.name)
                 let preview = toolPreview(c)

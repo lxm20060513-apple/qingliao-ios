@@ -33,7 +33,8 @@ final class QingliaoAppDelegate: NSObject, UIApplicationDelegate,
     func application(_ application: UIApplication,
                      performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         let server = UserDefaults.standard.string(forKey: "qingliao_server") ?? ""
-        let token = UserDefaults.standard.string(forKey: "qingliao_token") ?? ""
+        // v3.0.84fix：token 迁 Keychain，后台刷新从 Keychain 读（原 UserDefaults 明文已弃）
+        let token = AuthStore.keychainReadToken() ?? ""
         guard let d = UserDefaults.standard.dictionary(forKey: "qingliao_stream_pending"),
               let taskId = d["taskId"] as? String, !taskId.isEmpty,
               !server.isEmpty, !token.isEmpty else {
@@ -1312,7 +1313,8 @@ struct ChatView: View {
     /// 云端模式回答：直连 OpenAI 兼容端点，逐段追加 assistant 内容
     /// v3.0.18：改用 stream.content 驱动 streamingBubble（粒子头像 + SwiftUI Text 渲染），结束落库；
     ///         接入 CloudToolLoop 本地工具调用（function calling：日历/提醒/计时器/天气/剪贴板/计算器/通知）
-    private func startCloudStream(for msg: ChatMessage) {
+    /// v3.0.84fix：private→internal（让 ChatViewExport 的 sendFile 云端分支也能调用）
+    func startCloudStream(for msg: ChatMessage) {
         let startSid = chat.sessionId
         // v3.0.18：启用流式气泡（三点 / 粒子头像 / Text 渲染）
         stream.isStreaming = true
@@ -1592,7 +1594,16 @@ struct ChatView: View {
     func regenerate(at id: String) {
         guard !stream.isStreaming,
               let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
+        // 截断到该消息前（含该消息），重新生成它之后的内容
         chat.messages.removeSubrange(idx...)
+        // v3.0.84fix：云端模式走 startCloudStream（原直接 stream.start 打本地 NAS，云端 regenerate 全废）
+        if CloudConfig.shared.isCloudMode {
+            let lastUser = chat.messages.last(where: { $0.isUser })?.content ?? ""
+            var m = ChatMessage.local(role: "user", content: lastUser)
+            chat.append(m)
+            startCloudStream(for: m)
+            return
+        }
         let history = chat.historyPayload()
         let lastUserHasImage = chat.messages.last(where: { $0.isUser })?.imageDataURL != nil
         // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
