@@ -27,6 +27,9 @@ final class InboxStore {
     private var pollingTask: Task<Void, Never>?
     private let consumedKey = "qingliao_inbox_consumed_ids"
 
+    /// 推送轮询间隔（秒）。App 前台持续轮询；后台系统会冻结 task。
+    var pollInterval: Double = 15
+
     private init() {
         consumedIds = Set(UserDefaults.standard.stringArray(forKey: "qingliao_inbox_consumed_ids") ?? [])
     }
