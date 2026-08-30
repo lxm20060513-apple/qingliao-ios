@@ -1490,6 +1490,7 @@ struct UsageCard: View {
         case "xiaomi": return "x.circle.fill"
         case "opencode-apple", "opencode": return "o.circle.fill"
         case "sensenova": return "s.square.fill"
+        case "zai": return "z.circle.fill"
         default: return "terminal.fill"
         }
     }

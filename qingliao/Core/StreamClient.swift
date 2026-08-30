@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit   // v3.0.81：beginBackgroundTask 延长后台存活
 
 // MARK: - 流式客户端：Safari Relay 版
 // 上行：POST /r/stream/start/{uid}（relay 中转，Safari 进程发请求）
@@ -24,11 +25,14 @@ final class StreamClient {
     private var failCount = 0
     private var idleStreak = 0
     private var recoverTried = false   // v3.0.31：poll 404（任务丢失）时只尝试 recover 一次
+    private var recoverFailTried = false   // v3.0.80：普通失败（网络会话失效）也允许 recover 一次
     private var interval: TimeInterval = 0.25
     private var pollTask: Task<Void, Never>?
     private var onFinished: ((Bool, String) -> Void)?   // (success, errorMessage)
     // v3.0.50 稳定性：代际计数——停止/重启后旧轮询 resume 时丢弃结果，防污染新流
     private var generation = 0
+    // v3.0.81：后台任务标识——iOS 挂起前最多续 ~30s，让轮询/recover 有机会完成
+    private var bgTaskId: UIBackgroundTaskIdentifier = .invalid
 
     /// 启动流式请求（v3.0.7：bot 透传给 streamStart）
     func start(auth: AuthStore, sessionId: String, model: String, provider: String,
@@ -57,6 +61,8 @@ final class StreamClient {
                                                  provider: provider, messages: messages, bot: bot)
             taskId = tid
             startPolling(auth: auth)
+            // v3.0.81：注册后台任务，延长 iOS 挂起前的存活时间（最多 ~30s）
+            beginBgTask()
         } catch APIError.relayCancelled {
             finish(success: false, error: "已取消")
         } catch {
@@ -130,6 +136,12 @@ final class StreamClient {
         } catch {
             guard generation == self.generation else { return }
             failCount += 1
+            // v3.0.80：后台回来网络会话失效（非 404 的普通失败）也走 recover 续流，
+            // 原来只有 404 才触发 → 前台恢复场景 10 连败直接终结，生成内容被截断
+            if failCount == 3, !recoverFailTried {
+                recoverFailTried = true
+                if await tryRecover(auth: auth) { return }
+            }
             if failCount >= 10 {
                 finish(success: false, error: "连接中断，请重试")
             }
@@ -168,18 +180,60 @@ final class StreamClient {
         errorMessage = error
         stopPolling()
         clearPersisted()
+        endBgTask()   // v3.0.81：结束后台任务
         onFinished?(success, error)
         onFinished = nil
+    }
+
+    // MARK: - v3.0.81 后台任务管理
+
+    /// 注册后台任务：iOS 挂起前最多续 ~30s，让轮询/recover 有机会完成
+    private func beginBgTask() {
+        guard bgTaskId == .invalid else { return }
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "QingliaoStreamPoll") { [weak self] in
+            // 超时被系统回收：强制结束
+            self?.endBgTask()
+        }
+    }
+
+    /// 结束后台任务
+    private func endBgTask() {
+        guard bgTaskId != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(bgTaskId)
+        bgTaskId = .invalid
     }
 
     // MARK: - v2.0.61 杀后台流式恢复
 
     /// App 进后台时持久化流式状态（taskId/offset/content），重开后恢复轮询
-    /// v3.0.73：后台回来恢复轮询——停旧 Task + 起新轮询（generation 不变，续接原任务）
+    /// v3.0.80：后台回来先强制 recover 对齐服务器内容再续轮询——
+    /// 后台期间轮询已死但服务器任务还在跑，旧 taskId/offset 可能失效，
+    /// 原地 restartPolling 会连败终结流；recover 从服务器拿最新 taskId/content 无缝续上
     func restartPolling(auth: AuthStore) async {
         guard isStreaming, !isDone, !taskId.isEmpty else { return }
         stopPolling()
-        startPolling(auth: auth)
+        recoverTried = false
+        recoverFailTried = false
+        failCount = 0
+        // v3.0.81：后台回来先刷新网络会话（蜂窝/IPv6 连接可能已过期），再做 recover
+        await auth.refreshConnection()
+        let recovered = await tryRecover(auth: auth)
+        if recovered {
+            if isStreaming, !isDone { startPolling(auth: auth) }
+        } else {
+            // recover 失败（可能网络刚恢复还没就绪）：等 1 秒后重试一次 recover
+            try? await Task.sleep(for: .seconds(1))
+            await auth.refreshConnection()
+            let retried = await tryRecover(auth: auth)
+            if retried {
+                if isStreaming, !isDone { startPolling(auth: auth) }
+            } else {
+                // 两次 recover 都失败：原地续轮询，靠 failCount/recover 兜底
+                startPolling(auth: auth)
+            }
+        }
+        // v3.0.81：restartPolling 时也注册后台任务
+        beginBgTask()
     }
 
     func persistState(sessionId: String) {

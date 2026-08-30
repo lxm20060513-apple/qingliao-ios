@@ -44,11 +44,14 @@ struct QingliaoApp: App {
                         stream.persistState(sessionId: chat.sessionId)
                     }
                     // v2.0.87t：前台恢复自动重连（蜂窝 IPv6 会话后台过期 → 重建，免手动飞行模式）
+                    // v3.0.81：串行恢复——先刷新网络会话，再恢复流式（原并发导致 restartPolling 用旧连接）
                     if phase == .active {
-                        Task { await auth.refreshConnection() }
-                        // v3.0.73：后台回来时恢复流式轮询（iOS 挂起会杀 Task.sleep → 轮询静默死亡）
-                        if stream.isStreaming, !stream.isDone {
-                            Task { await stream.restartPolling(auth: auth) }
+                        Task {
+                            await auth.refreshConnection()
+                            // v3.0.73/81：后台回来时恢复流式轮询（restartPolling 内部已含 refreshConnection + 二次 recover）
+                            if stream.isStreaming, !stream.isDone {
+                                await stream.restartPolling(auth: auth)
+                            }
                         }
                     }
                 }
