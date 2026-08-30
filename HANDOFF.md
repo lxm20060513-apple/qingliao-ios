@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-30
-> 最新版本：v3.0.85（feature/handoff-301 分支，P0#4/6/7 + P1#8/#13）
+> 最后更新：2026-08-31
+> 最新版本：v3.0.87（feature/handoff-301 分支，401修复 + 收件箱推送去重）
 
 ---
 
@@ -50,6 +50,26 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.87（2026-08-31 发版，收件箱推送去重）
+
+修复「AI回复与推送重复」：AI 回复完成后端 `_maybe_push_app` 会把摘要推收件箱，App InboxStore 又注入当前会话 → 同一条回复出现两次（流式气泡 + 🔔推送气泡）。App 端注入前按「当前会话最后一条 assistant(非推送) 是否已含推送正文」去重，重复则仅标记已读不注入。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 收件箱推送去重 | `Core/InboxStore.swift` | `shouldSkipDuplicate(push:in:)`：当前会话最后一条 assistant(非推送) 文本已含推送正文（去尾部省略号）→ 判定重复，跳过注入仅标已读。修复流式回复 + 🔔推送重复显示 |
+
+自检：`check_swift.sh` 全绿。版本号 3.0.87 / 383。
+
+### v3.0.86（2026-08-31 发版，401 修复）
+
+token 迁 Keychain 遗漏「升级用户」：UserDefaults 仍留旧 token、Keychain 为空时，init 只从 Keychain 读 → token 空但 isLoggedIn 仍 true → 接口全 401（stream start 等）。补迁移兜底 + 强制回登录页。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| token 迁移兜底 | `Core/AuthStore.swift` | init：Keychain 优先；空则回退 UserDefaults 旧 token 迁入 Keychain 并清明文残留；仍空且已登录 → 强制 isLoggedIn=false 回登录页 |
+
+自检：`check_swift.sh` 全绿。版本号 3.0.86 / 382。
 
 ### v3.0.85（2026-08-30 发版，P0#4/6/7 + P1#8/#13）
 
@@ -349,6 +369,17 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 ### 8. 音频会话未释放
 - 多次录音后 `AVAudioSession.setCategory(.record)` 可能失败（上次录音未正确释放）
 - 修复：录音前先 `try? session.setActive(false, options: .notifyOthersOnDeactivation)`
+
+### 9. token 迁 Keychain 遗漏升级用户 → 全接口 401（v3.0.84 引入，v3.0.86 修复）
+- v3.0.84 把 token 从 UserDefaults 明文迁到 Keychain，但 `AuthStore.init()` **只从 Keychain 读**，**没兜底升级用户**——升级用户此前 token 一直存 UserDefaults、Keychain 为空，但登录布尔(UserDefaults)仍为 `true`。
+- 症状：能进主界面（假登录），一发消息 `/api/stream/start` 返回 401（非 AUTO_LOGIN 时 `check_auth` 要求 `X-Auth-Token` 有效，token 空即 401）。
+- 修复：`init()` 改「Keychain 优先 → 空则回退 UserDefaults 旧 token 迁入 Keychain 并清明文残留 → 仍空且已登录则强制 `isLoggedIn=false` 回登录页」。
+- 类级：**任何「存储迁移」都要考虑升级用户的旧数据兜底**，不能只读新位置。排查「能登录不能聊天」先看客户端 token 是否为空（401 根因），再谈服务端鉴权。
+
+### 10. 收件箱推送 vs 会话流式回复重复（v3.0.87 修复）
+- AI 回复完成后端 `_maybe_push_app` 把回复摘要推入收件箱（方案A：每条都推）；App InboxStore 又把收件箱消息注入当前会话（方案B）→ **同一条回复出现两次**（流式气泡 + 🔔推送气泡）。
+- 修复：App `InboxStore.pollOnce` 注入前调 `shouldSkipDuplicate(push:in:)`——当前会话最后一条 assistant(非推送) 文本已含推送正文（去尾部省略号）→ 判定重复，仅标记已读（`markDone`）不注入。
+- 类级：**两个独立链路（后端自动推 + App 端注入）叠加在同一会话时，必须先想清楚会不会重复**；去重用「当前会话最后一条 assistant 是否已含推送内容」比用 taskId 更简单可靠，且纯 App 端可修、无需动后端。
 
 ---
 

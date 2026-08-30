@@ -88,22 +88,29 @@ final class InboxStore {
         }
     }
 
-    /// v3.0.87 fix：收件箱推送 vs 会话内流式回复去重。
-    /// AI 回复完成时后端 `_maybe_push_app` 会把回复摘要推入收件箱，App InboxStore 又可把它注入当前会话，
-    /// 导致同一条回复出现两次（流式气泡 + 🔔推送气泡）。此方法判断：当前会话最后一条 assistant(非推送)
-    /// 消息文本是否已包含该推送正文——若包含，说明这条回复本就由本会话流式渲染，应跳过重复注入。
+    /// v3.0.88 fix：收件箱推送 vs 会话内流式回复去重（v3.0.87 版因空白格式不匹配失效）。
+    /// 后端 _maybe_push_app 用 re.sub(r"\s+"," ",...) 把回复压成单行摘要，而流式回复 content 保留换行/段落，
+    /// 直接 contains 会匹配失败 → 重复注入。改为双方先压缩空白再双向比对 + 截断前缀兜底。
     private func shouldSkipDuplicate(push text: String, in messages: [ChatMessage]) -> Bool {
-        // 后端摘要可能带尾部省略号（长文截断），去掉再比对
-        let core = text.replacingOccurrences(of: "…", with: "")
+        let core = normalizeWhitespace(text).replacingOccurrences(of: "…", with: "")
         guard !core.isEmpty else { return false }
         for m in messages.reversed() {
-            if m.role == "assistant" && !m.isPush {
-                return m.content.contains(core) || core.contains(m.content)
-            }
+            guard m.role == "assistant" && !m.isPush else { continue }
+            let cm = normalizeWhitespace(m.content)
+            // 双向包含：完整回复包含推送摘要（长回复被截断）或推送摘要包含完整回复
+            if cm.contains(core) || core.contains(cm) { return true }
+            // 截断前缀兜底：推送是完整回复的截断（前 N 字）摘要，且摘要足够长避免短文本误判
+            if core.count >= 10, cm.hasPrefix(core) { return true }
         }
         return false
     }
 
+    /// 压缩全部空白（换行/多空格 → 单空格），使推送摘要（已压单行）与流式回复（带换行）可比对
+    private func normalizeWhitespace(_ s: String) -> String {
+        return s.replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+                .split(separator: " ").joined(separator: " ")
+    }
     // MARK: - 轮询启动/停止
 
     /// 启动后台轮询（App 前台持续拉）。防重复启动。
