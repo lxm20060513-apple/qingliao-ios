@@ -18,7 +18,7 @@ struct DashboardView: View {
     @State private var haEntities: [HAEntity] = []
     @State private var router = RouterStatus()
     @State private var scrollPos = ScrollPosition()
-    @State private var loaded = false   // v2.0.102：首刷逻辑已并入 onAppear，此变量保留占位
+
     @State private var activeSheet: DashboardSheet?
     // v2.0.72：Docker 容器数量（看板卡片状态）
     @State private var dockerContainerCount = 0

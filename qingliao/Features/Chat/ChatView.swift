@@ -145,9 +145,9 @@ struct ChatView: View {
     @Environment(BotStore.self) private var botStore   // v3.0.7：Bot Mode
     @State private var pinStore = PinStore.shared   // v3.0.74：钉一钉
 
-    @State private var inputText = ""
-    @FocusState private var inputFocus: Bool
-    @State private var sentOK = false
+    @State var inputText = ""
+    @FocusState var inputFocus: Bool
+    @State var sentOK = false
     @State private var serverOnline: Bool?   // 服务器连接状态（真实绿点）
     // v2.0.36：引用回复 / 图片查看器 / 导出
     @State private var quotedMessage: ChatMessage?
@@ -167,7 +167,7 @@ struct ChatView: View {
     @State private var pendingSend: (text: String, imageData: String?)?
     @State private var showModelSheet = false   // 模型快速切换
     @State private var showBotManage = false   // v3.0.7：Bot 管理入口（选择器内跳转）
-    @State private var showAttachmentMenu = false
+    @State var showAttachmentMenu = false
     // v2.0.96：Hermes 捷径面板（官方斜杠命令）
     @State private var showHermesShortcut = false
     // 大爆炸（BigBang）文本炸开
@@ -179,17 +179,17 @@ struct ChatView: View {
     @State private var pendingImage: UIImage?
     @State private var pendingImageData: String?
     // v2.0.96：语音转文字（长按发送按钮；v2.0.96c 改服务器 ASR——录音上传转写，侧载全兼容）
-    @StateObject private var voiceRecorder = VoiceRecorder()
-    @State private var voiceMode = false
-    @State private var transcribing = false   // v2.0.100：语音转文字转换中（动画）
-    @State private var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
-    @State private var voiceAuthFailed = false
+    @StateObject var voiceRecorder = VoiceRecorder()
+    @State var voiceMode = false
+    @State var transcribing = false   // v2.0.100：语音转文字转换中（动画）
+    @State var transcribeToken = 0   // v2.0.101：转写代次（停止/新转写递增，旧 Task 结果作废）
+    @State var voiceAuthFailed = false
     @State private var sendingLock = false   // v2.0.102：发送锁（防双击双流竞态）
-    @State private var fileSendBlocked = false   // v2.0.102：流式中发文件提示
-    @State private var voiceTooShort = false   // v2.0.102：录音太短提示
-    @State private var voiceDiag = ""   // v3.0.78 诊断：录音链路诊断信息
+    @State var fileSendBlocked = false   // v2.0.102：流式中发文件提示
+    @State var voiceTooShort = false   // v2.0.102：录音太短提示
+    @State var voiceDiag = ""   // v3.0.78 诊断：录音链路诊断信息
     // v2.0.88：AI 回答中发送的消息队列（回答结束后自动逐条发送）
-    @State private var pendingQueue: [PendingSend] = []
+    @State var pendingQueue: [PendingSend] = []
     // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
     @State private var showFullBurst = false
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
@@ -1548,344 +1548,6 @@ struct ChatView: View {
     /// v2.0.96：退出语音转文字模式（按钮/空白点击共用）
     /// v2.0.96c：停止录音 → 上传转写 → 文字回填输入框
     /// v3.0.19：语音指令模式退出 → 停止录音 → 转写 → 自动发送（uploadAndTranscribe 内分支）
-    private func exitVoiceMode() {
-        guard voiceMode else { return }
-        withAnimation(.easeOut(duration: 0.2)) { voiceMode = false }
-        uploadAndTranscribe()   // v3.0.77 整段录音：uploadAndTranscribe 内统一 stop() 取完整音频
-    }
-
-    /// v3.0.19：限流/服务错误 → 用户友好提示（429/rate limit/tpm exhausted → 建议换模型路由）
-    static func friendlyStreamError(_ error: String) -> String {
-        // v3.0.19 review：截断过长原始错误（防消息里塞整页错误日志）
-        let brief = error.count > 160 ? String(error.prefix(160)) + "…" : error
-        let low = error.lowercased()
-        if low.contains("429") || low.contains("rate limit") || low.contains("tpm") ||
-           low.contains("exhausted") || low.contains("too many request") {
-            return "\(brief)\n\n💡 当前模型的额度限流了（tpm 用尽）。请到「设置 → 模型管理」换一个 provider 的模型（如官方 DeepSeek 或 opencode），稍后再试。"
-        }
-        if low.contains("timeout") || low.contains("timed out") {
-            return "\(brief)\n\n💡 请求超时，可能网络波动或服务繁忙，请重试。"
-        }
-        return brief
-    }
-
-    /// v2.0.96c：上传录音转写（服务器 faster-whisper）
-    /// v2.0.100：transcribing 动画（输入框「语音转换中…」+ 按钮转圈）+ 完成/失败震动
-    /// v2.0.101：停止按钮（transcribeToken 代次——停止/重录使旧 Task 结果作废，杜绝竞态回填）
-    /// v3.0.77：移除 v3.0.36 分段流式——分段每 2s 对录音器 stop/resume（局部/独立文件名）导致段音频读不到，
-    ///          语音转文字恒判"录音太短"。改回整段录音一次转写（v3.0.35 稳定方式）。
-    private func uploadAndTranscribe() {
-        // 整段录音：松手后取完整音频一次 ASR（不依赖分段 voiceSegments）
-        guard let url = voiceRecorder.stop() else {
-            voiceDiag = "stop()=nil recordOK=\(String(describing: voiceRecorder.lastRecordOK))"
-            NSLog("[VOICE] \(voiceDiag)")
-            voiceTooShort = true
-            return
-        }
-        let exists = FileManager.default.fileExists(atPath: url.path)
-        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int ?? -1
-        voiceDiag = "size=\(sz) exists=\(exists) recordOK=\(String(describing: voiceRecorder.lastRecordOK)) ver=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
-        NSLog("[VOICE] \(voiceDiag)")
-        guard exists, let data = try? Data(contentsOf: url), data.count > 100 else {
-            voiceDiag += " → data≤100B"
-            NSLog("[VOICE] tooShort \(voiceDiag)")
-            voiceTooShort = true
-            return
-        }
-        NSLog("[VOICE] OK data.count=\(data.count)")
-        transcribeToken += 1
-        let token = transcribeToken
-        transcribing = true
-        Task {
-            do {
-                let text = try await auth.asrTranscribe(data)
-                guard token == transcribeToken else { return }
-                transcribing = false
-                if !text.isEmpty {
-                    if inputText.isEmpty {
-                        inputText = text
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
-                } else {
-                    voiceTooShort = true
-                }
-            } catch {
-                transcribing = false
-                guard token == transcribeToken else { return }
-                voiceTooShort = true
-            }
-        }
-    }
-
-    // v3.0.77：移除 v3.0.36 分段流式（startVoiceSegments/flushVoiceSegment/stopVoiceSegments）——整段录音无分段循环
-
-    /// v2.0.101：停止转写（代次递增使旧 Task 结果作废 + 立即隐藏转换动画）
-    private func stopTranscribe() {
-        transcribeToken += 1
-        transcribing = false
-    }
-
-    /// v2.0.96：语音转文字模式开关（长按发送按钮进入，点按钮/空白退出）
-    /// v2.0.100：进入时震动反馈（UIImpactFeedbackGenerator medium）
-    /// v2.0.106：长按输入框进入同款路径
-    /// v2.0.107：键盘两场景——长按前键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
-    /// v2.0.107b：震动改 heavy + prepare（原 medium 无 prepare，首次 impact 常被系统丢弃/偏弱）
-    private func toggleVoiceMode(keyboardWasUp: Bool = false) {
-        // v3.0.4：云端模式无后端 ASR → 屏蔽语音转文字入口（双重保护，避免误入）
-        guard !CloudConfig.shared.isCloudMode else { return }
-        if voiceMode {
-            exitVoiceMode()
-        } else {
-            if voiceRecorder.start() {
-                let gen = UIImpactFeedbackGenerator(style: .heavy)
-                gen.prepare()
-                gen.impactOccurred()   // 长按激活震动反馈
-                if !keyboardWasUp {
-                    inputFocus = false   // 键盘原本未开 → 收回触摸聚焦弹起的键盘（语音模式不弹键盘）
-                    // v2.0.108c：FocusState 在触摸聚焦动画中设置可能被系统覆盖（iOS27）——
-                    // 延迟 60ms 用 UIKit 强制 resignFirstResponder 兜底，确保键盘收回
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                        to: nil, from: nil, for: nil)
-                    }
-                }
-                withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
-            } else {
-                // v3.0.19 review fix #2：麦克风失败 → 重置语音指令标志（防残留劫持下次转文字）
-
-                voiceAuthFailed = true   // 麦克风权限被拒
-            }
-        }
-    }
-
-    /// v2.0.96：消息撤回（标记 withdrawn → 显示"已撤回"占位 + 服务器同步）
-    private func withdrawMessage(_ msg: ChatMessage) {
-        if let idx = chat.messages.firstIndex(where: { $0.id == msg.id }) {
-            chat.messages[idx].withdrawn = true
-            Task { await chat.saveToServer(auth: auth) }
-        }
-    }
-
-    /// v2.0.92：分享会话卡片（最近 15 条渲染成图片 → 系统分享/微信）
-    private func shareSessionCard() {
-        let msgs = Array(chat.messages.suffix(15))
-        guard !msgs.isEmpty else { return }
-        let rows = msgs.map { msg -> (role: String, text: String) in
-            if msg.withdrawn { return (msg.role, "[已撤回]") }
-            var t = msg.content.replacingOccurrences(of: "\n", with: " ")
-            if t.count > 120 { t = String(t.prefix(120)) + "…" }
-            return (msg.role, t)
-        }
-        let card = SessionCardView(rows: rows)
-        let renderer = ImageRenderer(content: card)
-        renderer.scale = 3   // @3x 高清
-        guard let img = renderer.uiImage else { return }
-        presentShare([img])
-    }
-
-    // MARK: - 消息操作
-
-    /// v2.0.36：单条删除（按索引精确删除，防同内容 hash id 误删）
-    /// v2.0.102：同步移除对应排队项（修复排队消息删除后"复活"自动重发）
-    private func deleteMessage(_ msg: ChatMessage) {
-        if let idx = chat.messages.firstIndex(where: { $0.timestamp == msg.timestamp && $0.role == msg.role && $0.content == msg.content }) {
-            withAnimation { chat.messages.remove(at: idx) }
-            pendingQueue.removeAll { $0.text == msg.content && $0.imageData == msg.imageDataURL }
-            Task { await chat.saveToServer(auth: auth) }
-        }
-    }
-
-    /// v2.0.36+88：系统分享（微信分享扩展不支持纯文本 → 自动转 原图/URL/文字图片）
-    private func shareMessage(_ msg: ChatMessage) {
-        // 1) 图片消息：分享原图（微信支持图片；原来分享 "[图片]" 文本会失败）
-        if let urlStr = msg.imageDataURL, !urlStr.isEmpty,
-           let img = dataURLImage(urlStr) {
-            presentShare([img])
-            return
-        }
-        let text = msg.content
-        guard !text.isEmpty else { return }
-        // 2) 纯链接：分享 URL（微信支持网页链接）
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let url = URL(string: trimmed),
-           let scheme = url.scheme?.lowercased(),
-           (scheme == "http" || scheme == "https"),
-           !trimmed.contains(" ") {
-            presentShare([url])
-            return
-        }
-        // 3) 普通文本：渲染成文字图片再分享（微信唯一接受的文本形态）
-        if let img = textShareImage(text) {
-            presentShare([img])
-        } else {
-            presentShare([text])   // 兜底：渲染失败退回原始文本
-        }
-    }
-
-    /// 分享面板统一弹出（v2.0.88：iPad 必须提供 popover 锚点，否则崩溃）
-    private func presentShare(_ items: [Any]) {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.windows.first?.rootViewController else { return }
-        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        if let pop = av.popoverPresentationController {
-            pop.sourceView = root.view
-            pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
-        }
-        root.present(av, animated: true)
-    }
-
-    /// 文本 → 分享图片（固定白底深字，宽度固定高度自适应，微信友好）
-    private func textShareImage(_ text: String) -> UIImage? {
-        let maxChars = 2000
-        var content = textShareClean(text)
-        if content.count > maxChars {
-            content = String(content.prefix(maxChars)) + "\n\n…（内容过长，已截断）"
-        }
-        let width: CGFloat = 320
-        let hPad: CGFloat = 20
-        let vPad: CGFloat = 24
-        let font = UIFont.systemFont(ofSize: 16)
-        let para = NSMutableParagraphStyle()
-        para.lineSpacing = 6
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: UIColor(white: 0.13, alpha: 1),
-            .paragraphStyle: para
-        ]
-        let ns = content as NSString
-        let drawSize = CGSize(width: width - hPad * 2, height: .greatestFiniteMagnitude)
-        let box = ns.boundingRect(with: drawSize,
-                                  options: [.usesLineFragmentOrigin, .usesFontLeading],
-                                  attributes: attrs, context: nil)
-        let height = ceil(box.height) + vPad * 2
-        guard height < 4000 else { return nil }   // 极端超长防爆内存
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
-        return renderer.image { ctx in
-            UIColor(white: 1, alpha: 1).setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            ns.draw(with: CGRect(x: hPad, y: vPad, width: drawSize.width, height: box.height + 20),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    attributes: attrs, context: nil)
-        }
-    }
-
-    /// 分享前轻量清理 markdown 符号（转图片后更干净）
-    private func textShareClean(_ text: String) -> String {
-        var t = text
-        t = t.replacingOccurrences(of: "```", with: "")
-        t = t.replacingOccurrences(of: "`", with: "")
-        t = t.replacingOccurrences(of: "### ", with: "")
-        t = t.replacingOccurrences(of: "## ", with: "")
-        t = t.replacingOccurrences(of: "# ", with: "")
-        t = t.replacingOccurrences(of: "**", with: "")
-        t = t.replacingOccurrences(of: "> ", with: "")
-        return t
-    }
-
-    /// v2.0.36：图片 dataURL → UIImage（大图查看用；与 MessageBubble 同逻辑）
-
-    /// 发送 PDF 文件对话（PDFKit 提取文本拼进消息，AI 直接读内容）
-    // MARK: - v2.0.84 文件整份上传（原件存 NAS，文本类/PDF 同时提取内容给 AI）
-
-    /// v2.0.86s：上传结果细分（区分服务器拒绝 / 蜂窝限制 / 连接失败，提示不误导）
-    enum UploadResult {
-        case success
-        case rejected(String)       // 服务器返回错误（带信息）
-        case networkFailed(String)  // 网络/连接失败（错误信息含蜂窝限制时提示 WiFi/Web）
-    }
-
-    /// 上传整份文件到 NAS（/api/files/upload；WiFi 直连可传大文件，蜂窝 relay 受限自动失败）
-    private func uploadFile(_ url: URL, name: String) async -> UploadResult {
-        guard let data = try? Data(contentsOf: url) else { return .rejected("文件读取失败") }
-        do {
-            let j = try await auth.uploadMultipart("/api/files/upload", fileName: name, data: data)
-            if (j["ok"] as? Bool) == true { return .success }
-            return .rejected(j["message"] as? String ?? j["error"] as? String ?? "上传失败")
-        } catch {
-            return .networkFailed("\(error)")
-        }
-    }
-
-    private func sendFile(_ url: URL) {
-        // v2.0.102：流式中发文件不再静默丢弃——明确提示
-        guard !stream.isStreaming else {
-            fileSendBlocked = true
-            return
-        }
-        let access = url.startAccessingSecurityScopedResource()
-        let name = url.lastPathComponent
-        let ext = (name as NSString).pathExtension.lowercased()
-
-        Task {
-            // v2.0.102：安全作用域在 Task 内保持到读取完成（原 defer 提前释放导致 iOS 读取失败）
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            // 整份上传 NAS（原件服务器保留，可下载）
-            let result = await uploadFile(url, name: name)
-            var content: String
-            switch result {
-            case .success:
-                if ["txt", "md", "log", "json", "csv"].contains(ext),
-                   let text = try? String(contentsOf: url, encoding: .utf8) {
-                    // 文本类：上传原件 + 提取前 12000 字给 AI 阅读
-                    content = "[文件: \(name)]（已上传 NAS）\n\(String(text.prefix(12000)))"
-                } else if ext == "pdf" {
-                    // PDF：上传原件 + PDFKit 提取文本给 AI
-                    let raw = extractPDFText(from: url) ?? ""
-                    content = raw.isEmpty
-                        ? "[PDF: \(name)]（已上传 NAS，扫描件无文字层）"
-                        : "[PDF: \(name)]（已上传 NAS）\n\(String(raw.prefix(12000)))"
-                } else {
-                    // Word/Excel 等：整份上传（本地不提取，文件在 NAS 可下载）
-                    content = "[文件: \(name)]（已上传 NAS）"
-                }
-            case .rejected(let msg):
-                // v2.0.86s：服务器拒绝（磁盘满/路径错误等）→ 显示具体原因
-                content = "[文件: \(name)]（上传失败：\(msg)）"
-            case .networkFailed(let msg):
-                // v2.0.86s：蜂窝 relay 上行 ~2KB 限制大文件；WiFi 网络异常则提示重试
-                if msg.contains("蜂窝") || msg.contains("文件过大") || NetworkMonitor.shared.isCellular {
-                    content = "[文件: \(name)]（上传失败：蜂窝网络限制大文件，请连接 WiFi 重试或使用 Web 版上传）"
-                } else {
-                    content = "[文件: \(name)]（上传失败：连接异常，请重试）"
-                }
-            }
-            chat.append(.local(role: "user", content: content))
-            let history = chat.historyPayload()
-            // v3.0.29 fix：文件发送也走 agent 模型优先级链
-            let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
-            let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
-            let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
-            let (useModel, useProvider): (String, String) = {
-                if agentOn && !agentModelName.isEmpty {
-                    return (agentModelName, agentProviderName)
-                }
-                return (modelName, provider)
-            }()
-            await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
-                               provider: useProvider, messages: history) { success, error in
-                if !success {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
-                } else {
-                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
-                    showSentOK()
-                    // v2.0.36：App 退后台时 AI 回复完成发本地通知
-                    if UIApplication.shared.applicationState != .active {
-                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
-                                                  sessionId: chat.sessionId)
-                    }
-                }
-                Task { await chat.saveToServer(auth: auth) }
-            }
-        }
-    }
-
-    /// PDFKit 提取文本（文本型 PDF 才有内容；扫描件无文字层返回空）
-    private func extractPDFText(from url: URL) -> String? {
-        guard let doc = PDFDocument(url: url) else { return nil }
-        return doc.string
-    }
-
-    /// 重新生成：长按 AI 消息 → 删除该条及其后，重发
     private func regenerate(at id: String) {
         guard !stream.isStreaming,
               let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
