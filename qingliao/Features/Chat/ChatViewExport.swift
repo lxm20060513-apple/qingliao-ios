@@ -194,16 +194,8 @@ extension ChatView {
             }
             chat.append(.local(role: "user", content: content))
             let history = chat.historyPayload()
-            // v3.0.29 fix：文件发送也走 agent 模型优先级链
-            let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
-            let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
-            let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
-            let (useModel, useProvider): (String, String) = {
-                if agentOn && !agentModelName.isEmpty {
-                    return (agentModelName, agentProviderName)
-                }
-                return (modelName, provider)
-            }()
+            // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
+            let (useModel, useProvider) = resolveModel()
             await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
                                provider: useProvider, messages: history) { success, error in
                 if !success {

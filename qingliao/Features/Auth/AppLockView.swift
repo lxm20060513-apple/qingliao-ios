@@ -51,9 +51,7 @@ struct AppLockView: View {
         }
         .onAppear {
             // 进入锁屏自动发起验证（免点按钮）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                verify()
-            }
+            Task { try? await Task.sleep(for: .seconds(0.4)); verify() }
         }
     }
 

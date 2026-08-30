@@ -368,13 +368,16 @@ struct MessageBubble: View {
 
     /// 消息内容分段：``` 代码块 → 等宽深色块；其余 → markdown
     /// v3.0.41 性能：流式输出中跳过分段（split/图片展开都是 O(n) 全量扫描），直接单块渲染
+    /// v3.0.x：加 LRU 缓存——同一 content+serverURL+streaming 组合不重复解析
     private var contentBlocks: [MessageContentBlock] {
-        Self.blocks(for: message.content, serverURL: serverURL, streaming: streamingText)
+        Self.blocksCached(for: message.content, serverURL: serverURL, streaming: streamingText)
     }
 
     /// 按段落(空行 \n\n)拆分——跳过 ``` 代码块内部空行，代码块整体不拆
     /// 供多气泡段落流式输出使用（v3.0.51）
+    /// v3.0.x：加缓存——同一文本不重复拆分
     private static func splitParagraphs(_ text: String) -> [String] {
+        if let cached = _paraCache[text] { return cached }
         let lines = text.components(separatedBy: "\n")
         var paras: [String] = []
         var cur: [String] = []
@@ -389,8 +392,26 @@ struct MessageBubble: View {
             }
         }
         if !cur.isEmpty { paras.append(cur.joined(separator: "\n")) }
-        return paras.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let result = paras.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // 缓存：限制容量防内存膨胀（流式中同一 key 反复查，命中率极高）
+        if _paraCache.count > 200 { _paraCache.removeAll() }
+        _paraCache[text] = result
+        return result
     }
+
+    /// v3.0.x：blocks 缓存（key = content+serverURL+streaming 三元组哈希）
+    private static func blocksCached(for text: String, serverURL: String, streaming: Bool) -> [MessageContentBlock] {
+        let key = "\(text.hashValue)|\(serverURL)|\(streaming)"
+        if let cached = _blocksCache[key] { return cached }
+        let result = blocks(for: text, serverURL: serverURL, streaming: streaming)
+        if _blocksCache.count > 200 { _blocksCache.removeAll() }
+        _blocksCache[key] = result
+        return result
+    }
+
+    // 静态缓存（View struct 每次 body 重建，static 持久化跨次评估）
+    private static var _paraCache: [String: [String]] = [:]
+    private static var _blocksCache: [String: [MessageContentBlock]] = [:]
 
     /// 指定文本的 markdown 分段渲染（v3.0.51：多气泡段落各自解析）
     private static func blocks(for text: String, serverURL: String, streaming: Bool) -> [MessageContentBlock] {
@@ -416,9 +437,10 @@ struct MessageBubble: View {
     }
 
     /// v3.0.51：AI 消息是否为「多气泡段落」渲染（>1 段且非图片消息）
+    /// v3.0.x：复用缓存版 splitParagraphs
     private var isMultiBubbleAI: Bool {
         !message.isUser && message.imageDataURL == nil
-            && Self.splitParagraphs(message.content).count > 1
+            && Self.splitParagraphs(message.content).count > 1  // splitParagraphs 内部已有缓存
     }
 
     /// v3.0.51：多气泡的单个段落气泡——每段独立圆角底 + maxWidth 366（贴左）
@@ -643,6 +665,3 @@ struct AIImageView: View {
     }
 }
 
-// MARK: - 液态玻璃输入栏
-
-struct ChatInputBar: View {

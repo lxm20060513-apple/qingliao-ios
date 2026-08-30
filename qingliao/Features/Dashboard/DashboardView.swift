@@ -393,7 +393,7 @@ struct DashboardView: View {
     }
 
     private func loadHw() async {
-        if let j = try? await auth.json("/api/hw/status") {
+        if let j = await auth.jsonOrLog("/api/hw/status") {
             hwCpu = j["cpu_temp"] as? Double
             hwSsd = j["ssd_temp"] as? Double
         }
@@ -404,7 +404,7 @@ struct DashboardView: View {
     private func loadWeather() async {
         let city = weatherCity.trimmingCharacters(in: .whitespaces)
         let q = city.isEmpty ? "" : "?city=" + (city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
-        if let j = try? await auth.json("/api/weather\(q)") {
+        if let j = await auth.jsonOrLog("/api/weather\(q)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
         }
@@ -419,7 +419,7 @@ struct DashboardView: View {
             return
         }
         let enc = weatherCity.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? weatherCity
-        if let j = try? await auth.json("/api/weather?city=\(enc)") {
+        if let j = await auth.jsonOrLog("/api/weather?city=\(enc)") {
             weatherTemp = j["temp"] as? Double
             weatherCode = j["code"] as? Int
             if let c = j["city"] as? String, !c.isEmpty { weatherCity = c }
@@ -427,14 +427,14 @@ struct DashboardView: View {
     }
 
     private func loadRouter() async {
-        if let j = try? await auth.json("/api/router/status") {
+        if let j = await auth.jsonOrLog("/api/router/status") {
             router = RouterStatus.parse(j)
         }
     }
 
     /// v3.0.36：模型使用量（DeepSeek/StepFun 余额 + unsupported 降级）
     private func loadProviderUsage() async {
-        guard let j = try? await auth.json("/api/nas/providers-usage") else {
+        guard let j = await auth.jsonOrLog("/api/nas/providers-usage") else {
             usageError = "用量查询失败"
             return
         }
@@ -453,7 +453,7 @@ struct DashboardView: View {
         router.busy = true
         Task {
             defer { router.busy = false }
-            if let j = try? await auth.json("/api/router/clash/\(action)", method: "POST", body: nil) {
+            if let j = await auth.jsonOrLog("/api/router/clash/\(action)", method: "POST", body: nil) {
                 // v2.0.92：操作成功清空错误显示（失败原因由后端按"服务已启动"输出判断）
                 if (j["ok"] as? Bool) == true {
                     router.error = ""
@@ -470,7 +470,7 @@ struct DashboardView: View {
         diagnosing = true
         diagnoseError = ""
         defer { diagnosing = false }
-        if let j = try? await auth.json("/api/nas/diagnose") {
+        if let j = await auth.jsonOrLog("/api/nas/diagnose") {
             if let items = j["items"] as? [[String: Any]] {
                 diagnoseItems = items.map { d in
                     DiagnoseItem(id: d["id"] as? String ?? UUID().uuidString,
@@ -490,40 +490,56 @@ struct DashboardView: View {
     }
 
     private func refresh() async {
-        // 顺序请求（async let 返回值非 Sendable，Swift 6 严格并发下编译失败）
-        if let n = try? await auth.json("/api/nas/status") {
-            nas = NASStatus.parse(n)
-        }
-        if let h = try? await auth.jsonArray("/api/ha/states") {
-            haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
-        }
-        // v2.0.96：场景列表
-        if let j = try? await auth.json("/api/scenes/list") {
-            scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
-        }
-        // v2.0.104：定时自动化（倒计时列表）
-        if let j = try? await auth.json("/api/automations/list") {
-            automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
-        }
-        // v2.0.116：主动建议（后台引擎生成的最新建议，打开看板自动显示；手动生成过则不覆盖）
-        // v2.0.132：后端引擎平时不出建议（30 分钟才巡检）→ 缓存兜底 + 缓存过期则自动生成
-        if smartSuggestion.isEmpty {
-            if let j = try? await auth.json("/api/agent/last_suggestion"),
-               let sug = j["suggestion"] as? [String: Any],
-               let text = sug["text"] as? String, !text.isEmpty {
-                smartSuggestion = text
-            } else if let cached = cachedSuggestion {
-                smartSuggestion = cached   // 30 分钟内的缓存直接显示，不重复生成
-            } else if shouldAutoGenerate {
-                // 无后端建议且缓存过期 → 自动生成（无需手动点按钮）
-                Task { await loadSmartSuggestion() }
+        // v3.0.x：并行请求——7 个独立 API 用 TaskGroup 并发（原串行，每个等前一个完成才发下一个）
+        // Swift 6 严格并发：async let 返回非 Sendable 类型会编译失败，TaskGroup 内各自更新 @State 规避
+        await withTaskGroup(of: Void.self) { group in
+            // NAS 状态
+            group.addTask { @MainActor in
+                if let n = await self.auth.jsonOrLog("/api/nas/status") {
+                    self.nas = NASStatus.parse(n)
+                }
+            }
+            // HA 设备状态
+            group.addTask { @MainActor in
+                if let h = await self.auth.jsonArrayOrLog("/api/ha/states") {
+                    self.haEntities = h.compactMap { HAEntity.parse($0 as? [String: Any] ?? [:]) }
+                }
+            }
+            // 场景列表
+            group.addTask { @MainActor in
+                if let j = await self.auth.jsonOrLog("/api/scenes/list") {
+                    self.scenes = (j["scenes"] as? [[String: Any]] ?? []).map { SceneItem($0) }
+                }
+            }
+            // 自动化列表
+            group.addTask { @MainActor in
+                if let j = await self.auth.jsonOrLog("/api/automations/list") {
+                    self.automations = (j["automations"] as? [[String: Any]] ?? []).map { AutomationItem($0) }
+                }
+            }
+            // 智能建议
+            group.addTask { @MainActor in
+                if self.smartSuggestion.isEmpty {
+                    if let j = await self.auth.jsonOrLog("/api/agent/last_suggestion"),
+                       let sug = j["suggestion"] as? [String: Any],
+                       let text = sug["text"] as? String, !text.isEmpty {
+                        self.smartSuggestion = text
+                    } else if let cached = self.cachedSuggestion {
+                        self.smartSuggestion = cached
+                    } else if self.shouldAutoGenerate {
+                        Task { await self.loadSmartSuggestion() }
+                    }
+                }
+            }
+            // 路由器状态
+            group.addTask { @MainActor in
+                await self.loadRouter()
+            }
+            // 模型使用量
+            group.addTask { @MainActor in
+                await self.loadProviderUsage()
             }
         }
-        // v2.0.35：10s 轮询补上路由器（原来只在 onAppear 加载一次 →
-        // 路由器重启后状态永远停在红点/离线，不会自动恢复）
-        await loadRouter()
-        // v3.0.36：模型使用量（余额查询，独立于 nas/status）
-        await loadProviderUsage()
     }
 
     // v2.0.132：智能建议缓存（30 分钟有效，避免每次进看板/轮询重复生成费 token）
@@ -553,7 +569,7 @@ struct DashboardView: View {
             let acOn = haEntities.filter { $0.entityID.hasPrefix("climate.") && $0.state == "on" }.count
             parts.append("设备：\(lightsOn) 盏灯开 / \(acOn) 台空调开")
         }
-        if let j = try? await auth.json("/api/agent/suggest", method: "POST",
+        if let j = await auth.jsonOrLog("/api/agent/suggest", method: "POST",
                                         body: ["context": parts.joined(separator: "；")]),
            let text = j["text"] as? String, !text.isEmpty {
             smartSuggestion = text
@@ -575,7 +591,7 @@ struct DashboardView: View {
     /// v2.0.104：取消自动化（长按卡片）
     private func cancelAutomation(_ a: AutomationItem) {
         Task {
-            _ = try? await auth.json("/api/automations/\(a.id)", method: "DELETE", body: nil)
+            _ = await auth.jsonOrLog("/api/automations/\(a.id)", method: "DELETE", body: nil)
             automations.removeAll { $0.id == a.id }
         }
     }
@@ -603,7 +619,7 @@ struct DashboardView: View {
         sceneRunning = true
         Task {
             defer { sceneRunning = false }
-            if let j = try? await auth.json("/api/scenes/run", method: "POST", body: ["name": s.name]) {
+            if let j = await auth.jsonOrLog("/api/scenes/run", method: "POST", body: ["name": s.name]) {
                 let ok = (j["ok"] as? Bool) ?? false
                 let msg = (j["message"] as? String) ?? (ok ? "执行成功" : "执行失败")
                 sceneResult = msg
@@ -620,7 +636,7 @@ struct DashboardView: View {
     /// v2.0.96：删除场景（v2.0.102：仅服务器确认成功才移除——失败保留并提示）
     private func deleteScene(_ s: SceneItem) {
         Task {
-            if let j = try? await auth.json("/api/scenes/delete", method: "POST", body: ["name": s.name]),
+            if let j = await auth.jsonOrLog("/api/scenes/delete", method: "POST", body: ["name": s.name]),
                (j["ok"] as? Bool) == true {
                 scenes.removeAll { $0.name == s.name }
             } else {
@@ -633,7 +649,7 @@ struct DashboardView: View {
     // MARK: - v2.0.72 Docker 容器数量
 
     private func loadDockerCount() async {
-        if let j = try? await auth.json("/api/docker/ps") {
+        if let j = await auth.jsonOrLog("/api/docker/ps") {
             dockerContainerCount = (j["containers"] as? [[String: Any]] ?? []).count
         }
     }
@@ -804,7 +820,7 @@ struct ServiceControlSheet: View {
             .padding(.horizontal, 16)
             .task {
                 // 真实运行状态
-                if let n = try? await auth.json("/api/nas/status") {
+                if let n = await auth.jsonOrLog("/api/nas/status") {
                     let st = NASStatus.parse(n)
                     running = service == .qingliao ? st.qingliaoAlive : st.hermesAlive
                 }
@@ -907,7 +923,8 @@ struct ServiceControlSheet: View {
                 _ = try await auth.request("/api/nas/service/restart", method: "POST",
                                            body: service.restartBody)
                 info = "重试指令已发送，服务即将重启"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
                     if !Task.isCancelled { dismiss() }
                 }
             } catch {
@@ -926,7 +943,8 @@ struct ServiceControlSheet: View {
                 _ = try await auth.request("/api/nas/service/stop", method: "POST",
                                            body: service.restartBody)
                 info = "停止指令已发送"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
                     if !Task.isCancelled { dismiss() }
                 }
             } catch {

@@ -229,10 +229,14 @@ final class ChatStore {
             "title": t.isEmpty ? firstUserText : t,
             "messages": msgsPayload
         ]
-        _ = try? await auth.request("/api/sessions/merge", method: "POST", body: [
-            "sessions": [payload],
-            "deleted": [] as [Any]
-        ])
+        do {
+            _ = try await auth.request("/api/sessions/merge", method: "POST", body: [
+                "sessions": [payload],
+                "deleted": [] as [Any]
+            ])
+        } catch {
+            print("[saveToServer] 保存会话失败 sid=\(sid.prefix(8)) error=\(error.localizedDescription)")
+        }
     }
 
     // MARK: - v2.0.36

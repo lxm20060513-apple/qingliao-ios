@@ -102,7 +102,8 @@ extension ChatView {
                     inputFocus = false   // 键盘原本未开 → 收回触摸聚焦弹起的键盘（语音模式不弹键盘）
                     // v2.0.108c：FocusState 在触摸聚焦动画中设置可能被系统覆盖（iOS27）——
                     // 延迟 60ms 用 UIKit 强制 resignFirstResponder 兜底，确保键盘收回
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.06))
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                                         to: nil, from: nil, for: nil)
                     }

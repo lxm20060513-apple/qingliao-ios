@@ -253,7 +253,7 @@ struct FilesView: View {
             }
         } catch {
             toast = "加载失败"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
         }
     }
 
@@ -263,7 +263,7 @@ struct FilesView: View {
         // 蜂窝下 Safari relay 的 URL 有 4KB 限制：大文件必须 Wi-Fi 直连
         if NetworkMonitor.shared.isCellular && e.size > 2000 {
             toast = "文件较大（\(Int(e.size / 1024))KB），蜂窝下载受限，请连接 Wi-Fi 后重试"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(3)); toast = "" }
             return
         }
         let path = ((cwd.isEmpty ? "" : cwd + "/") + e.name).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
@@ -271,7 +271,7 @@ struct FilesView: View {
             let (data, code) = try await auth.downloadFile("/api/files/download?path=\(path)")
             guard code == 200 else {
                 toast = "下载失败（服务器返回 \(code)）"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+                Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
                 return
             }
             let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -280,10 +280,10 @@ struct FilesView: View {
             let fileURL = dir.appendingPathComponent(e.name)
             try data.write(to: fileURL)
             toast = "已下载到 App 文件目录"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
         } catch {
             toast = "下载失败"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
         }
     }
 
@@ -292,18 +292,18 @@ struct FilesView: View {
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         guard let fileData = try? Data(contentsOf: url) else {
             toast = "读取文件失败"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
             return
         }
         let fileName = url.lastPathComponent
         do {
             _ = try await auth.uploadMultipart("/api/files/upload", fileName: fileName, data: fileData)
             toast = "上传成功"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
             await load()
         } catch {
             toast = "上传失败"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = "" }
+            Task { try? await Task.sleep(for: .seconds(2)); toast = "" }
         }
     }
 

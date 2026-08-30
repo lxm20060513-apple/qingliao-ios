@@ -68,11 +68,11 @@ struct ModelSheet: View {
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
     @AppStorage("qingliao_provider") private var currentProvider = "opencode"
     // v3.0.57：免费模型开关（keyless opencode-free）——开启后用 Hermes 内置免费档，免任何 Key
-    @AppStorage("qingliao_free_model") private var freeModelOn = false
-    @AppStorage("qingliao_free_model_name") private var freeModelName = "nemotron-3.5-lightning-free"
+    @AppStorage(UserDefaultsKey.freeModel) private var freeModelOn = false
+    @AppStorage(UserDefaultsKey.freeModelName) private var freeModelName = "nemotron-3.5-lightning-free"
     // v3.0.33：Agent 模型覆盖提示（Agent 开关开且配置了 agent 模型时，聊天实际走 agent 模型）
-    @AppStorage("qingliao_agent_model") private var agentModel = ""
-    @AppStorage("qingliao_agent_enabled") private var agentOn = true
+    @AppStorage(UserDefaultsKey.agentModel) private var agentModel = ""
+    @AppStorage(UserDefaultsKey.agentEnabled) private var agentOn = true
     // v3.0.18：本地模型（Ollama 已安装，自主选择——动态拉取 /api/local/models）
     @State private var localInstalled: [String] = []
     // v3.0.10：视觉模型配置弹窗（模型管理内导航）
@@ -1134,8 +1134,8 @@ struct WechatChannelSheet: View {
 struct AgentModelSheet: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("qingliao_agent_model") private var agentModel = ""
-    @AppStorage("qingliao_agent_provider") private var agentProvider = ""
+    @AppStorage(UserDefaultsKey.agentModel) private var agentModel = ""
+    @AppStorage(UserDefaultsKey.agentProvider) private var agentProvider = ""
     @AppStorage("qingliao_model") private var mainModel = "deepseek-v4-flash"
     @AppStorage("qingliao_provider") private var mainProvider = "opencode"
 

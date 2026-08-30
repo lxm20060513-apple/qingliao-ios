@@ -108,9 +108,7 @@ private struct TabTransitionModifier: ViewModifier {
             .scaleEffect(appeared ? 1 : 0.97, anchor: .center)
             .animation(.easeInOut(duration: 0.2), value: appeared)
             .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                    appeared = true
-                }
+                Task { try? await Task.sleep(for: .seconds(0.01)); appeared = true }
             }
             .onChange(of: selected) { _, newVal in
                 withAnimation(.easeInOut(duration: 0.2)) {

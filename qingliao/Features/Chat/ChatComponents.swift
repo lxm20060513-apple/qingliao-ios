@@ -266,9 +266,9 @@ struct MessageBlockView: View {
 }
 
 
-// MARK: - v2.0.36 会话导出文档（.txt）
+// MARK: - v2.0.36+v3.0.81 会话导出文档（统一 .txt/.md 纯文本导出）
 
-struct ChatLogDocument: FileDocument {
+struct ChatTextDocument: FileDocument {
     var text: String
     static var readableContentTypes: [UTType] { [.plainText] }
     init(text: String) { self.text = text }
@@ -280,19 +280,9 @@ struct ChatLogDocument: FileDocument {
     }
 }
 
-// MARK: - v3.0.22 会话导出文档（.md）
-
-struct ChatMarkdownDocument: FileDocument {
-    var text: String
-    static var readableContentTypes: [UTType] { [.plainText] }
-    init(text: String) { self.text = text }
-    init(configuration: ReadConfiguration) throws {
-        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
-    }
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: Data(text.utf8))
-    }
-}
+// 向后兼容别名（v3.0.81 合并 ChatLogDocument + ChatMarkdownDocument）
+typealias ChatLogDocument = ChatTextDocument
+typealias ChatMarkdownDocument = ChatTextDocument
 
 // MARK: - v3.0.22 会话导出文档（.pdf）
 

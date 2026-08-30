@@ -77,9 +77,7 @@ struct ServerSheet: View {
                     auth.serverURL = s
                     UserDefaults.standard.set(s, forKey: "qingliao_server")
                     saved = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        auth.logout()
-                    }
+                    Task { try? await Task.sleep(for: .seconds(0.8)); auth.logout() }
                 } label: {
                     Text("保存并重新登录")
                     .font(.system(size: 15, weight: .semibold))
@@ -285,9 +283,7 @@ struct PasswordSheet: View {
                 ])
                 if (j["ok"] as? Bool) ?? false {
                     result = "✅ 修改成功，请重新登录"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        auth.logout()
-                    }
+                    Task { try? await Task.sleep(for: .seconds(1.2)); auth.logout() }
                 } else {
                     result = "⚠️ " + ((j["error"] as? String) ?? "修改失败")
                 }

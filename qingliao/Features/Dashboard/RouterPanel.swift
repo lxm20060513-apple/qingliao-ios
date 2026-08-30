@@ -149,7 +149,7 @@ struct ClashSheet: View {
                 // 打开 Clash
                 Button {
                     dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onStart() }
+                    Task { try? await Task.sleep(for: .seconds(0.3)); onStart() }
                 } label: {
                     VStack(spacing: 8) {
                         Image(systemName: "play.fill")
@@ -172,7 +172,7 @@ struct ClashSheet: View {
                 // 关闭 Clash
                 Button {
                     dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onStop() }
+                    Task { try? await Task.sleep(for: .seconds(0.3)); onStop() }
                 } label: {
                     VStack(spacing: 8) {
                         Image(systemName: "stop.fill")

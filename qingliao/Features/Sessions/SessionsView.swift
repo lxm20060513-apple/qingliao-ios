@@ -290,9 +290,7 @@ struct SessionsView: View {
             Button("删除", role: .destructive) {
                 if let s = confirmDelete {
                     confirmDelete = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        delete(s)
-                    }
+                    Task { try? await Task.sleep(for: .seconds(0.3)); delete(s) }
                 }
             }
             Button("取消", role: .cancel) {}
@@ -721,8 +719,8 @@ struct BotCard: View {
             let c = CloudConfig.shared.activeConfig
             return "\(c?.name ?? "云端")/\(c?.model ?? "未选")"
         }
-        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
-        let agentModel = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
+        let agentOn = UserDefaults.standard.bool(forKey: UserDefaultsKey.agentEnabled)
+        let agentModel = UserDefaults.standard.string(forKey: UserDefaultsKey.agentModel) ?? ""
         if agentOn && !agentModel.isEmpty {
             return "\(provider)/\(agentModel)"
         }

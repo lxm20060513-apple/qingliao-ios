@@ -12,7 +12,7 @@ struct CloudSettingsView: View {
     @State private var showCloudModels = false   // v3.0.2：云端模型管理列表
     @State private var confirmLogout = false
     // v3.0.57：免费模型开关（keyless opencode-free）——复用本地同一 key（双模式唯一开关，不各做一套）
-    @AppStorage("qingliao_free_model") private var freeModelOn = false
+    @AppStorage(UserDefaultsKey.freeModel) private var freeModelOn = false
     @State private var pendingDeleteID: String?   // v3.0.57：云端厂商删除确认
 
     var body: some View {

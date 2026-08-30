@@ -550,9 +550,7 @@ struct ChatView: View {
                         // v2.0.132：点击智能球 → 全屏粒子爆发
                         onFullBurst: {
                             showFullBurst = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
-                                showFullBurst = false
-                            }
+                            Task { try? await Task.sleep(for: .seconds(1.55)); showFullBurst = false }
                         })
                         // v2.0.129：球态输入框 —— 绑定会话 id，切会话重建复位（展开态在切会话后回球态）
                         .id(chat.sessionId)
@@ -874,7 +872,8 @@ struct ChatView: View {
                 withAnimation(.easeOut(duration: 0.3)) {
                     proxy.scrollTo(mid, anchor: .center)
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
                     withAnimation(.easeOut(duration: 0.3)) { highlightMessageID = nil }
                 }
             }
@@ -1202,27 +1201,8 @@ struct ChatView: View {
         }
         let startSid = chat.sessionId
 
-        // v3.0.10：图片消息时，若主模型不支持视觉 → 自动切换视觉模型
-        // v3.0.20：Agent 模型自定义——agent 开启且配置了独立模型时，优先使用 agent 模型
-        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
-        let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
-        let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
-        let (useModel, useProvider): (String, String) = {
-            // v3.0.57：免费模型开关（keyless opencode-free）——优先级最高，开启后全用免费档
-            if UserDefaults.standard.bool(forKey: "qingliao_free_model") {
-                let freeName = UserDefaults.standard.string(forKey: "qingliao_free_model_name") ?? "nemotron-3.5-lightning-free"
-                return (freeName, "opencode-free")
-            }
-            // 图片消息视觉模型优先级最高
-            if msg.imageDataURL != nil, let vision = CloudConfig.effectiveVisionModel() {
-                return (vision.model, vision.provider)
-            }
-            // Agent 模型：agent 开启 + 已配置独立模型 → 使用 agent 模型
-            if agentOn && !agentModelName.isEmpty {
-                return (agentModelName, agentProviderName)
-            }
-            return (modelName, provider)
-        }()
+        // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
+        let (useModel, useProvider) = resolveModel(hasImage: msg.imageDataURL != nil)
 
         Task {
             await stream.start(
@@ -1369,7 +1349,8 @@ struct ChatView: View {
             }
             // 兜底：60s 用户无操作 → 自动取消（防 continuation 永不 resume 挂死工具循环）
             let gate = toolGate
-            DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            Task {
+                try? await Task.sleep(for: .seconds(60))
                 guard gate.onConfirm != nil else { return }
                 gate.onConfirm?(false)
             }
@@ -1553,21 +1534,9 @@ struct ChatView: View {
               let idx = chat.messages.firstIndex(where: { $0.id == id }) else { return }
         chat.messages.removeSubrange(idx...)
         let history = chat.historyPayload()
-        // v3.0.10：重新生成时，若最新用户消息含图片 → 使用视觉模型
-        // v3.0.29 fix：重新生成也走 agent 模型优先级链
         let lastUserHasImage = chat.messages.last(where: { $0.isUser })?.imageDataURL != nil
-        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
-        let agentModelName = UserDefaults.standard.string(forKey: "qingliao_agent_model") ?? ""
-        let agentProviderName = UserDefaults.standard.string(forKey: "qingliao_agent_provider") ?? ""
-        let (useModel, useProvider): (String, String) = {
-            if lastUserHasImage, let vision = CloudConfig.effectiveVisionModel() {
-                return (vision.model, vision.provider)
-            }
-            if agentOn && !agentModelName.isEmpty {
-                return (agentModelName, agentProviderName)
-            }
-            return (modelName, provider)
-        }()
+        // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
+        let (useModel, useProvider) = resolveModel(hasImage: lastUserHasImage)
         Task {
             await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
                                provider: useProvider, messages: history) { success, error in
@@ -1580,6 +1549,30 @@ struct ChatView: View {
                 Task { await chat.saveToServer(auth: auth) }
             }
         }
+    }
+
+    // MARK: - v3.0.81 模型优先级链（统一供 startStream / regenerate / sendFile 使用）
+
+    /// 模型优先级：免费模型 > 视觉模型 > Agent 模型 > 主模型
+    /// - Parameter hasImage: 当前消息是否包含图片（触发视觉模型优先）
+    private func resolveModel(hasImage: Bool = false) -> (String, String) {
+        // v3.0.57：免费模型开关——优先级最高
+        if UserDefaults.standard.bool(forKey: UserDefaultsKey.freeModel) {
+            let freeName = UserDefaults.standard.string(forKey: UserDefaultsKey.freeModelName) ?? "nemotron-3.5-lightning-free"
+            return (freeName, "opencode-free")
+        }
+        // 视觉模型：含图片消息时优先
+        if hasImage, let vision = CloudConfig.effectiveVisionModel() {
+            return (vision.model, vision.provider)
+        }
+        // Agent 模型：agent 开启 + 已配置独立模型
+        let agentOn = UserDefaults.standard.bool(forKey: UserDefaultsKey.agentEnabled)
+        let agentModelName = UserDefaults.standard.string(forKey: UserDefaultsKey.agentModel) ?? ""
+        let agentProviderName = UserDefaults.standard.string(forKey: UserDefaultsKey.agentProvider) ?? ""
+        if agentOn && !agentModelName.isEmpty {
+            return (agentModelName, agentProviderName)
+        }
+        return (modelName, provider)
     }
 
     /// ✅送达提示条（仅成功时显示，2.5s 后消失）
@@ -1706,8 +1699,9 @@ struct DealAttachmentButton: View {
         .scaleEffect(appeared ? 1 : 0.5)
         .onAppear {
             // v2.0.98：插入帧 withAnimation 的 .delay 会被父级 transition 动画吞掉（实测发牌不生效）
-            //          → 改 DispatchQueue 真延迟逐张弹出
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(idx) * 0.07) {
+            //          → 改 Task.sleep 真延迟逐张弹出
+            Task {
+                try? await Task.sleep(for: .seconds(Double(idx) * 0.07))
                 withAnimation(.spring(duration: 0.45, bounce: 0.35)) {
                     appeared = true
                 }

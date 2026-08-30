@@ -146,6 +146,3 @@ struct QuickPromptSheet: View {
     }
 }
 
-// MARK: - v2.0.36 图片大图查看器（双击/捏合缩放 + 保存相册）
-
-struct ImageViewPayload: Identifiable {

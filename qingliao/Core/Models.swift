@@ -1,6 +1,17 @@
 import Foundation
 import SwiftUI
 
+// MARK: - UserDefaults key 常量（v3.0.81：消除魔法字符串）
+
+/// App 全局 UserDefaults key 集中管理，防止拼写错误导致静默失效
+enum UserDefaultsKey {
+    static let agentEnabled = "qingliao_agent_enabled"
+    static let agentModel   = "qingliao_agent_model"
+    static let agentProvider = "qingliao_agent_provider"
+    static let freeModel     = "qingliao_free_model"
+    static let freeModelName = "qingliao_free_model_name"
+}
+
 // MARK: - Bot Mode（v3.0.7：每个 Bot 独立人设/模型，独立会话；数据源 NAS bots.json）
 // v3.0.7 beautify：内置淡雅 SF Symbols 头像预设（存 "sfs:<symbol>" 前缀，兼容既有 emoji）
 

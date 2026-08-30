@@ -217,6 +217,27 @@ final class AuthStore {
         return arr
     }
 
+    /// v3.0.x：便捷：JSON 请求 → 字典，失败静默返回 nil 并打日志（替代 `try? await auth.json(...)` 模式）
+    /// 用途：Dashboard/Settings 等非关键加载路径，失败不弹错只 log，避免 `try?` 吞掉错误信息
+    func jsonOrLog(_ path: String, method: String = "GET", body: [String: Any]? = nil) async -> [String: Any]? {
+        do {
+            return try await json(path, method: method, body: body)
+        } catch {
+            print("[jsonOrLog] \(method) \(path) failed: \(error)")
+            return nil
+        }
+    }
+
+    /// v3.0.x：便捷：JSON 数组请求 → 数组，失败静默返回 nil 并打日志
+    func jsonArrayOrLog(_ path: String, method: String = "GET", body: [String: Any]? = nil) async -> [Any]? {
+        do {
+            return try await jsonArray(path, method: method, body: body)
+        } catch {
+            print("[jsonArrayOrLog] \(method) \(path) failed: \(error)")
+            return nil
+        }
+    }
+
     /// multipart 文件上传：Wi-Fi → URLSession 直传（无大小限制）；蜂窝 → relay 中转（限 2KB 小文件）
     func uploadMultipart(_ path: String, fileName: String, data: Data) async throws -> [String: Any] {
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -271,7 +292,7 @@ final class AuthStore {
     func streamStart(sessionId: String, model: String, provider: String,
                      messages: [[String: Any]], bot: String? = nil) async throws -> String {
         // v2.0.98：Agent 开关（设置页 qingliao_agent_enabled，默认开；关闭后后端走普通 LLM 不调用工具）
-        let agentOn = UserDefaults.standard.object(forKey: "qingliao_agent_enabled") as? Bool ?? true
+        let agentOn = UserDefaults.standard.bool(forKey: UserDefaultsKey.agentEnabled)
         var payload: [String: Any] = [
             "sessionId": sessionId,
             "model": model,

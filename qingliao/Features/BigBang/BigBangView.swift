@@ -174,8 +174,6 @@ struct BigBangView: View {
         guard !joined.isEmpty else { return }
         UIPasteboard.general.string = joined
         withAnimation { copied = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            dismiss()
-        }
+        Task { try? await Task.sleep(for: .seconds(1.2)); dismiss() }
     }
 }

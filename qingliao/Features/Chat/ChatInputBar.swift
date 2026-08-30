@@ -51,9 +51,7 @@ struct ChatInputBar: View {
                                      withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
                                          ballExpanded = true
                                      }
-                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                         focused = true
-                                     }
+                                     Task { try? await Task.sleep(for: .seconds(0.4)); focused = true }
                                  })
                     }
                 }
@@ -266,11 +264,3 @@ struct ChatInputBar: View {
     }
 }
 
-// MARK: - v2.0.132 全屏爆发特效（点击智能球：满屏粒子散开）
-
-/// 点击智能球展开输入框时的全屏级爆发：粒子从球心（底部中央）向全屏飞散。
-/// 触发方在 ~0.95s 后移除本层。
-/// v2.0.135 性能修复：扩散波纹从 Canvas 逐帧 stroke（每帧 3 个全屏大椭圆）改为
-/// Core Animation 隐式动画（GPU 合成）——但 60fps 下 3 层全屏大圆持续放大插值仍卡顿，
-/// v2.0.138 决定直接移除波纹层（修不好宁可整体移除，用户确认），只保留粒子特效。
-struct FullScreenBurst: View {

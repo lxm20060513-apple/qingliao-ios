@@ -138,7 +138,3 @@ struct SiriBallView: View {
         .padding(.vertical, 6)
     }
 }
-
-// MARK: - v2.0.96 Hermes 捷径面板（官方斜杠命令 + 功能注释，点击填充输入框）
-
-struct HermesShortcutSheet: View {
