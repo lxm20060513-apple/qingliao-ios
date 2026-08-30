@@ -63,6 +63,10 @@ struct ModelSheet: View {
     @State private var showAddCustomProvider = false
     // v3.0.4：用户手动隐藏的 provider（存 UserDefaults，可恢复）
     @State private var hiddenProviders: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_providers") ?? [])
+    // v3.0.82：内置 provider 真删确认弹窗（非 nil 时弹窗确认，确认后调后端删 config.yaml providers 段）
+    @State private var confirmDeleteProvider: String?
+    @State private var deletingProvider = false
+    @State private var deleteResultMsg: String?
     // v3.0.4：用户手动隐藏的单个模型（"provider:model" 形式）
     @State private var hiddenModels: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "qingliao_hidden_models") ?? [])
     // v2.0.83：当前 provider（区分 opencode 的 deepseek 与官方 deepseek——同名模型不能同时勾）
@@ -163,6 +167,12 @@ struct ModelSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(syncResult.hasPrefix("✅") ? Color.green : Color.orange)
             }
+            // v3.0.82：内置 provider 删除结果提示
+            if let deleteResultMsg {
+                Text(deleteResultMsg)
+                    .font(.system(size: 11))
+                    .foregroundStyle(deleteResultMsg.hasPrefix("✅") ? Color.green : Color.orange)
+            }
             // v3.0.33：Agent 模型覆盖提示——Agent 开关开且配置了 agent 模型时，
             // 聊天实际走 agent 模型（视觉模型 > Agent 模型 > 主模型），此处选主模型不会生效
             if agentOn && !agentModel.isEmpty {
@@ -219,7 +229,8 @@ struct ModelSheet: View {
                             groupSection(providerDisplayName(p.id),
                                          models: p.models.filter { !hiddenModels.contains("\(p.id):\($0)") }.map {
                                          ($0, providerModelDisplayName(p.id, $0), p.id) },
-                                         onHideProvider: { toggleHideProvider(p.id) })
+                                         onHideProvider: { toggleHideProvider(p.id) },
+                                         onDeleteProvider: { confirmDeleteProvider = p.id })
                         }
                     }
                     // 管理隐藏的 provider（恢复入口）
@@ -420,6 +431,43 @@ struct ModelSheet: View {
                 Task { await loadCustomProviders() }
             }
         }
+        // v3.0.82：内置 provider 删除确认弹窗（真删 Hermes config.yaml providers 段，被引用时后端拒绝）
+        .alert("删除模型组", isPresented: Binding(
+            get: { confirmDeleteProvider != nil },
+            set: { if !$0 { confirmDeleteProvider = nil } }
+        )) {
+            Button("取消", role: .cancel) { confirmDeleteProvider = nil }
+            Button("删除", role: .destructive) {
+                if let pid = confirmDeleteProvider { deleteBuiltinProvider(pid) }
+                confirmDeleteProvider = nil
+            }
+        } message: {
+            Text("将从服务器配置中彻底删除「\(providerDisplayName(confirmDeleteProvider ?? ""))」及其全部模型。\n\n若该 provider 正被主模型/微信通道/Agent 引用，删除会被拒绝。\n用量看板对应卡片将同步消失，此操作不可撤销。")
+        }
+        }
+    }
+
+    /// v3.0.82：真删内置 provider（后端删 config.yaml providers 段；被引用时返回 error 提示）
+    private func deleteBuiltinProvider(_ pid: String) {
+        deletingProvider = true
+        Task {
+            defer { deletingProvider = false }
+            do {
+                let j = try await auth.json("/api/stream/builtin-providers", method: "POST",
+                                           body: ["action": "delete", "id": pid])
+                if (j["ok"] as? Bool) == true {
+                    // 本地同步清理：清模型缓存 + 从当前列表移除
+                    UserDefaults.standard.removeObject(forKey: "qingliao_models_\(pid)")
+                    allProviders.removeAll { $0.id == pid }
+                    ModelProvidersCache.save(allProviders)
+                    deleteResultMsg = "✅ 已删除 \(providerDisplayName(pid))"
+                } else {
+                    deleteResultMsg = "⚠️ \(j["error"] as? String ?? "删除失败")"
+                }
+            } catch {
+                deleteResultMsg = "⚠️ 删除失败：\(error.localizedDescription)"
+            }
+            await loadAllProviders()
         }
     }
 
@@ -692,6 +740,11 @@ struct CustomProviderEditSheet: View {
     @State private var modelsText = ""
     @State private var saving = false
     @State private var errMsg: String?
+    // v3.0.82：一键拉取 /models（OpenAI 兼容端点）→ 勾选保存
+    @State private var fetching = false
+    @State private var fetchedModels: [String] = []
+    @State private var selectedModels: Set<String> = []
+    @State private var fetchMsg: String?
 
     var body: some View {
         NavigationStack {
@@ -705,15 +758,67 @@ struct CustomProviderEditSheet: View {
                     SecureField("API Key", text: $apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    // v3.0.82：填完 base_url+key 一键拉取模型列表
+                    Button {
+                        Task { await fetchModels() }
+                    } label: {
+                        HStack {
+                            Label(fetching ? "拉取中…" : "拉取模型列表", systemImage: "arrow.down.circle")
+                            Spacer()
+                            if fetching { ProgressView().scaleEffect(0.8) }
+                        }
+                    }
+                    .disabled(baseURL.isEmpty || apiKey.isEmpty || fetching)
+                    if let fetchMsg {
+                        Text(fetchMsg)
+                            .font(.system(size: 11))
+                            .foregroundStyle(fetchMsg.hasPrefix("✅") ? Color.green : Color.orange)
+                    }
+                }
+                // v3.0.82：拉取成功 → 勾选列表（全选/清空快捷键）
+                if !fetchedModels.isEmpty {
+                    Section {
+                        HStack {
+                            Text("勾选要启用的模型（\(selectedModels.count)/\(fetchedModels.count)）")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            Button(selectedModels.count == fetchedModels.count ? "清空" : "全选") {
+                                if selectedModels.count == fetchedModels.count {
+                                    selectedModels.removeAll()
+                                } else {
+                                    selectedModels = Set(fetchedModels)
+                                }
+                            }
+                            .font(.system(size: 12))
+                            .buttonStyle(.borderless)
+                        }
+                        ForEach(fetchedModels, id: \.self) { m in
+                            Button {
+                                if selectedModels.contains(m) { selectedModels.remove(m) } else { selectedModels.insert(m) }
+                            } label: {
+                                HStack {
+                                    Text(m)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    if selectedModels.contains(m) {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Section("模型名（每行一个）") {
                     TextEditor(text: $modelsText)
-                        .frame(minHeight: 120)
+                        .frame(minHeight: fetchedModels.isEmpty ? 120 : 44)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .overlay(alignment: .topLeading) {
-                            if modelsText.isEmpty {
-                                Text("deepseek-v4-flash\nglm-5.2\n…")
+                            if modelsText.isEmpty && fetchedModels.isEmpty {
+                                Text("deepseek-v4-flash\nglm-5.2\n…\n\n（或点上方「拉取模型列表」自动填充）")
                                     .font(.system(size: 13))
                                     .foregroundStyle(.tertiary)
                                     .padding(.top, 8)
@@ -732,7 +837,7 @@ struct CustomProviderEditSheet: View {
                         Task { await save() }
                     }
                     .disabled(name.isEmpty || baseURL.isEmpty || apiKey.isEmpty
-                              || modelsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                              || effectiveModels.isEmpty || saving)
                 }
             }
             .navigationTitle("添加自定义模型")
@@ -746,13 +851,43 @@ struct CustomProviderEditSheet: View {
         .presentationDetents([.medium, .large])
     }
 
+    /// v3.0.82：生效模型 = 勾选结果（拉取过）∪ 手填行（兼容手动输入流程）
+    private var effectiveModels: [String] {
+        var models = selectedModels.sorted()
+        let manual = modelsText.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        for m in manual where !models.contains(m) { models.append(m) }
+        return models
+    }
+
+    /// v3.0.82：调后端拉取 OpenAI 兼容 /models（由后端请求避免 App 端 CORS/网络差异）
+    private func fetchModels() async {
+        fetching = true
+        fetchMsg = nil
+        defer { fetching = false }
+        var base = baseURL.trimmingCharacters(in: .whitespaces)
+        while base.hasSuffix("/") { base.removeLast() }
+        do {
+            let j = try await auth.json("/api/stream/fetch-models", method: "POST",
+                                       body: ["base_url": base, "api_key": apiKey])
+            if (j["ok"] as? Bool) == true, let list = j["models"] as? [String], !list.isEmpty {
+                fetchedModels = list
+                selectedModels = Set(list)   // 默认全选
+                fetchMsg = "✅ 拉取到 \(list.count) 个模型，请勾选"
+            } else {
+                fetchMsg = "⚠️ \(j["error"] as? String ?? "未拉取到模型，可手动输入")"
+            }
+        } catch {
+            fetchMsg = "⚠️ 拉取失败：\(error.localizedDescription)"
+        }
+    }
+
     private func save() async {
         saving = true
         errMsg = nil
         defer { saving = false }
-        let models = modelsText.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        let models = effectiveModels
         let provider: [String: Any] = [
             "id": "custom-\(Int(Date().timeIntervalSince1970))",
             "name": name,
