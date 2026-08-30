@@ -337,4 +337,61 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 
 ---
 
+## 七、快速定位信息（接手者先读）
+
+> 围绕「轻聊」三大定位：源码在哪、推送/微信/token 相关文件名、想了解什么。所有路径为脱敏版（不含密码/token）。
+
+### 1. 源码位置
+
+| 环节 | 路径 |
+|---|---|
+| **git 仓库** | `https://github.com/lxm20060513-svg/qingliao-ios`（origin，含 token 不带在文档里） |
+| **App 本地仓库** | `/opt/data/qingliao_ios/`（主开发副本，分支 `feature/handoff-301`；`native-3.0` 为主分支基线，tag `v3.0.XX` 触发 CI） |
+| **App 发版常用副本** | `/opt/data/ql_ipa2/`（发版衔接先 `git status` 看在途未提交改动；仓库勿放 /tmp 会被重启清空） |
+| **NAS 后端（线上运行）** | `/volume1/docker/hermes/微信文件/轻聊web/backend/`（容器 `qingliao` 挂载，**非** `/opt/data/ql_backend` 历史副本） |
+| **NAS 前端** | `/volume1/docker/hermes/微信文件/轻聊web/frontend/` |
+| **NAS IPA 存放** | `/volume1/docker/hermes/微信文件/轻聊app/` |
+| **Hermes 数据（容器内=宿主）** | `/opt/data` == 宿主 `/volume1/docker/hermes/hermes-data` |
+
+### 2. 具体文件
+
+**推送服务（微信 + App 收件箱，两条链路别混淆）**
+
+| 文件 | 位置 | 职责 |
+|---|---|---|
+| `push_api.py` | NAS backend | **微信推送队列**（9147，现统一走 9127 `/api/push`）：enqueue/pending/done + 即时投递 relay；存储 `push_queue.json` |
+| `inbox_api.py` | NAS backend | **App 收件箱**（v3.0.83 新增，走 9127 `/api/inbox`）：App 轮询 / 标记已读 / Hermes push；存储 `inbox_queue.json` |
+| `ql_push_relay.py` | Hermes `scripts/` | 微信投递 relay（监听 9460），`POST /send` + `X-Push-Token` 鉴权，内部调 `send_weixin_direct` |
+| `ql_push_send.py` | Hermes `scripts/` | 微信直发辅助 |
+| `ql_push_poller.sh` | Hermes `scripts/`（两份） | cron 兜底投递（push_queue → 微信，relay 挂了才用） |
+| `ql_push_app.sh` | Hermes `profiles/wechat-profile/scripts/` | **Hermes→App 主动推送**（v3.0.83）：`ql_push_app.sh "消息"` 或 stdin → inbox_api.push |
+| `hermes_watchdog.py/.sh` | Hermes `scripts/` | relay 保活（每 2 分钟查 9460/health，挂了拉起） |
+
+**微信接入模块**
+
+| 文件 | 位置 | 职责 |
+|---|---|---|
+| Hermes weixin 通道 | 内置 `platforms.weixin`（config.yaml 88/119/146/219 行） | 微信收发；账户轮询状态在 `/opt/data/weixin/accounts/*.sync.json` |
+| `channel_api.py` | NAS backend | 轻聊内与微信通道交互的 API |
+
+**Token / 配置**
+
+| 文件 | 位置 | 内容 |
+|---|---|---|
+| `/opt/data/config.yaml` | Hermes | 主配置（provider + platform.weixin） |
+| `/opt/data/.env` | Hermes | 环境变量（token 来源） |
+| `docker-compose.yml` | NAS `/volume1/docker/hermes/hermes-data/ql_docker/` | qingliao 容器环境变量（**QL_INBOX_TOKEN / QL_PUSH_TOKEN / QL_PASSWORD 注入处**） |
+| `/opt/data/.nas_cred` | Hermes | NAS SSH 凭证（值脱敏） |
+| `/opt/data/.gh_cred` | Hermes | GitHub token（值脱敏） |
+| `/opt/data/.inbox_token` | Hermes | 新生成 192-bit 强 `QL_INBOX_TOKEN`（值脱敏，供 ql_push_app.sh 读） |
+
+### 3. 若你想了解
+
+- **🅰️ 整体架构**（消息怎么进出、怎么推到 App）：读「一、核心架构」+「★ 2026-08-22 推送延迟优化」+ `app-active-push-inbox.md`（skill reference）。核心：App 是「App 主动请求→服务端响应」，无服务端主动塞消息通道；服务端主动推 = inbox 收件箱 + App 15s 轮询。
+- **🅱️ 某个 bug 排查**：读「五、踩坑经验」+ 各版本历史对应条目；定位后按 skill `qingliao-webui` 的排查链走（先区分通道死 vs agent 慢、先日志定位再改）。
+- **🅲️ 待做的"文件自动归档"**：见 `wechat-file-organize`（收到微信文件按扩展名分类存储）——轻聊侧对接在 `files_api`/`media_convert`，具体在「六、下一步计划」之外，按需另开启。
+- **🅳️ 鉴权/安全机制**：App 端 `X-Auth-Token`（auth_api.check_auth，login 签发）；Hermes 侧 `X-Inbox-Token`/`X-Push-Token`（服务间 token，compose 注入）；详见 `v2116-backend-security-review` + `app-active-push-inbox.md`。
+
+---
+
 *文档完。每次发版后请更新此文档的版本号和改动记录。*
