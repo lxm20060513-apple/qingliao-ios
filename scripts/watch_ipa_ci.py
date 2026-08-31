@@ -3,14 +3,25 @@
 import sys, time, urllib.request, json, os
 
 def get_token():
-    # Get token from git remote URL
+    # 1) 优先 git remote URL 内嵌 token
     import subprocess
-    result = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd="/opt/data/ql_ipa2")
-    url = result.stdout.strip()
-    # Extract token from URL like https://user:TOKEN@github.com/...
-    import re
-    m = re.search(r'://[^:]*:([^@]*)@', url)
-    return m.group(1) if m else None
+    try:
+        result = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd="/opt/data/qingliao_ios", timeout=10)
+        url = result.stdout.strip()
+        import re
+        m = re.search(r'://[^:]*:([^@]*)@', url)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    # 2) 兜底 .gh_cred（2026-08-31：ql_ipa2 已删，remote 无内嵌 token）
+    try:
+        cred = open("/opt/data/.gh_cred").read().strip()
+        if cred:
+            return cred
+    except Exception:
+        pass
+    return None
 
 def api(path, token):
     url = f"https://api.github.com{path}"
