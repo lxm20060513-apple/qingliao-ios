@@ -407,6 +407,11 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - ⚠️ v3.0.90 再补**时序竞态**：v3.0.88 只在「回复已落库」时能去重，但后端 done 即推、App 落库要等 `finish→upsertAssistant`——InboxStore 轮询抢在落库前拉到推送就漏。修复：流式进行中（`stream.isStreaming`）本轮不注入，等落库后下一轮必命中。类级：**比对类去重必须考虑「数据还没写入」的竞态窗口，不能只比对已存在的消息**。
 - 类级：**两个独立链路（后端自动推 + App 端注入）叠加在同一会话时，必须先想清楚会不会重复**；比对文本务必先统一空白格式（推送可能压行、会话保留换行），否则 contains 匹配失败。
 
+### 11. NAS 发版脚本 cp 弹 overwrite 交互卡死（v3.0.90 实踩）
+- NAS root shell 的 `cp` 是 `cp -i` 别名（`cp -f` 也弹「overwrite?」）→ 自动化脚本用 `cp` 传 IPA 会卡在交互确认，md5 校验拿不到。
+- 解法：用 `\cp -f`（反斜杠绕别名）或绝对路径 `/bin/cp -f`。
+- 配套：>100KB 文件别走 base64 PTY 上传（超时），用 **SFTP put 到可写路径 → \cp -f 到目标 → chmod 644 → md5sum 两端比对**；GitHub artifact 下载 302 到 Azure blob 时 urllib 默认跟随会带 Authorization 头致 401 → NoRedirect 拦截 + 手动跟随不带 auth。
+
 ---
 
 ## 六、下一步计划（待实现）
