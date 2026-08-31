@@ -1,11 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-31
-<<<<<<< HEAD
-> 最新版本：v3.1.1（feature/handoff-301 分支，去除 AI 长回复折叠省略号）
-=======
-> 最新版本：v3.0.90（feature/handoff-301 分支，推送去重竞态修复）
->>>>>>> parent of bdd8249 (feat(v3.1.0): Agent任务进度卡——工具调用实时步骤(running→done)气泡上方内嵌、完成折叠摘要；本地模式后端steps字段+云端模式toolStep事件双模式统一；跨会话残留清理+异常收尾)
+> 最新版本：v3.1.1（2026-08-31 已发版，去省略号 + 用量卡片修复）
 
 ---
 
@@ -55,7 +51,7 @@
 
 ## 二、版本历史
 
-### v3.1.1（待发版：去除 AI 长回复折叠省略号 + 移除进度卡）
+### v3.1.1（2026-08-31 已发版：去省略号 + 移除进度卡 + 用量卡片修复）
 
 **① 去除 AI 长回复折叠省略号**：用户反馈"AI 回复用…省略很多文字"——ChatMessageBubble 的 v2.0.65/v3.0.50 超长折叠逻辑（单段落 >600 字符 → 只显示 5 行 + "展开全文"）已**整体移除**，长回复完整渲染全文，删 `aiExpanded`/`foldThreshold`/`isLongMsg` 死代码（注意删折叠分支时的括号配对）。
 
@@ -64,7 +60,12 @@
 - App：`git revert bdd8249` —— `AgentStep.swift` 删除、`AuthStore.streamPoll` 还原 5 元组、`StreamClient.steps` 移除、`CloudToolLoop.toolStep` 移除、`ChatView` 步骤卡 UI/事件/`stepsExpanded` 移除
 - 保留：v3.0.90 收件箱推送去重竞态修复
 
-**后端配套（与进度卡无关，保留）**：auth_config.json 密码哈希错位根治（8-25 重置因 pbkdf2_hmac 误用 .hexdigest() 失败遗留，人人登不进）→ 已重置为容器 env 密码 `Qingliao@2026x` + 重启；**用户 App 下次重新登录需用此密码**。
+**③ 模型用量卡片修复（"新增 API 自动生成用量卡片"）**：
+- 根因：`usage_api.collect_usage()` 只遍历后端 config.yaml providers 段；App 云端模式新增的 API 存 App 本地（UserDefaults/Keychain），后端无记录 → 看板不出卡片
+- 后端（已部署重启）：`usage_api.py` 合并 `custom_providers.json`（App「自定义模型组」通道新增自动出卡片）+ 新增 `query_siliconflow()` 硅基流动余额（官方 GET /v1/user/info，balance/totalBalance/chargeBalance）+ deepseek/stepfun 的 key 优先取自定义
+- App（95d91ba）：`DashboardView.loadProviderUsage` 合并 `CloudConfig.providers`（云端模式本地新增 → 补 unsupported 卡片"控制台查看"），新增 API 必出卡片
+
+**后端配套（与进度卡无关，保留）**：auth_config.json 密码哈希错位根治（8-25 重置因 pbkdf2_hmac 误用 .hexdigest() 失败遗留，人人登不进）→ 已重置为容器 env 密码 `Qingliao@2026x` + 重启；**用户 App 下次重新登录需用此密码**（用户名 `qingliao`，非 admin）。
 
 
 ### v3.0.90（2026-08-31 待发版，收件箱推送去重竞态修复）
