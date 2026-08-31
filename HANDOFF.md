@@ -1,7 +1,11 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-31
+<<<<<<< HEAD
 > 最新版本：v3.1.1（feature/handoff-301 分支，去除 AI 长回复折叠省略号）
+=======
+> 最新版本：v3.0.90（feature/handoff-301 分支，推送去重竞态修复）
+>>>>>>> parent of bdd8249 (feat(v3.1.0): Agent任务进度卡——工具调用实时步骤(running→done)气泡上方内嵌、完成折叠摘要；本地模式后端steps字段+云端模式toolStep事件双模式统一；跨会话残留清理+异常收尾)
 
 ---
 
@@ -51,28 +55,17 @@
 
 ## 二、版本历史
 
-### v3.1.1（待发版，去除 AI 长回复折叠省略号）
+### v3.1.1（待发版：去除 AI 长回复折叠省略号 + 移除进度卡）
 
-用户反馈"AI 回复用…省略很多文字"：ChatMessageBubble 的 v2.0.65/v3.0.50 超长折叠逻辑（单段落 >600 字符 → 只显示 5 行 + "展开全文"，SwiftUI lineLimit 尾部省略号）已**整体移除**——长回复现在完整渲染全文，删 `aiExpanded`/`foldThreshold`/`isLongMsg` 死代码。注意括号配对（删折叠分支时多留一个 `}` 导致 static method 语法错，已修）。
+**① 去除 AI 长回复折叠省略号**：用户反馈"AI 回复用…省略很多文字"——ChatMessageBubble 的 v2.0.65/v3.0.50 超长折叠逻辑（单段落 >600 字符 → 只显示 5 行 + "展开全文"）已**整体移除**，长回复完整渲染全文，删 `aiExpanded`/`foldThreshold`/`isLongMsg` 死代码（注意删折叠分支时的括号配对）。
 
-### v3.1.0（2026-08-31 已发版，Agent 任务进度卡「看着AI干活」）
+**② 移除 v3.1.0 Agent 任务进度卡**（用户实测"废话有点多"）：功能整体拿掉——
+- 后端：`stream_api.py` 的 `TOOL_STEP_TEXT`/`_agent_loop` 步骤上报/`step_cb` 回调/poll `steps` 字段**全部还原**（线上 `.bak-v310-20260831` 是 v3.1.0 版勿用于还原；按 4 处反 patch 还原）
+- App：`git revert bdd8249` —— `AgentStep.swift` 删除、`AuthStore.streamPoll` 还原 5 元组、`StreamClient.steps` 移除、`CloudToolLoop.toolStep` 移除、`ChatView` 步骤卡 UI/事件/`stepsExpanded` 移除
+- 保留：v3.0.90 收件箱推送去重竞态修复
 
-**功能**：AI Agent 干活（工具调用）时，气泡上方实时显示步骤卡——"正在查询磁盘占用…"（转圈）→ 完成 ✓，全部完成后折叠成一行"🛠 执行了 N 个工具"点开展开。差异化体验：别人是转圈等待，轻聊是看着 AI 干活。
+**后端配套（与进度卡无关，保留）**：auth_config.json 密码哈希错位根治（8-25 重置因 pbkdf2_hmac 误用 .hexdigest() 失败遗留，人人登不进）→ 已重置为容器 env 密码 `Qingliao@2026x` + 重启；**用户 App 下次重新登录需用此密码**。
 
-**双模式统一实现**（用户硬性要求 UI 完全一致）：
-- **本地模式**：NAS 后端 `stream_api.py` 的 `_agent_loop` 每轮工具调用写 `st["steps"]`（[{"t":"中文文案","s":"running|done"}]，16 工具中文映射表 TOOL_STEP_TEXT），poll 响应新增 `steps` 字段（全量幂等）。**后端已部署上线**（docker restart qingliao 生效，无需发版）。
-- **云端模式**：`CloudToolLoop` 工具执行前后发 `.toolStep(text:state:)` 事件 → ChatView 写同一 `stream.steps`。
-
-**App 端改动**：
-| 文件 | 说明 |
-|---|---|
-| `Core/AgentStep.swift`（新） | 步骤模型，自定义 == 忽略 id（内容不变不触发 UI 重建） |
-| `Core/AuthStore.swift` | `streamPoll` 返回元组 5→6，解析 `steps` |
-| `Core/StreamClient.swift` | `steps` 属性 + pollOnce 内容变化才更新 |
-| `Core/CloudToolLoop.swift` | `CloudLoopEvent.toolStep` 事件，工具执行前后发 running/done |
-| `Features/Chat/ChatView.swift` | `AgentStepCardView` 步骤卡 UI + 事件处理 + `stepsExpanded` 折叠态（startStream/startCloudStream 重置） |
-
-**后端配套**：v3.1.0 部署前版本已备份 `stream_api.py.bak-v310-20260831`（backend 目录）。顺带根治 **auth_config.json 密码哈希错位**（8-25 重置因 pbkdf2_hmac 误用 .hexdigest() 失败遗留，人人登不进）→ 已重置为容器 env 密码 `Qingliao@2026x` + 重启；**若用户 App 下次重新登录需用此密码**。
 
 ### v3.0.90（2026-08-31 待发版，收件箱推送去重竞态修复）
 
