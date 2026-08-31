@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-31
-> 最新版本：v3.0.87（feature/handoff-301 分支，401修复 + 收件箱推送去重）
+> 最新版本：v3.0.90（feature/handoff-301 分支，推送去重竞态修复）
 
 ---
 
@@ -50,6 +50,30 @@
 ---
 
 ## 二、版本历史
+
+### v3.0.90（2026-08-31 待发版，收件箱推送去重竞态修复）
+
+修复 v3.0.88 去重的**时序竞态**：后端 AI 回复 done 即 `_maybe_push_app` 推收件箱，而 App 流式回复要等 `done → finish → upsertAssistant` 才落库；InboxStore 独立 15s 轮询若抢在落库前拉到推送，`shouldSkipDuplicate` 遍历不到这条回复 → 误判不重复 → 重复注入（AI 回答气泡 + 🔔推送气泡同内容）。改为**流式进行中本轮不注入**（不 markDone，消息留队列），流结束 15s 后下一轮比对必命中。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 流式感知去重 | `Core/InboxStore.swift` | attach 注入 `StreamClient`（weak），`pollOnce` 注入前 `if stream.isStreaming { return }`——避开「推送已入队、回复未落库」窗口 |
+| attach 传参 | `QingliaoApp.swift` | `InboxStore.shared.attach(auth:chat:stream:)` |
+
+关键点：`finish()` 同步置 `isStreaming=false` 后立即同步调 `onFinished` → `upsertAssistant` 落库，故看到 `isStreaming=false` 时消息必已落库，无二次竞态。云端模式（App 直连不走后端）无推送链路不受影响。自检：`check_swift.sh` 全绿。版本号 3.0.90 / 385。
+
+### v3.0.89（2026-08-31 后端热改，推送完整内容）
+后端 `_maybe_push_app` 取消 150 字截断：用户反馈推送气泡里内容被 `…` 省略致缺失。改为 `inbox_api.push(content)` 推**完整回复**（保留换行/段落）。已 `docker restart qingliao` 部署生效（线上 `grep brief[:150]`=0、`push(content)`=1），**无需重发 App**。注意与 `_maybe_push`（推微信，仍保留摘要）区分——只有 App 收件箱推送去截断。
+
+### v3.0.88（2026-08-31 发版，推送去重 v2）
+
+修复 v3.0.87 去重因**空白格式不匹配失效**：后端 `_maybe_push_app` 用 `re.sub(r"\s+"," ",...)` 把回复压成单行摘要，而会话流式回复 `content` 保留换行/段落，直接 `contains` 比对匹配不上 → 仍重复注入。改为**双方先压缩空白再双向比对 + 截断前缀兜底**。
+
+| 改动 | 文件 | 说明 |
+|---|---|---|
+| 去重空白规范化 | `Core/InboxStore.swift` | `shouldSkipDuplicate` 加 `normalizeWhitespace`（换行/多空格→单空格），`cm.contains(core) || core.contains(cm)`，并加 `core.count>=10 && cm.hasPrefix(core)` 截断前缀兜底 |
+
+自检：`check_swift.sh` 全绿。版本号 3.0.88 / 384。
 
 ### v3.0.87（2026-08-31 发版，收件箱推送去重）
 
@@ -376,10 +400,12 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - 修复：`init()` 改「Keychain 优先 → 空则回退 UserDefaults 旧 token 迁入 Keychain 并清明文残留 → 仍空且已登录则强制 `isLoggedIn=false` 回登录页」。
 - 类级：**任何「存储迁移」都要考虑升级用户的旧数据兜底**，不能只读新位置。排查「能登录不能聊天」先看客户端 token 是否为空（401 根因），再谈服务端鉴权。
 
-### 10. 收件箱推送 vs 会话流式回复重复（v3.0.87 修复）
+### 10. 收件箱推送 vs 会话流式回复重复（v3.0.87 初版失效，v3.0.88 修复）
 - AI 回复完成后端 `_maybe_push_app` 把回复摘要推入收件箱（方案A：每条都推）；App InboxStore 又把收件箱消息注入当前会话（方案B）→ **同一条回复出现两次**（流式气泡 + 🔔推送气泡）。
-- 修复：App `InboxStore.pollOnce` 注入前调 `shouldSkipDuplicate(push:in:)`——当前会话最后一条 assistant(非推送) 文本已含推送正文（去尾部省略号）→ 判定重复，仅标记已读（`markDone`）不注入。
-- 类级：**两个独立链路（后端自动推 + App 端注入）叠加在同一会话时，必须先想清楚会不会重复**；去重用「当前会话最后一条 assistant 是否已含推送内容」比用 taskId 更简单可靠，且纯 App 端可修、无需动后端。
+- 修复（v3.0.88）：App `InboxStore.pollOnce` 注入前调 `shouldSkipDuplicate(push:in:)`——当前会话最后一条 assistant(非推送) 文本**压缩空白后**已含推送正文（去尾部省略号）→ 判定重复，仅标记已读（`markDone`）不注入。
+- ⚠️ v3.0.87 初版只用 `contains` 直比：后端用 `re.sub(r"\s+"," ",...)` 把回复压成单行、流式 content 保留换行 → 匹配不上失效。v3.0.88 加 `normalizeWhitespace`（换行/多空格→单空格）双向比对 + `hasPrefix` 截断前缀兜底才生效。
+- ⚠️ v3.0.90 再补**时序竞态**：v3.0.88 只在「回复已落库」时能去重，但后端 done 即推、App 落库要等 `finish→upsertAssistant`——InboxStore 轮询抢在落库前拉到推送就漏。修复：流式进行中（`stream.isStreaming`）本轮不注入，等落库后下一轮必命中。类级：**比对类去重必须考虑「数据还没写入」的竞态窗口，不能只比对已存在的消息**。
+- 类级：**两个独立链路（后端自动推 + App 端注入）叠加在同一会话时，必须先想清楚会不会重复**；比对文本务必先统一空白格式（推送可能压行、会话保留换行），否则 contains 匹配失败。
 
 ---
 
@@ -451,6 +477,19 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - **🅱️ 某个 bug 排查**：读「五、踩坑经验」+ 各版本历史对应条目；定位后按 skill `qingliao-webui` 的排查链走（先区分通道死 vs agent 慢、先日志定位再改）。
 - **🅲️ 待做的"文件自动归档"**：见 `wechat-file-organize`（收到微信文件按扩展名分类存储）——轻聊侧对接在 `files_api`/`media_convert`，具体在「六、下一步计划」之外，按需另开启。
 - **🅳️ 鉴权/安全机制**：App 端 `X-Auth-Token`（auth_api.check_auth，login 签发）；Hermes 侧 `X-Inbox-Token`/`X-Push-Token`（服务间 token，compose 注入）；详见 `v2116-backend-security-review` + `app-active-push-inbox.md`。
+
+---
+
+## 八、Hermes 容器运维踩坑（非轻聊，接手者注意）
+
+### Hermes 容器 `gateway-default` 重生风暴 → CPU 100%（2026-08-31 实测修复）
+- **现象**：`hermes-hermes-1` 容器 CPU 持续占满一核（`ps` 见 103% 进程）。日志 `/opt/data/logs/errors.log`：`Gateway (re)started 6-7 times in 120s — backing off`、`Previous gateway life ... exited UNCLEANLY (SIGKILL)`，pid 每 18-20s 递增。
+- **根因**：s6 服务里 `gateway-default`（`hermes gateway run --replace`，**无 `-p`**，跑 default/root profile）被 auto-start。`/opt/data/gateway_state.json` 的 `desired_state: "running"`，`container_boot`（`_AUTOSTART_STATES={"running"}`）据此启动它，但它启动即反复被 SIGKILL→s6 立即重启→风暴吃满一核。真正在用的 `gateway-wechat-profile`（`-p wechat-profile`）正常，不受影响。
+- **排查链**：`ps aux --sort=-%cpu`（找无 `-p` 的高 CPU gateway 进程）→ `tail /opt/data/logs/errors.log`（respawn storm）→ `/etc/cont-init.d/02-reconcile-profiles` 调 `hermes_cli.container_boot`（注释：per-profile gateways 运行时动态登记到 `/run/service/`）。
+- **止血（运行时）**：`/command/s6-svc -d /run/service/gateway-default`（容器内 s6-svc 不在 PATH，在 `/command/`）。
+- **持久（防容器重启复活）**：把 `/opt/data/gateway_state.json` 的 `desired_state` 改成 `"stopped"`——`container_boot` 只 auto-start `running`，非 running 只登记 down slot 不启动。**切勿动** `profiles/wechat-profile/gateway_state.json`（那才是真正在用的 profile）。
+- **改法**：容器内 `python3` 改 JSON（root：`docker exec -u root hermes-hermes-1 python3`），用 base64 管道避免 PTY 引号地狱。
+- **关键点**：`/opt/hermes` 是**镜像层**，改代码/脚本不持久（重启重映射）；必须改 `/opt/data`（**持久卷**）里的数据。`gateway-default` slot 总会登记（供 `hermes gateway start` 无 `-p` 用），但只要 `desired_state` 非 running 就停在 down，不烧 CPU。
 
 ---
 

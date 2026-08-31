@@ -40,7 +40,7 @@ struct QingliaoApp: App {
                     // v3.0.74：注入 AuthStore 到钉一钉存储
                     PinStore.shared.attach(auth: auth)
                     // v3.0.82：注入收件箱依赖 + 启动推送轮询（Hermes 主动推消息到 App）
-                    InboxStore.shared.attach(auth: auth, chat: chat)
+                    InboxStore.shared.attach(auth: auth, chat: chat, stream: stream)
                     InboxStore.shared.startPolling()
                 }
                 // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）

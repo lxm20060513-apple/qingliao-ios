@@ -18,6 +18,7 @@ final class InboxStore {
 
     private var auth: AuthStore?
     private weak var chat: ChatStore?
+    private weak var stream: StreamClient?
     var lastError: String?
     var lastInjectedCount = 0
 
@@ -45,9 +46,10 @@ final class InboxStore {
     }
 
     /// 注入依赖（QingliaoApp .task 调用，与 PinStore.shared.attach 一致）
-    func attach(auth: AuthStore, chat: ChatStore) {
+    func attach(auth: AuthStore, chat: ChatStore, stream: StreamClient? = nil) {
         self.auth = auth
         self.chat = chat
+        self.stream = stream
     }
 
     // MARK: - 消费消息（注入当前会话 + 通知 + 标已读）
@@ -59,6 +61,12 @@ final class InboxStore {
             let items = try await inboxItems(auth)
             lastInjectedCount = 0
             guard !items.isEmpty else { return }
+            // v3.0.90 fix：流式进行中不注入。后端 AI 回复 done 即推收件箱（_maybe_push_app），
+            // 而流式回复要等 done → finish → upsertAssistant 才落库到 chat.messages；若本轮
+            // 轮询抢在落库前拉到推送，shouldSkipDuplicate 遍历不到这条回复 → 误判不重复 →
+            // 重复注入（AI 回答气泡 + 🔔推送气泡同内容）。流式中跳过本轮（不 markDone），
+            // 流结束 15s 后下一轮再比对，此时回复已落库，去重必然命中。
+            if let s = stream, s.isStreaming { return }
             for it in items {
                 let id = it.id
                 guard !consumedIds.contains(id) else { continue }
