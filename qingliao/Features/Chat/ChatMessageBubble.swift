@@ -26,10 +26,6 @@ struct MessageBubble: View {
     @AppStorage("qingliao_font_size") private var fontSize = 15.0   // v2.0.87r：默认15号
     // v2.0.128：AI 输出行高（设置页滑条，实时生效）
     @AppStorage("qingliao_ai_line_spacing") private var aiLineSpacing = 1.0
-    // v3.0.50：超长 AI 消息折叠——展开/收起状态（cell 重建回收起，可接受）
-    @State private var aiExpanded = false
-    /// 折叠阈值：AI 落库后内容超过该字符数即默认收成摘要（v3.0.50）
-    private static let foldThreshold = 600
     // v2.0.65：深浅色气泡双色值 / 超长消息折叠
     @Environment(\.colorScheme) private var scheme
     // v2.0.130：AI 发图 MEDIA 路径 → 服务器图片 URL（读 App 配置的服务器地址）
@@ -206,28 +202,8 @@ struct MessageBubble: View {
                                                             }
                                                         }
                                                     } else {
-                                                        // 单段落（短回复）→ 原折叠/单块逻辑
-                                                        let isLongMsg = !streamingText && message.content.count > Self.foldThreshold
-                                                        if isLongMsg && !aiExpanded {
-                                                            // 折叠态：纯 Text 摘要（不解析 markdown，避免截断破坏分段）+ 展开按钮
-                                                            VStack(alignment: .leading, spacing: 6) {
-                                                                Text(message.content)
-                                                                    .font(.system(size: CGFloat(fontSize)))
-                                                                    .foregroundStyle(.primary)
-                                                                    .lineLimit(5)
-                                                                    .textSelection(.enabled)
-                                                                Button {
-                                                                    withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = true }
-                                                                } label: {
-                                                                    Label("展开全文", systemImage: "chevron.down")
-                                                                        .font(.system(size: 12, weight: .medium))
-                                                                        .foregroundStyle(Color.accentColor)
-                                                                        .padding(.top, 2)
-                                                                }
-                                                                .buttonStyle(.plain)
-                                                            }
-                                                        } else {
-                                                            VStack(alignment: .leading, spacing: 6) {
+                                                        // 单段落 → 完整渲染（v3.1.1：去除超长回复折叠/省略号，全文可见）
+                                                        VStack(alignment: .leading, spacing: 6) {
                                                                 ForEach(0..<contentBlocks.count, id: \.self) { i in
                                                                     MessageBlockView(block: contentBlocks[i],
                                                                                     onCopy: { UIPasteboard.general.string = message.content },
@@ -242,19 +218,7 @@ struct MessageBubble: View {
                                                                                     useSwiftUIText: true,
                                                                                     streaming: streamingText)   // v3.0.41 性能：流式中纯 Text 渲染（跳过 markdown 解析）
                                                                 }
-                                                                if isLongMsg {
-                                                                    Button {
-                                                                        withAnimation(.easeInOut(duration: 0.25)) { aiExpanded = false }
-                                                                    } label: {
-                                                                        Label("收起", systemImage: "chevron.up")
-                                                                            .font(.system(size: 12, weight: .medium))
-                                                                            .foregroundStyle(.secondary)
-                                                                            .padding(.top, 2)
-                                                                    }
-                                                                    .buttonStyle(.plain)
-                                                                }
                                                             }
-                                                        }
                                                     }
                                                 }
                     }
