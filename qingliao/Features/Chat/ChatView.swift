@@ -138,6 +138,77 @@ struct ToolCardView: View {
     }
 }
 
+/// v3.1.0 Agent 任务进度卡（"看着AI干活"）
+/// 流式中：逐条显示 正在做…（转圈）→ 完成✓；全部完成后默认折叠成一行摘要，点开展开详情。
+struct AgentStepCardView: View {
+    let steps: [AgentStep]
+    let isStreaming: Bool
+    @Binding var expanded: Bool
+
+    private var doneCount: Int { steps.filter { !$0.isRunning }.count }
+
+    var body: some View {
+        if !isStreaming && !expanded {
+            // 流式结束 + 未展开 → 折叠摘要行（点开展开）
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { expanded = true }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("🛠 执行了 \(doneCount) 个工具")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+        } else {
+            // 流式中（实时步骤）或 展开详情
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(steps) { step in
+                    HStack(spacing: 8) {
+                        if step.isRunning {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(.blue)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.green)
+                        }
+                        Text(step.isRunning ? "正在\(step.text)…" : step.text)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(step.isRunning ? .secondary : .primary)
+                            .lineLimit(2)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+            )
+        }
+    }
+}
+
 struct ChatView: View {
     @Environment(AuthStore.self) var auth
     @Environment(ChatStore.self) var chat
@@ -196,6 +267,7 @@ struct ChatView: View {
     @State var showFullBurst = false
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
     @State var toolCards: [ToolCardItem] = []
+    @State var stepsExpanded = false   // v3.1.0：Agent 进度卡折叠态（流式结束默认折叠，点开展开）
     @State var toolGate = ToolConfirmGate()
     // v3.0.41 性能：流式节流标记（50ms 合并一次 stream.content 更新）
     @State var lastStreamFlush: Date? = nil
@@ -820,8 +892,17 @@ struct ChatView: View {
                                                                     // v3.0.51：整行（日期分隔 + 时间分隔 + 气泡）拆辅助函数，ForEach 内只留薄调用
                                                                     messageRow(idx: entry.index, msg: entry.msg)
                                                                 }
+                        // v3.1.0：Agent 任务进度卡（显示在流式气泡上方，AI 头像右侧）
+                        if !stream.steps.isEmpty {
+                            AgentStepCardView(steps: stream.steps,
+                                              isStreaming: stream.isStreaming,
+                                              expanded: $stepsExpanded)
+                                .padding(.horizontal, 44)   // 左侧留出 AI 头像位
+                                .transition(.opacity)
+                        }
                         // v3.0.18：云端工具执行卡片（显示在流式气泡上方）
-                        if !toolCards.isEmpty {
+                        // v3.1.0：步骤卡在显时不重复显示 toolCard（双模式 UI 统一，本地模式本无 toolCard）
+                        if !toolCards.isEmpty && stream.steps.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(toolCards) { card in
                                     ToolCardView(item: card)
@@ -917,6 +998,8 @@ struct ChatView: View {
             .onChange(of: chat.sessionId) {
                 clearPendingQueue()
                 toolCards = []   // v3.0.18：工具卡片跨会话残留清理
+                stream.steps = []   // v3.1.0：进度卡跨会话残留清理（stream 是 App 级单例）
+                stepsExpanded = false   // v3.1.0：折叠态一并复位
                 // v3.0.51 A1：会话加载后重传残留 base64 图片（重启续传/失败重传）
                 Task { await chat.retryPendingImageUploads(auth: auth) }
             }
@@ -1250,6 +1333,7 @@ struct ChatView: View {
     /// v2.0.102：记录发起会话——回答期间切换会话则丢弃结果（防跨会话污染）；完成回调释放 sendingLock
     /// v3.0：云端模式走 CloudBackend 直连 SSE（不经过 NAS 后端）
     func startStream(for msg: ChatMessage) {
+        stepsExpanded = false   // v3.1.0：新一轮任务进度卡默认折叠
         // v3.0 云端模式：直连大模型 API
         if CloudConfig.shared.isCloudMode {
             startCloudStream(for: msg)
@@ -1315,12 +1399,14 @@ struct ChatView: View {
     ///         接入 CloudToolLoop 本地工具调用（function calling：日历/提醒/计时器/天气/剪贴板/计算器/通知）
     /// v3.0.84fix：private→internal（让 ChatViewExport 的 sendFile 云端分支也能调用）
     func startCloudStream(for msg: ChatMessage) {
+        stepsExpanded = false   // v3.1.0：新一轮任务进度卡默认折叠
         let startSid = chat.sessionId
         // v3.0.18：启用流式气泡（三点 / 粒子头像 / Text 渲染）
         stream.isStreaming = true
         stream.isDone = false
         stream.content = ""
         stream.isAgent = false
+        stream.steps = []   // v3.1.0：进度卡清空
         toolCards = []
         CloudBackend.shared.isStreaming = true   // v3.0.2：标记云端流式进行中（驱动 Siri 发光）
         Task {
@@ -1357,9 +1443,25 @@ struct ChatView: View {
                             }
                         case .toolCard(let title, let ok):
                             self.toolCards.append(ToolCardItem(title: title, ok: ok))
+                        case .toolStep(let text, let state):
+                            // v3.1.0：进度卡——running 追加新步骤；done 原地收尾最后一条 running
+                            var steps = self.stream.steps
+                            if state == "running" {
+                                steps.append(AgentStep.make(text, state))
+                            } else if var last = steps.last, last.isRunning {
+                                last.state = "done"
+                                steps[steps.count - 1] = last
+                            }
+                            self.stream.steps = steps
                         case .done(let full):
                             acc.text = full
                             self.stream.content = full
+                            // v3.1.0：收尾残留 running 步骤（异常路径防永转）
+                            if self.stream.steps.contains(where: { $0.isRunning }) {
+                                self.stream.steps = self.stream.steps.map {
+                                    var s = $0; if s.isRunning { s.state = "done" }; return s
+                                }
+                            }
                         case .error(let err):
                             // v3.0.18 review fix #3：错误同时拼入 acc——run 返回 nil 后落库走 acc.text 路径，真实错误不丢失
                             // v3.0.19：限流错误友好提示（与本地模式一致）
@@ -1367,6 +1469,12 @@ struct ChatView: View {
                             let errText = acc.text.isEmpty ? "⚠️ " + friendly : acc.text + "\n\n⚠️ " + friendly
                             acc.text = errText
                             self.stream.content = errText
+                            // v3.1.0：出错同样收尾残留 running 步骤
+                            if self.stream.steps.contains(where: { $0.isRunning }) {
+                                self.stream.steps = self.stream.steps.map {
+                                    var s = $0; if s.isRunning { s.state = "done" }; return s
+                                }
+                            }
                         }
                     }
                 )
@@ -1608,6 +1716,7 @@ struct ChatView: View {
         let lastUserHasImage = chat.messages.last(where: { $0.isUser })?.imageDataURL != nil
         // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
         let (useModel, useProvider) = resolveModel(hasImage: lastUserHasImage)
+        stepsExpanded = false   // v3.1.0：本地 regenerate 直连路径也重置折叠态
         Task {
             await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
                                provider: useProvider, messages: history) { success, error in

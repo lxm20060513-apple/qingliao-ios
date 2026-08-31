@@ -450,7 +450,7 @@ final class AuthStore {
         return j["text"] as? String ?? ""
     }
 
-    func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String, Bool) {
+    func streamPoll(taskId: String, offset: Int) async throws -> (String, Bool, String, String, Bool, [AgentStep]) {
         let (data, code): (Data, Int)
         // v2.0.116 fix：轮询也带 X-Auth-Token（后端 do_GET 统一鉴权）
         if NetworkMonitor.shared.isCellular {
@@ -473,7 +473,9 @@ final class AuthStore {
         let status = j["status"] as? String ?? ""
         let error = j["error"] as? String ?? ""
         let agent = j["agent"] as? Bool ?? false   // v2.0.96b：Agent 回复标记
-        return (content, done, status, error, agent)
+        // v3.1.0：Agent 进度卡步骤 [{"t","s"}]（工具执行期间 running，完成 done）
+        let steps = AgentStep.parse(j["steps"] as? [[String: Any]])
+        return (content, done, status, error, agent, steps)
     }
 
     /// v3.0.31：流式任务恢复——qingliao 服务重启后内存任务丢失（poll 404），

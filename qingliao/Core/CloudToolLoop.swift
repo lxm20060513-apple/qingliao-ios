@@ -16,6 +16,7 @@ import Foundation
 enum CloudLoopEvent {
     case text(String)                       // 模型文本增量（首轮流式）
     case toolCard(title: String, ok: Bool)  // 工具执行完毕卡片（UI 展示用）
+    case toolStep(text: String, state: String)  // v3.1.0：工具步骤（running 执行中 / done 完成）→ 进度卡
     case done(String)                       // 全部完成，最终文本
     case error(String)                      // 出错（中止）
 }
@@ -138,7 +139,9 @@ final class CloudToolLoop {
                     continue
                 }
             }
+            events(.toolStep(text: preview, state: "running"))   // v3.1.0：进度卡"正在做"
             let result = await LocalToolRunner.execute(name: c.name, argumentsJSON: c.arguments)
+            events(.toolStep(text: preview, state: "done"))      // v3.1.0：进度卡"完成✓"
             events(.toolCard(title: result.summary, ok: result.success))
             working.append(["role": "tool", "tool_call_id": c.id,
                             "content": result.detail])
@@ -185,7 +188,9 @@ final class CloudToolLoop {
                         continue
                     }
                 }
+                events(.toolStep(text: preview, state: "running"))   // v3.1.0
                 let result = await LocalToolRunner.execute(name: c.name, argumentsJSON: c.arguments)
+                events(.toolStep(text: preview, state: "done"))      // v3.1.0
                 events(.toolCard(title: result.summary, ok: result.success))
                 working.append(["role": "tool", "tool_call_id": c.id,
                                 "content": result.detail])

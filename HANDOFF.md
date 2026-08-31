@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-08-31
-> 最新版本：v3.0.90（feature/handoff-301 分支，推送去重竞态修复）
+> 最新版本：v3.1.0（feature/handoff-301 分支，Agent 任务进度卡）
 
 ---
 
@@ -50,6 +50,25 @@
 ---
 
 ## 二、版本历史
+
+### v3.1.0（待发版，Agent 任务进度卡「看着AI干活」）
+
+**功能**：AI Agent 干活（工具调用）时，气泡上方实时显示步骤卡——"正在查询磁盘占用…"（转圈）→ 完成 ✓，全部完成后折叠成一行"🛠 执行了 N 个工具"点开展开。差异化体验：别人是转圈等待，轻聊是看着 AI 干活。
+
+**双模式统一实现**（用户硬性要求 UI 完全一致）：
+- **本地模式**：NAS 后端 `stream_api.py` 的 `_agent_loop` 每轮工具调用写 `st["steps"]`（[{"t":"中文文案","s":"running|done"}]，16 工具中文映射表 TOOL_STEP_TEXT），poll 响应新增 `steps` 字段（全量幂等）。**后端已部署上线**（docker restart qingliao 生效，无需发版）。
+- **云端模式**：`CloudToolLoop` 工具执行前后发 `.toolStep(text:state:)` 事件 → ChatView 写同一 `stream.steps`。
+
+**App 端改动**：
+| 文件 | 说明 |
+|---|---|
+| `Core/AgentStep.swift`（新） | 步骤模型，自定义 == 忽略 id（内容不变不触发 UI 重建） |
+| `Core/AuthStore.swift` | `streamPoll` 返回元组 5→6，解析 `steps` |
+| `Core/StreamClient.swift` | `steps` 属性 + pollOnce 内容变化才更新 |
+| `Core/CloudToolLoop.swift` | `CloudLoopEvent.toolStep` 事件，工具执行前后发 running/done |
+| `Features/Chat/ChatView.swift` | `AgentStepCardView` 步骤卡 UI + 事件处理 + `stepsExpanded` 折叠态（startStream/startCloudStream 重置） |
+
+**后端配套**：v3.1.0 部署前版本已备份 `stream_api.py.bak-v310-20260831`（backend 目录）。顺带根治 **auth_config.json 密码哈希错位**（8-25 重置因 pbkdf2_hmac 误用 .hexdigest() 失败遗留，人人登不进）→ 已重置为容器 env 密码 `Qingliao@2026x` + 重启；**若用户 App 下次重新登录需用此密码**。
 
 ### v3.0.90（2026-08-31 待发版，收件箱推送去重竞态修复）
 

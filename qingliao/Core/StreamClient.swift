@@ -19,6 +19,7 @@ final class StreamClient {
     var status = ""
     var errorMessage = ""
     var isAgent = false        // v2.0.96b：Agent 回复标记（工具调用）
+    var steps: [AgentStep] = []   // v3.1.0：Agent 进度卡步骤（poll 全量幂等覆盖）
 
     private var taskId = ""
     private var offset = 0
@@ -51,6 +52,7 @@ final class StreamClient {
         status = ""
         errorMessage = ""
         isAgent = false
+        steps = []   // v3.1.0：进度卡清空
         self.onFinished = onFinished
 
         // 记录当前流式会话（relay uid 推导用）
@@ -104,9 +106,13 @@ final class StreamClient {
 
     private func pollOnce(auth: AuthStore, generation: Int) async {
         do {
-            let (c, done, st, err, agent) = try await auth.streamPoll(taskId: taskId, offset: offset)
+            let (c, done, st, err, agent, steps) = try await auth.streamPoll(taskId: taskId, offset: offset)
             guard generation == self.generation else { return }   // v3.0.50：旧代轮询丢弃
             if agent { isAgent = true }   // v2.0.96b：Agent 回复标记
+            // v3.1.0：进度卡——后端全量返回 steps（幂等覆盖；内容不变不触发 UI 重建）
+            if steps != self.steps {
+                self.steps = steps
+            }
             failCount = 0
             if !c.isEmpty {
                 offset += c.count
@@ -178,6 +184,10 @@ final class StreamClient {
         isDone = true
         status = success ? "done" : "error"
         errorMessage = error
+        // v3.1.0：异常/取消结束时残留 running 步骤统一收尾，防步骤卡永转、折叠计数错
+        if steps.contains(where: { $0.isRunning }) {
+            steps = steps.map { var s = $0; if s.isRunning { s.state = "done" }; return s }
+        }
         stopPolling()
         clearPersisted()
         endBgTask()   // v3.0.81：结束后台任务
