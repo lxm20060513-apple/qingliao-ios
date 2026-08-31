@@ -433,13 +433,26 @@ struct DashboardView: View {
     }
 
     /// v3.0.36：模型使用量（DeepSeek/StepFun 余额 + unsupported 降级）
+    /// v3.1.1 fix：合并 App 云端模式本地新增的 provider——新增 API 自动生成用量卡片
     private func loadProviderUsage() async {
         guard let j = await auth.jsonOrLog("/api/nas/providers-usage") else {
             usageError = "用量查询失败"
             return
         }
         if let ps = j["providers"] as? [[String: Any]] {
-            providerUsages = ps.map { ProviderUsage.parse($0) }
+            var list = ps
+            // v3.1.1：云端模式（App 本地 UserDefaults/Keychain）新增的 provider 后端无记录
+            // → 补 unsupported 卡片（显示「控制台查看」），保证新增 API 必出卡片
+            let backendIDs = Set(list.compactMap { $0["provider"] as? String })
+            for p in CloudConfig.shared.providers where !backendIDs.contains(p.providerID) {
+                list.append(["provider": p.providerID,
+                             "name": p.name.isEmpty ? p.providerID : p.name,
+                             "mode": "payg",
+                             "available": false,
+                             "unsupported": true,
+                             "error": "官方无公开用量接口"])
+            }
+            providerUsages = list.map { ProviderUsage.parse($0) }
             usageError = ""
         } else if let e = j["error"] as? String {
             usageError = e
