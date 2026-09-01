@@ -19,6 +19,9 @@ struct ChatInputBar: View {
     var onVoiceModeToggle: () -> Void = {}
     // v2.0.100：转写中动画（输入框「语音转换中…」+ 按钮转圈）
     var transcribing: Bool = false
+    // v3.0.85：录音计时器
+    @State private var recordingStartTime: Date?
+    @State private var recordingDuration: TimeInterval = 0
     // v2.0.101：转写停止按钮回调
     var onCancelTranscribe: () -> Void = {}
     // v2.0.106：长按输入框触发语音转文字（效果与长按发送键一致，不弹键盘）
@@ -98,16 +101,44 @@ struct ChatInputBar: View {
             .buttonStyle(.plain)
 
             if isRecording {
-                // 录音中：红点 + 提示
-                HStack(spacing: 5) {
+                // 录音中：红点 + 计时器 + 提示
+                HStack(spacing: 8) {
                     Circle().fill(Color.red).frame(width: 7, height: 7)
+                        .opacity(recordingDuration.truncatingRemainder(dividingBy: 1.0) < 0.5 ? 1 : 0.3)
+                    Text(formatDuration(recordingDuration))
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.red)
+                    Spacer()
                     Text("松开上屏")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.red)
+                        .foregroundStyle(Color.red.opacity(0.7))
                 }
+                .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .frame(maxWidth: .infinity)
                 .background(Color.red.opacity(0.08), in: Capsule())
+                .onAppear {
+                    recordingStartTime = Date()
+                    recordingDuration = 0
+                }
+                .onDisappear {
+                    recordingStartTime = nil
+                    recordingDuration = 0
+                }
+                .overlay(alignment: .trailing) {
+                    // 用 TimelineView 驱动计时器更新
+                    TimelineView(.periodic(from: .now, by: 0.1)) { ctx in
+                        Color.clear.onAppear {
+                            // 首次出现
+                        }
+                        .onChange(of: ctx.date) { _, newDate in
+                            if let start = recordingStartTime {
+                                recordingDuration = newDate.timeIntervalSince(start)
+                            }
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
             } else {
                 // v3.0.40：回滚富文本输入（UITextView 桥接体验不佳）→ 恢复原 TextField(axis:.vertical)
                 // v2.0.34：placeholder 用 overlay 自定义（vertical axis 的 TextField 自带
@@ -261,6 +292,13 @@ struct ChatInputBar: View {
         }
         .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
+    }
+
+    // v3.0.85：格式化录音时长（秒 → "0:05"）
+    private func formatDuration(_ d: TimeInterval) -> String {
+        let m = Int(d) / 60
+        let s = Int(d) % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 
