@@ -8,6 +8,9 @@ import AVFoundation
 final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRecorderDelegate {
     @Published var isRecording = false
 
+    /// v3.0.85：.voiceChat 预热标志——后台线程首次初始化成功后置 true，后续录音直接用（不阻塞主线程）
+    static var voiceChatReady = false
+
     private var recorder: AVAudioRecorder?
     private var audioURL: URL?
     /// v3.0.78 诊断：AVAudioRecorder.record() 返回值（false=录音未真正开始，多因麦克风权限/会话未激活）
@@ -21,33 +24,50 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     }
 
     /// 开始录音（返回是否成功；失败=无麦克风权限）
+    /// v3.0.85 fix：.voiceChat setActive 可能阻塞主线程（系统初始化 AEC 管线），先在后台预热，主线程不等
     func start() -> Bool {
         let session = AVAudioSession.sharedInstance()
-        do {
-            // v3.0.78：改用 .playAndRecord + .voiceChat 模式（系统自动降噪+回声消除，提升识别率）
-            // 注意：不能加 setActive(false)（v3.0.74 实踩会导致录音采不到字节）
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: .defaultToSpeaker)
-            try session.setActive(true)
-        } catch {
-            // v2.0.102：启动失败清空上次残留（防 stop() 上传旧音频）
-            recorder = nil
-            audioURL = nil
-            return false
-        }
         let url = makeURL()
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
-            // v2.0.107：44.1k→16k 采样（whisper 原生 16k，识别质量无损；文件小 2.7 倍，蜂窝上传更快）
             AVSampleRateKey: 16000,
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
+
+        // .voiceChat 预热：后台线程尝试，主线程立即用 .record 兜底开始录音（不卡 UI）
+        // 预热成功后下次录音自动用 .voiceChat（热路径不再阻塞）
+        if Self.voiceChatReady {
+            // 已预热 → 直接用 .voiceChat
+            do {
+                try session.setCategory(.playAndRecord, mode: .voiceChat, options: .defaultToSpeaker)
+                try session.setActive(true)
+            } catch {
+                try? session.setCategory(.record, mode: .default)
+                try? session.setActive(true)
+            }
+        } else {
+            // 首次/未就绪 → .record 兜底 + 后台预热 .voiceChat
+            try? session.setCategory(.record, mode: .default)
+            try? session.setActive(true)
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try session.setCategory(.playAndRecord, mode: .voiceChat, options: .defaultToSpeaker)
+                    try session.setActive(true)
+                    Self.voiceChatReady = true
+                    NSLog("[VOICE] .voiceChat preheat OK")
+                } catch {
+                    NSLog("[VOICE] .voiceChat preheat fail: \(error)")
+                }
+            }
+        }
+
         do {
             let r = try AVAudioRecorder(url: url, settings: settings)
             r.delegate = self
             let ok = r.record()
             lastRecordOK = ok
-            NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent)")
+            NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent) voiceChat=\(Self.voiceChatReady)")
             recorder = r
             audioURL = url
             isRecording = true
