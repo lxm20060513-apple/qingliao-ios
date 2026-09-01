@@ -24,10 +24,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     func start() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
-            // v3.0.76：回退 v3.0.74 的 setActive(false, .notifyOthersOnDeactivation)——
-            // 该改动实测导致录音采不到字节（松手必弹"录音太短"）。改回直接 setCategory(.record)+setActive(true)；
-            // 会话还原交由 stop()（已设为 playback + 停用）。
-            try session.setCategory(.record, mode: .default)
+            // v3.0.78：改用 .playAndRecord + .voiceChat 模式（系统自动降噪+回声消除，提升识别率）
+            // 注意：不能加 setActive(false)（v3.0.74 实踩会导致录音采不到字节）
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: .defaultToSpeaker)
             try session.setActive(true)
         } catch {
             // v2.0.102：启动失败清空上次残留（防 stop() 上传旧音频）

@@ -325,7 +325,7 @@ final class CloudConfig {
 
     /// TTS 总开关（默认关 = 用系统 AVSpeechSynthesizer；开 = 用云端神经 TTS）
     static var ttsEnabled: Bool {
-        UserDefaults.standard.object(forKey: ttsEnabledKey) as? Bool ?? false
+        UserDefaults.standard.object(forKey: ttsEnabledKey) as? Bool ?? true   // v3.0.78：默认开启大模型 TTS
     }
     static var ttsProvider: String {
         UserDefaults.standard.string(forKey: ttsProviderKey) ?? ttsDefaultProvider
