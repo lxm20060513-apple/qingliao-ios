@@ -174,6 +174,7 @@ final class StreamClient {
     }
 
     private func finish(success: Bool, error: String) {
+        guard !isDone else { return }   // v3.1.2：防重入——poll done + recover done 竞态导致 onFinished 重复触发队列发送
         isStreaming = false
         isDone = true
         status = success ? "done" : "error"
