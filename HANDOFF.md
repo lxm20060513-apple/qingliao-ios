@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
-> 最后更新：2026-08-31
-> 最新版本：v3.1.1（2026-08-31 已发版，去省略号 + 用量卡片修复）
+> 最后更新：2026-09-02
+> 最新版本：v3.1.5（2026-09-02 已发版，上下文丢失修复 + 智能摘要 + Agent工具链对齐Hermes）
 
 ---
 
@@ -50,6 +50,51 @@
 ---
 
 ## 二、版本历史
+
+### v3.1.5（2026-09-02 已发版：上下文丢失修复 + 智能摘要 + Agent工具链对齐Hermes）
+
+**① App 启动自动加载上次会话**（解决"重启后忘记上下文"）：
+- `ChatStore.swift` 新增 `loadLastSession(auth:)` — 从后端/本地存储自动加载当前 sessionId 的消息
+- `QingliaoApp.swift` `.task` 登录后调用，让 `historyPayload()` 有上下文可发
+- 云端模式从 `CloudSessionStore`（init 已加载）直接取；本地模式拉 `/api/sessions/list`
+
+**② 后端智能摘要替代硬截断**（长对话不再丢弃旧上下文）：
+- `_summarize_old_messages()` — 超40条消息时用当前模型压缩旧消息为200字摘要
+- `_summary_cache` — 缓存防重复摘要；摘要失败自动 fallback 到旧逻辑
+
+**③ System prompt 对齐 Hermes 风格**（模型从"闲聊助手"变为"高效执行者"）：
+- 普通模式：从"你是轻聊的 AI 助手，用中文简洁友好地回答"改为"智能、高效、直接...对于任务型请求，直接执行并给出结果"
+- Agent 模式：明确列出6类工具能力 + 环境感知（"运行在 NAS 上，/volume1 直接可访问"）+ 行为约束（"用户说帮我做X时直接调用工具"）
+
+**④ Agent 工具链扩展**（10→16个工具，接近 Hermes 完整能力）：
+- `web_search`：DuckDuckGo 搜索（免费无需 key）
+- `read_file`：读取文件内容（支持 offset/limit）
+- `write_file`：写入文件（自动创建目录）
+- `list_files`：列出目录内容
+- `search_files`：按文件名搜索
+- `execute_code`：执行 Python/Shell 代码（30秒超时）
+- `delegate_task`：委派子 Agent（通过 Hermes gateway）
+
+**⑤ v3.1.7 修复：Agent 上下文污染**（模型回复旧答案问题）：
+- **根因**：`_agent_loop` 返回的 `agent_msgs`（含旧工具调用+system prompt）被 `_build_messages` 优先使用，导致旧上下文混入新请求，模型忽略新消息
+- **修复**：移除 `st["agent_msgs"]` 跨请求持久化，`_build_messages` 始终用原始 `st["messages"]`
+- **效果**：每次请求独立，模型只看当前对话历史，不会被旧内容带跑偏
+
+### v3.1.4（2026-09-02 已发版：语音转文字卡死修复）
+
+- 去掉主线程 `setActive(.voiceChat)` AEC 阻塞，改用 `.playAndRecord`
+- 删除 v3.1.2 并发预热（引入竞争 + `stop()` 致 `voiceChatReady` 失真）
+- `VoiceRecorder.swift` 改动
+
+### v3.1.3（2026-09-02 已发版：finish()防重入）
+
+- 修复 poll+recover 竞态导致 `onFinished` 重复触发队列发送
+- `StreamClient.swift` 改动
+
+### v3.1.2（2026-09-02 已发版：语音触发卡死）
+
+- `.voiceChat` 后台预热 + 主线程不阻塞 + 降级兜底
+- 后被 v3.1.4 取代（删除并发预热方案）
 
 ### v3.1.1（2026-08-31 已发版：去省略号 + 移除进度卡 + 用量卡片修复）
 
@@ -427,7 +472,19 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 ### 11. NAS 发版脚本 cp 弹 overwrite 交互卡死（v3.0.90 实踩）
 - NAS root shell 的 `cp` 是 `cp -i` 别名（`cp -f` 也弹「overwrite?」）→ 自动化脚本用 `cp` 传 IPA 会卡在交互确认，md5 校验拿不到。
 - 解法：用 `\cp -f`（反斜杠绕别名）或绝对路径 `/bin/cp -f`。
-- 配套：>100KB 文件别走 base64 PTY 上传（超时），用 **SFTP put 到可写路径 → \cp -f 到目标 → chmod 644 → md5sum 两端比对**；GitHub artifact 下载 302 到 Azure blob 时 urllib 默认跟随会带 Authorization 头致 401 → NoRedirect 拦截 + 手动跟随不带 auth。
+- 配套：>100KB 文件别走 base64 PTY 上传（超时），用 **SFTP put 到可写路径 → \\cp -f 到目标 → chmod 644 → md5sum 两端比对**；GitHub artifact 下载 302 到 Azure blob 时 urllib 默认跟随会带 Authorization 头致 401 → NoRedirect 拦截 + 手动跟随不带 auth。
+
+### 12. Agent agent_msgs 跨请求污染导致模型回复旧答案（v3.1.5 引入，v3.1.7 修复）
+- `_agent_loop` 返回的 `agent_msgs`（含工具调用+结果+system prompt）被 `_worker` 存储到 `st["agent_msgs"]`，`_build_messages` 优先使用它。
+- **症状**：用户发新问题，模型回复旧答案（因为旧的 agent_msgs 混入新请求上下文，模型被旧内容"带跑偏"）。
+- **诊断**：`stream_ctx_debug.log` 显示 `msgs=N` 正确（新消息确实在），但模型忽略最后一条。
+- **修复**：移除 `st["agent_msgs"]` 跨请求持久化，`_build_messages` 始终用原始 `st["messages"]`。
+- **类级**：**agent loop 的富化上下文仅在本次请求内有效，不能持久化到 st 供下次复用**——旧工具调用会污染新请求，模型注意力被旧内容分散。
+
+### 13. Agent 不知道自己在 NAS 上（v3.1.5 实踩）
+- 模型说"当前这台机器没有 /volume1"并写脚本让用户手动执行，而非直接调用工具。
+- **根因**：agent system prompt 没告诉模型它的运行环境和可用工具。
+- **修复**：system prompt 明确列出"运行在 NAS 上，/volume1 可直接访问"+6类工具能力+行为约束（"用户说帮我做X时直接调用工具"）。
 
 ---
 
