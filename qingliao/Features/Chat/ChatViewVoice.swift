@@ -42,7 +42,7 @@ extension ChatView {
             return
         }
         let exists = FileManager.default.fileExists(atPath: url.path)
-        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))[.size] as? Int ?? -1
+        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int ?? -1
         voiceDiag = "size=\(sz) exists=\(exists) recordOK=\(String(describing: voiceRecorder.lastRecordOK)) ver=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
         NSLog("[VOICE] \(voiceDiag)")
         guard exists, let data = try? Data(contentsOf: url), data.count > 100 else {

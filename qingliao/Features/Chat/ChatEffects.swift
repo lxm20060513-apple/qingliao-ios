@@ -136,16 +136,12 @@ struct SiriBallView: View {
         }
         .frame(width: 92, height: 92)
         .contentShape(Circle())
-        // v3.1.4+：ExclusiveGesture 长按语音/单击展开（与发送按钮同逻辑）
+        // v3.1.4+：长按语音转文字 / 单击展开（ExclusiveGesture 互斥，防长按同时触发单击）
         .gesture(
-            voiceEnabled
-                ? AnyGesture(
-                    ExclusiveGesture(
-                        LongPressGesture(minimumDuration: 0.4).onEnded { _ in onLongPress() },
-                        TapGesture().onEnded { _ in onTap() }
-                    )
-                )
-                : AnyGesture(TapGesture().onEnded { _ in onTap() })
+            ExclusiveGesture(
+                LongPressGesture(minimumDuration: 0.4).onEnded { _ in if voiceEnabled { onLongPress() } },
+                TapGesture().onEnded { _ in onTap() }
+            )
         )
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
