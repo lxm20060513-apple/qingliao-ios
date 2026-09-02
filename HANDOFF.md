@@ -1,7 +1,7 @@
 # 轻聊 App 项目交接文档
 
 > 最后更新：2026-09-02
-> 最新版本：v3.1.5（2026-09-02 已发版，上下文丢失修复 + 智能摘要 + Agent工具链对齐Hermes）
+> 最新版本：v3.1.7（2026-09-03 已发版，语音卡死修复 + 502修复 + SiriBall长按语音）
 
 ---
 
@@ -51,7 +51,44 @@
 
 ## 二、版本历史
 
+### v3.1.7（2026-09-03 已发版：语音卡死修复 + 502修复 + SiriBall长按语音）
+
+**① 语音转文字卡死修复**（`VoiceRecorder.swift`）：
+- **根因**：`start()` 中 `AVAudioSession.setCategory(.playAndRecord)` + `setActive(true)` 在主线程同步执行，首次调用初始化音频管线阻塞 100-500ms → UI 冻结
+- **修复**：音频会话配置移到 `DispatchQueue.global(qos: .userInitiated)` 后台线程，UI 立即切换到录音状态（`isRecording=true`），录音就绪后自动开始
+- `stop()` 的 `setActive(false)` 也移到后台线程，避免阻塞主线程
+- `settings` 字典在 `Task { @MainActor }` 闭包内创建，避免 Swift 6 跨 actor 数据竞争
+
+**② SiriBall 长按语音入口**（`ChatEffects.swift` + `ChatInputBar.swift`）：
+- `SiriBallView` 新增 `onLongPress` / `voiceEnabled` 参数
+- 手势改为 `ExclusiveGesture(LongPressGesture(0.4s), TapGesture())`：长按进入语音转文字，单击展开输入框
+- `ChatInputBar` 传入 `onLongPress: { onVoiceModeToggle() }` + `voiceEnabled`
+
+**③ 后端 502 修复**（`stream_api.py` + `unified_router.py`）：
+- `unified_router.py` 路由表新增 `/api/agent/tool → stream_api.StreamHandler`（此前被路由到 `agent_api` 模块，无此端点）
+- `stream_api.py` `/api/agent/tool` 端点两个 bug：
+  - `path` 未定义 → 改为 `self.path`（`NameError` → 500）
+  - `rfile` 二次读取 → 使用已解析的 `data` 变量（body 已被上游消费）
+
+### v3.1.6（2026-09-02 已发版：Agent工具链对齐Hermes + 全量Hermes模式）
+
+**① 新增10个NAS桥接工具**（`LocalToolRunner.swift` + `tool_executor.py`）：
+- `web_extract`、`patch_file`、`todo`、`image_generate`、`text_to_speech`
+- `terminal`、`process`、`cronjob`、`video_generate`、`video_analyze`
+- 经 `POST /api/agent/tool` 调 NAS 后端执行，写操作需用户确认弹窗
+
+**② 全量 Hermes 模式**（`stream_api.py`）：
+- 新增 `hermesMode` 开关（App 端传递），开启时 `_hermes_full_agent()` 整个 agent loop 交给 Hermes 9123
+- 一次性获得全部 86+ 工具（browser/clarify/MCP 等有状态工具）
+- `_agent_loop()` 返回 `(content, enriched_msgs)` 元组，保留完整工具调用历史
+
+**③ 后端配套**（`stream_api.py`）：
+- `_build_messages()` 智能摘要：超40条消息时用当前模型压缩旧消息为200字摘要
+- system prompt 改为引导性指令（"回答要有内容"）替代限制性指令（"不要输出思考过程"）
+- 推理模型自动带 `reasoning_effort: medium`
+
 ### v3.1.5（2026-09-02 已发版：上下文丢失修复 + 智能摘要 + Agent工具链对齐Hermes）
+
 
 **① App 启动自动加载上次会话**（解决"重启后忘记上下文"）：
 - `ChatStore.swift` 新增 `loadLastSession(auth:)` — 从后端/本地存储自动加载当前 sessionId 的消息
