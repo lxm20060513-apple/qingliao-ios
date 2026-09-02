@@ -33,7 +33,7 @@ struct QingliaoApp: App {
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）
                     NotificationHelper.requestAuth()
-                    // v3.0.19：注入 AuthStore 到本地工具执行器（云端 HA/Docker 工具用）
+                    // v3.0.x：注入 AuthStore 到本地工具执行器（云端 HA/Docker 工具用）
                     LocalToolRunner.authStore = auth
                     // v3.0.x：注入 AuthStore 到朗读管理（语音引擎 TTS 经 /api/tts 需带 token）
                     SpeechManager.shared.attach(auth: auth)
@@ -42,6 +42,10 @@ struct QingliaoApp: App {
                     // v3.0.82：注入收件箱依赖 + 启动推送轮询（Hermes 主动推消息到 App）
                     InboxStore.shared.attach(auth: auth, chat: chat, stream: stream)
                     InboxStore.shared.startPolling()
+                    // v3.1.5：启动自动加载上次会话消息（解决 App 重启后"忘记上下文"）
+                    if auth.isLoggedIn {
+                        await chat.loadLastSession(auth: auth)
+                    }
                 }
                 // v2.0.61：App 进后台时持久化流式状态（杀后台可恢复）
                 .onChange(of: scenePhase) { _, phase in

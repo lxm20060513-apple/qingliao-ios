@@ -74,6 +74,29 @@ final class ChatStore {
         defaults.set(sessionId, forKey: sessionKey)
     }
 
+    // MARK: - v3.1.5 启动自动加载上次会话（解决"App 忘记上下文"）
+    /// App 重启后自动从后端/本地存储加载当前 sessionId 对应的会话消息，
+    /// 让 historyPayload() 有上下文可发，不再每条消息都"从零开始"。
+    /// 云端模式从 CloudSessionStore（init 已加载）直接取；本地模式拉 /api/sessions/list。
+    func loadLastSession(auth: AuthStore) async {
+        guard messages.isEmpty else { return }   // 已有消息不覆盖（用户已手动加载）
+        let sid = sessionId
+        if CloudConfig.shared.isCloudMode {
+            // 云端模式：CloudSessionStore.init() 已 load()，直接查
+            if let match = CloudSessionStore.shared.sessions.first(where: { $0.id == sid }) {
+                await MainActor.run { self.load(match) }
+            }
+            return
+        }
+        // 本地模式：从后端拉会话列表
+        guard let j = try? await auth.json("/api/sessions/list"),
+              let raw = j["sessions"] as? [Any] else { return }
+        let sessions = raw.compactMap { ChatSession.parse($0 as? [String: Any] ?? [:]) }
+        if let match = sessions.first(where: { $0.id == sid }) {
+            await MainActor.run { self.load(match) }
+        }
+    }
+
     /// v3.0.2 fix（会话串位根治）：模式切换时调用——清空当前模式的内存数据，
     /// 并按**新模式的 key** 重新读取当前会话 id。原实现：ChatStore 是全局单例，
     /// 切模式不复位 → 云端聊天时内存里还带本地 messages → 界面串位。
