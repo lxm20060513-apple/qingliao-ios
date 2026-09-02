@@ -49,6 +49,17 @@ enum LocalToolRunner {
         sendNotificationDef,
         controlHADef,
         controlDockerDef,
+        // v3.0.98: NAS 桥接工具（经 /api/agent/tool 调 NAS 后端执行）
+        webExtractDef,
+        patchFileDef,
+        todoDef,
+        imageGenerateDef,
+        textToSpeechDef,
+        terminalDef,
+        processDef,
+        cronjobDef,
+        videoGenerateDef,
+        videoAnalyzeDef,
     ]
 
     /// OpenAI 协议 tools 数组（传给 /chat/completions）
@@ -137,6 +148,14 @@ enum LocalToolRunner {
                                   detail: #"{"error": "notification permission denied"}"#)
             }
         default:
+            // v3.0.98: NAS 桥接工具——非本地工具走后端 /api/agent/tool
+            let nasBridgeTools: Set<String> = [
+                "web_extract", "patch_file", "todo", "image_generate", "text_to_speech",
+                "terminal", "process", "cronjob", "video_generate", "video_analyze"
+            ]
+            if nasBridgeTools.contains(name) {
+                return await executeNASTool(name: name, argumentsJSON: argumentsJSON)
+            }
             break
         }
         return run(name: name, argumentsJSON: argumentsJSON)
@@ -504,6 +523,122 @@ enum LocalToolRunner {
         }
     )
 
+
+    // MARK: - v3.0.98 NAS 桥接工具定义
+
+    static let webExtractDef = LocalToolDef(
+        name: "web_extract",
+        description: "从网页URL提取内容为Markdown文本。适合获取文章、文档等网页的正文内容。",
+        parameters: ["type": "object", "properties": ["url": ["type": "string", "description": "要提取内容的网页URL"]], "required": ["url"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "提取中…", detail: #"{"async": true}"#) }
+    )
+
+    static let patchFileDef = LocalToolDef(
+        name: "patch_file",
+        description: "精确替换文件中的指定字符串。适合对已有文件做小范围修改。",
+        parameters: ["type": "object", "properties": [
+            "path": ["type": "string", "description": "文件路径"],
+            "old_string": ["type": "string", "description": "要替换的字符串"],
+            "new_string": ["type": "string", "description": "替换后的新字符串"]
+        ], "required": ["path", "old_string", "new_string"]],
+        needsConfirm: true,
+        run: { _ in ToolResult(success: false, summary: "修补中…", detail: #"{"async": true}"#) }
+    )
+
+    static let todoDef = LocalToolDef(
+        name: "todo",
+        description: "任务规划与追踪。创建待办事项列表，跟踪任务进度。",
+        parameters: ["type": "object", "properties": [
+            "action": ["type": "string", "enum": ["create", "list", "update", "complete"]],
+            "task_id": ["type": "string"],
+            "content": ["type": "string"],
+            "status": ["type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"]]
+        ], "required": ["action"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "查询中…", detail: #"{"async": true}"#) }
+    )
+
+    static let imageGenerateDef = LocalToolDef(
+        name: "image_generate",
+        description: "AI图片生成。根据文字描述生成图片。",
+        parameters: ["type": "object", "properties": [
+            "prompt": ["type": "string", "description": "图片描述"],
+            "aspect_ratio": ["type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4"]]
+        ], "required": ["prompt"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "生成中…", detail: #"{"async": true}"#) }
+    )
+
+    static let textToSpeechDef = LocalToolDef(
+        name: "text_to_speech",
+        description: "文字转语音。将文本转为语音音频。",
+        parameters: ["type": "object", "properties": [
+            "text": ["type": "string", "description": "要转为语音的文本"],
+            "voice": ["type": "string", "description": "语音类型"]
+        ], "required": ["text"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "合成中…", detail: #"{"async": true}"#) }
+    )
+
+    static let terminalDef = LocalToolDef(
+        name: "terminal",
+        description: "执行Shell命令并返回输出。可用于系统管理、文件操作等。",
+        parameters: ["type": "object", "properties": [
+            "command": ["type": "string", "description": "要执行的Shell命令"],
+            "timeout": ["type": "integer", "description": "超时秒数，默认30"]
+        ], "required": ["command"]],
+        needsConfirm: true,
+        run: { _ in ToolResult(success: false, summary: "执行中…", detail: #"{"async": true}"#) }
+    )
+
+    static let processDef = LocalToolDef(
+        name: "process",
+        description: "管理后台进程。查看、轮询、终止后台运行的进程。",
+        parameters: ["type": "object", "properties": [
+            "action": ["type": "string", "enum": ["list", "poll", "log", "kill"]],
+            "session_id": ["type": "string"]
+        ], "required": ["action"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "查询中…", detail: #"{"async": true}"#) }
+    )
+
+    static let cronjobDef = LocalToolDef(
+        name: "cronjob",
+        description: "管理定时任务。创建、查看、更新、暂停、恢复、删除定时任务。",
+        parameters: ["type": "object", "properties": [
+            "action": ["type": "string", "enum": ["create", "list", "update", "pause", "resume", "run", "remove"]],
+            "job_id": ["type": "string"],
+            "schedule": ["type": "string", "description": "调度时间，如 every 2h, 0 9 * * *"],
+            "prompt": ["type": "string", "description": "任务内容"],
+            "name": ["type": "string"]
+        ], "required": ["action"]],
+        needsConfirm: true,
+        run: { _ in ToolResult(success: false, summary: "定时任务中…", detail: #"{"async": true}"#) }
+    )
+
+    static let videoGenerateDef = LocalToolDef(
+        name: "video_generate",
+        description: "AI视频生成。根据文字描述或图片生成视频。",
+        parameters: ["type": "object", "properties": [
+            "prompt": ["type": "string"],
+            "image_url": ["type": "string", "description": "参考图片URL（可选）"]
+        ], "required": ["prompt"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "生成视频中…", detail: #"{"async": true}"#) }
+    )
+
+    static let videoAnalyzeDef = LocalToolDef(
+        name: "video_analyze",
+        description: "视频分析。分析视频内容，提取关键信息。",
+        parameters: ["type": "object", "properties": [
+            "video_path": ["type": "string"],
+            "question": ["type": "string"]
+        ], "required": ["video_path"]],
+        needsConfirm: false,
+        run: { _ in ToolResult(success: false, summary: "分析视频中…", detail: #"{"async": true}"#) }
+    )
+
     // MARK: - 辅助
 
     /// 宽松时间解析（支持 "2026-08-21 15:00:00" / "2026-08-21T15:00:00" / "2026-08-21 15:00" /
@@ -553,6 +688,84 @@ enum LocalToolRunner {
         case 85, 86: return "阵雪"
         case 95, 96, 99: return "雷暴"
         default: return ""
+        }
+    }
+
+    // MARK: - v3.0.98 NAS 桥接工具执行
+
+    /// 执行 NAS 后端工具：POST /api/agent/tool
+    static func executeNASTool(name: String, argumentsJSON: String) async -> ToolResult {
+        guard let auth = authStore else {
+            return ToolResult(success: false, summary: "未连接后端（请先登录）", detail: #"{"error": "no auth"}"#)
+        }
+        var args: [String: Any] = [:]
+        if let data = argumentsJSON.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            args = obj
+        }
+        let body: [String: Any] = ["name": name, "args": args]
+        do {
+            let j = try await auth.json("/api/agent/tool", method: "POST", body: body)
+            let ok = (j["ok"] as? Bool) ?? false
+            let result = j["result"] as? String ?? ""
+            let error = j["error"] as? String ?? ""
+            if ok {
+                // 截断过长结果（给模型的 detail 限制 4000 字符）
+                let truncated = result.count > 4000 ? String(result.prefix(4000)) + "\n...(已截断)" : result
+                return ToolResult(success: true,
+                                  summary: toolNASPreview(name: name, args: args),
+                                  detail: truncated)
+            }
+            return ToolResult(success: false, summary: "NAS工具失败: \(error)",
+                              detail: #"{"error": "\#(error)"}"#)
+        } catch {
+            return ToolResult(success: false, summary: "NAS请求失败: \(error.localizedDescription)",
+                              detail: #"{"error": "\#(error.localizedDescription)"}"#)
+        }
+    }
+
+    /// NAS 桥接工具的卡片标题预览
+    static func toolNASPreview(name: String, args: [String: Any]) -> String {
+        switch name {
+        case "web_extract":
+            let url = args["url"] as? String ?? ""
+            let short = url.count > 40 ? String(url.prefix(40)) + "…" : url
+            return "🌐 提取网页: \(short)"
+        case "patch_file":
+            let path = args["path"] as? String ?? ""
+            return "📝 修补文件: \(path)"
+        case "todo":
+            let action = args["action"] as? String ?? "list"
+            let content = args["content"] as? String ?? ""
+            switch action {
+            case "create": return "📋 新建任务: \(content.count > 20 ? String(content.prefix(20)) + "…" : content)"
+            case "complete": return "✅ 完成任务: \(args["task_id"] as? String ?? "")"
+            default: return "📋 查看任务列表"
+            }
+        case "image_generate":
+            let prompt = args["prompt"] as? String ?? ""
+            return "🎨 生成图片: \(prompt.count > 20 ? String(prompt.prefix(20)) + "…" : prompt)"
+        case "text_to_speech":
+            let text = args["text"] as? String ?? ""
+            return "🔊 语音合成: \(text.count > 20 ? String(text.prefix(20)) + "…" : text)"
+        case "terminal":
+            let cmd = args["command"] as? String ?? ""
+            return "💻 执行命令: \(cmd.count > 30 ? String(cmd.prefix(30)) + "…" : cmd)"
+        case "process":
+            let action = args["action"] as? String ?? "list"
+            return "⚙️ 进程管理: \(action)"
+        case "cronjob":
+            let action = args["action"] as? String ?? "list"
+            let jobName = args["name"] as? String ?? ""
+            if action == "create" { return "⏰ 创建定时: \(jobName)" }
+            return "⏰ 定时任务: \(action)"
+        case "video_generate":
+            let prompt = args["prompt"] as? String ?? ""
+            return "🎬 生成视频: \(prompt.count > 20 ? String(prompt.prefix(20)) + "…" : prompt)"
+        case "video_analyze":
+            return "🎬 分析视频"
+        default:
+            return "🔧 \(name)"
         }
     }
 
