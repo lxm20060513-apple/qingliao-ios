@@ -3,6 +3,7 @@ import AVFoundation
 // MARK: - v2.0.96c 语音转文字录音器（服务器 ASR：AVAudioRecorder 录音 → 上传转写）
 // 侧载兼容：AVAudioRecorder 仅需麦克风权限（无 speech-recognition entitlement 限制），
 // 替代 v2.0.85 因 SideStore SIGTRAP 移除的 SFSpeechRecognizer。
+// v3.1.4+ 修复：setCategory/setActive 移到后台线程，避免主线程阻塞卡死
 
 @MainActor
 final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRecorderDelegate {
@@ -12,6 +13,8 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     private var audioURL: URL?
     /// v3.0.78 诊断：AVAudioRecorder.record() 返回值（false=录音未真正开始，多因麦克风权限/会话未激活）
     private(set) var lastRecordOK: Bool? = nil
+    /// v3.1.4+：后台音频会话配置中标志（防止 stop() 在配置完成前打断会话）
+    private var sessionConfiguring = false
 
     /// v3.0.76：每个录音段用独立文件名（避免分段流式反复 stop/resume 同一 URL 的数据竞争 / 读到空段）
     private func makeURL() -> URL {
@@ -20,13 +23,10 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
         return dir.appendingPathComponent(name)
     }
 
-    /// 开始录音（返回是否成功；失败=无麦克风权限）
-    /// v3.1.2 根因修复（用户拍板方案A 2026-09-02）：主线程同步 setActive(.voiceChat) 会初始化系统
-    /// AEC 声学回声消除管线、阻塞主线程 1s+ → App 卡死。改用轻量 .playAndRecord（无 .voiceChat mode），
-    /// setActive 不初始化 AEC，主线程不阻塞。降噪识别交给服务端 whisper（VAD 兜底）。
-    /// 注意：不能加 setActive(false)（v3.0.74 实踩会导致录音采不到字节）。
+    /// 开始录音（异步：音频会话配置在后台线程，不阻塞主线程）
+    /// v3.1.4+ 修复：setCategory(.playAndRecord)/setActive(true) 可能阻塞主线程数百毫秒。
+    /// 改为后台线程配置会话，UI 立即响应，录音就绪后自动开始。
     func start() -> Bool {
-        let session = AVAudioSession.sharedInstance()
         let url = makeURL()
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -34,46 +34,85 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
-        do {
-            try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
-            try session.setActive(true)
-        } catch {
-            // v2.0.102：启动失败清空上次残留（防 stop() 上传旧音频）
-            recorder = nil
-            audioURL = nil
-            return false
-        }
 
-        do {
-            let r = try AVAudioRecorder(url: url, settings: settings)
-            r.delegate = self
-            let ok = r.record()
-            lastRecordOK = ok
-            NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent) mode=playAndRecord")
-            recorder = r
-            audioURL = url
-            isRecording = true
-            return true
-        } catch {
-            recorder = nil
-            audioURL = nil
-            return false
+        // v3.1.4+：先标记录音中（UI 立即显示录音状态），音频会话在后台配置
+        sessionConfiguring = true
+        isRecording = true
+        audioURL = url
+
+        // 后台线程配置音频会话（setCategory + setActive 是阻塞调用）
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let session = AVAudioSession.sharedInstance()
+            var sessionOK = false
+            do {
+                try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
+                try session.setActive(true)
+                sessionOK = true
+            } catch {
+                NSLog("[VOICE] session config failed: \(error)")
+            }
+
+            // 回到主线程创建 AVAudioRecorder（必须在主线程操作 @MainActor 属性）
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.sessionConfiguring = false
+
+                guard sessionOK else {
+                    self.isRecording = false
+                    self.recorder = nil
+                    self.audioURL = nil
+                    self.lastRecordOK = false
+                    return
+                }
+
+                do {
+                    let r = try AVAudioRecorder(url: url, settings: settings)
+                    r.delegate = self
+                    let ok = r.record()
+                    self.lastRecordOK = ok
+                    NSLog("[VOICE] record()->\(ok) url=\(url.lastPathComponent) mode=playAndRecord")
+                    if ok {
+                        self.recorder = r
+                    } else {
+                        self.isRecording = false
+                        self.audioURL = nil
+                    }
+                } catch {
+                    NSLog("[VOICE] recorder create failed: \(error)")
+                    self.isRecording = false
+                    self.recorder = nil
+                    self.audioURL = nil
+                    self.lastRecordOK = false
+                }
+            }
         }
+        // 立即返回 true（UI 已切换到录音状态，录音实际在后台就绪后开始）
+        return true
     }
 
     /// 停止录音，返回音频文件（用于上传转写）
-    /// v2.0.102：恢复音频会话为 playback 并停用——否则 TTS 朗读无声（setCategory(.record) 未恢复）
+    /// v2.0.102：恢复音频会话为 playback 并停用——否则 TTS 朗读无声
+    /// v3.1.4+：setActive(false) 移到后台线程，避免阻塞主线程
     func stop() -> URL? {
         if let r = recorder { r.stop() }
+        let url = audioURL
         isRecording = false
-        if let u = audioURL {
+        recorder = nil
+        audioURL = nil
+
+        if let u = url {
             let sz: Int = (try? FileManager.default.attributesOfItem(atPath: u.path))?[.size] as? Int ?? -1
             NSLog("[VOICE] stop() url=\(u.lastPathComponent) size=\(sz)")
         }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
-        return audioURL
+
+        // 后台恢复音频会话（避免阻塞主线程）
+        DispatchQueue.global(qos: .utility).async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .default)
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
+
+        return url
     }
 
     /// v3.0.36 分段流式：暂停当前段并返回音频（保留 record 会话，供立即重录下一段）

@@ -103,6 +103,9 @@ struct SiriBallView: View {
     // v3.0.12：思考球——流式回答中 orbits(点点旋转) / 空闲 ring(缓慢脉动)
     var thinking: Bool = false
     var onTap: () -> Void = {}
+    // v3.1.4+：长按语音转文字（与发送按钮长按功能一致）
+    var onLongPress: () -> Void = {}
+    var voiceEnabled: Bool = true
 
     var body: some View {
         let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 30.0)
@@ -133,7 +136,17 @@ struct SiriBallView: View {
         }
         .frame(width: 92, height: 92)
         .contentShape(Circle())
-        .onTapGesture { onTap() }
+        // v3.1.4+：ExclusiveGesture 长按语音/单击展开（与发送按钮同逻辑）
+        .gesture(
+            voiceEnabled
+                ? AnyGesture(
+                    ExclusiveGesture(
+                        LongPressGesture(minimumDuration: 0.4).onEnded { _ in onLongPress() },
+                        TapGesture().onEnded { _ in onTap() }
+                    )
+                )
+                : AnyGesture(TapGesture().onEnded { _ in onTap() })
+        )
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
     }

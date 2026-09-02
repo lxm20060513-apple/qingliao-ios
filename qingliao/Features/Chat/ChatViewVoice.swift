@@ -32,16 +32,17 @@ extension ChatView {
     /// v2.0.101：停止按钮（transcribeToken 代次——停止/重录使旧 Task 结果作废，杜绝竞态回填）
     /// v3.0.77：移除 v3.0.36 分段流式——分段每 2s 对录音器 stop/resume（局部/独立文件名）导致段音频读不到，
     ///          语音转文字恒判"录音太短"。改回整段录音一次转写（v3.0.35 稳定方式）。
+    /// v3.1.4+：stop() 返回 nil 时（音频会话未就绪就松手），静默跳过不报错
     func uploadAndTranscribe() {
         // 整段录音：松手后取完整音频一次 ASR（不依赖分段 voiceSegments）
         guard let url = voiceRecorder.stop() else {
             voiceDiag = "stop()=nil recordOK=\(String(describing: voiceRecorder.lastRecordOK))"
             NSLog("[VOICE] \(voiceDiag)")
-            voiceTooShort = true
+            // v3.1.4+：音频会话未就绪就松手（异步启动中），不显示错误提示（用户无感知）
             return
         }
         let exists = FileManager.default.fileExists(atPath: url.path)
-        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int ?? -1
+        let sz: Int = (try? FileManager.default.attributesOfItem(atPath: url.path))[.size] as? Int ?? -1
         voiceDiag = "size=\(sz) exists=\(exists) recordOK=\(String(describing: voiceRecorder.lastRecordOK)) ver=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
         NSLog("[VOICE] \(voiceDiag)")
         guard exists, let data = try? Data(contentsOf: url), data.count > 100 else {
@@ -88,13 +89,17 @@ extension ChatView {
     /// v2.0.106：长按输入框进入同款路径
     /// v2.0.107：键盘两场景——长按前键盘已开 → 保持；未开 → 收回（触摸聚焦弹的，语音模式不弹键盘）
     /// v2.0.107b：震动改 heavy + prepare（原 medium 无 prepare，首次 impact 常被系统丢弃/偏弱）
+    /// v3.1.4+：start() 改异步（音频会话后台配置），先显示语音 UI 再等录音就绪
     func toggleVoiceMode(keyboardWasUp: Bool = false) {
         // v3.0.4：云端模式无后端 ASR → 屏蔽语音转文字入口（双重保护，避免误入）
         guard !CloudConfig.shared.isCloudMode else { return }
         if voiceMode {
             exitVoiceMode()
         } else {
-            if voiceRecorder.start() {
+            // v3.1.4+：start() 现在同步返回 true（UI 立即切换），音频会话在后台配置
+            // 录音实际就绪需要短暂时间，但 UI 反馈是即时的
+            let started = voiceRecorder.start()
+            if started {
                 let gen = UIImpactFeedbackGenerator(style: .heavy)
                 gen.prepare()
                 gen.impactOccurred()   // 长按激活震动反馈
@@ -111,7 +116,6 @@ extension ChatView {
                 withAnimation(.easeOut(duration: 0.2)) { voiceMode = true }
             } else {
                 // v3.0.19 review fix #2：麦克风失败 → 重置语音指令标志（防残留劫持下次转文字）
-
                 voiceAuthFailed = true   // 麦克风权限被拒
             }
         }

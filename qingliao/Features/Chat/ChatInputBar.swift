@@ -47,7 +47,7 @@ struct ChatInputBar: View {
                 // v2.0.129 球态：智能球单球居中（v3.0.50 移除扫码球）
                 VStack(spacing: 8) {
                     HStack(spacing: 34) {
-                    // v2.0.129 智能球：单击展开输入框（语音功能已移除）
+                    // v2.0.129 智能球：单击展开输入框 / 长按语音转文字
                     SiriBallView(thinking: streaming,
                                  onTap: {
                                      onFullBurst()
@@ -55,7 +55,9 @@ struct ChatInputBar: View {
                                          ballExpanded = true
                                      }
                                      Task { try? await Task.sleep(for: .seconds(0.4)); focused = true }
-                                 })
+                                 },
+                                 onLongPress: { onVoiceModeToggle() },
+                                 voiceEnabled: voiceEnabled)
                     }
                 }
                 .padding(.bottom, 0)   // v3.0.66：球态间隙由外层 ChatInputBar 统一留（键盘收起时与 Dock 约 10pt 呼吸）
