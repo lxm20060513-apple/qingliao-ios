@@ -28,12 +28,6 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     /// 改为后台线程配置会话，UI 立即响应，录音就绪后自动开始。
     func start() -> Bool {
         let url = makeURL()
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
 
         // v3.1.4+：先标记录音中（UI 立即显示录音状态），音频会话在后台配置
         sessionConfiguring = true
@@ -64,6 +58,14 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
                     self.lastRecordOK = false
                     return
                 }
+
+                // v3.1.7: settings 在 MainActor 闭包内创建，避免跨 actor 传递 [String:Any] 数据竞争
+                let settings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: 16000,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+                ]
 
                 do {
                     let r = try AVAudioRecorder(url: url, settings: settings)
