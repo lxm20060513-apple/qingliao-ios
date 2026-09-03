@@ -74,6 +74,14 @@ struct QingliaoApp: App {
     init() {
         // v2.0.43：崩溃捕获（写本地文件），登录后由 RootView 上报
         CrashReporter.install()
+        // v3.2.1 双保险：注册 UserDefaults 默认值。
+        // 病根：@AppStorage(...) 的默认值（如 agentEnabled=true）只在视图层生效、不写盘；
+        // 而 UserDefaults.standard.bool(forKey:) 在 key 从不曾写入时返回 false → 设置页显示"开"但
+        // AuthStore 读 agentEnabled 却发出 false → 后端 agent_on=False 走普通 LLM。
+        // register(defaults:) 在"key 不存在"时兜底返回默认值，保证 UI 与真实存储一致。
+        UserDefaults.standard.register(defaults: [
+            UserDefaultsKey.agentEnabled: true,
+        ])
     }
 
     /// 外观：跟随用户选择（深色 #000 / 白天 #FFF / 跟随系统）

@@ -365,7 +365,12 @@ final class AuthStore {
     func streamStart(sessionId: String, model: String, provider: String,
                      messages: [[String: Any]], bot: String? = nil) async throws -> String {
         // v2.0.98：Agent 开关（设置页 qingliao_agent_enabled，默认开；关闭后后端走普通 LLM 不调用工具）
-        let agentOn = UserDefaults.standard.bool(forKey: UserDefaultsKey.agentEnabled)
+        // v3.2.1 双保险：key 缺失时 bool(forKey:) 返回 false 会误发 false 到后端（设置页显示"开"却请求不带 Agent）。
+        // QL 设置页对 agentEnabled 无任何"默认写盘"逻辑（@AppStorage 默认 true 只影响 UI），
+        // 因此这里显式兜底：key 不存在或无值 → 默认 true。真正写入 UserDefaults 的权限交给设置页 Toggle，
+        // register(defaults:) 已在 App 启动兜底，此处再读一次防御键值被误置 false 的旧版残留。
+        let stored = UserDefaults.standard.object(forKey: UserDefaultsKey.agentEnabled)
+        let agentOn: Bool = (stored as? Bool) ?? true
         var payload: [String: Any] = [
             "sessionId": sessionId,
             "model": model,
