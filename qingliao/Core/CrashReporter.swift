@@ -98,7 +98,9 @@ enum CrashReporter {
     }
 
     /// 启动时若有未上报崩溃 → 异步 POST，成功删除本地文件
-    /// v3.0.x fix：改为非 @MainActor（原 @MainActor 阻塞 App 主线程启动）
+    /// v3.1.8 fix: 恢复 @MainActor（async 函数不会阻塞启动线程），
+    /// 解决 [String:Any] 跨 actor Sendable 不兼容问题
+    @MainActor
     static func flushPending(auth: AuthStore) async {
         let path = qlCrashFilePath()
         guard FileManager.default.fileExists(atPath: path) else { return }
@@ -111,11 +113,8 @@ enum CrashReporter {
         var body: [String: Any] = obj
         body["app"] = "qingliao-ios"
         body["platform"] = "iOS"
-        let (os, device) = await MainActor.run {
-            (UIDevice.current.systemVersion, UIDevice.current.model)
-        }
-        body["os"] = os
-        body["device"] = device
+        body["os"] = UIDevice.current.systemVersion
+        body["device"] = UIDevice.current.model
         if let info = Bundle.main.infoDictionary {
             body["version"] = (info["CFBundleShortVersionString"] as? String) ?? ""
         }
