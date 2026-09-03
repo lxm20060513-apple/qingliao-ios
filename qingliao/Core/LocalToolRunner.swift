@@ -443,14 +443,89 @@ enum LocalToolRunner {
                                   detail: #"{"error": "expression too deeply nested"}"#)
             }
 
-            // v3.0.18：% 在 NSExpression(format:) 是 C 风格格式符（%d 等），字面 % 须转义 %% 防格式串注入/崩溃
-            let safeExpr = cleaned.replacingOccurrences(of: "%", with: "%%")
-            let exp = NSExpression(format: safeExpr)
-            guard let value = exp.expressionValue(with: nil, context: nil) as? NSNumber else {
+            // v3.1.8 fix: 替换 NSExpression 为安全的递归下降解析器
+            // NSExpression 内部可能有未公开格式化指令导致崩溃，纯数学解析器更安全
+            func _parseCalc(_ expr: String) -> Double? {
+                var pos = expr.startIndex
+                func peek() -> Character? { pos < expr.endIndex ? expr[pos] : nil }
+                func advance() { pos = expr.index(after: pos) }
+                func skipSpaces() { while peek() == " " { advance() } }
+
+                func parseNumber() -> Double? {
+                    skipSpaces()
+                    var numStr = ""
+                    while let c = peek(), c.isNumber || c == "." {
+                        numStr.append(c); advance()
+                    }
+                    return Double(numStr)
+                }
+
+                func parsePrimary() -> Double? {
+                    skipSpaces()
+                    if peek() == "(" {
+                        advance() // skip (
+                        guard let val = parseAddSub() else { return nil }
+                        skipSpaces()
+                        guard peek() == ")" else { return nil }
+                        advance() // skip )
+                        return val
+                    }
+                    if peek() == "-" {
+                        advance()
+                        guard let val = parsePrimary() else { return nil }
+                        return -val
+                    }
+                    return parseNumber()
+                }
+
+                func parseMulDiv() -> Double? {
+                    guard var left = parsePrimary() else { return nil }
+                    while true {
+                        skipSpaces()
+                        if peek() == "*" {
+                            advance()
+                            guard let right = parsePrimary() else { return nil }
+                            left *= right
+                        } else if peek() == "/" {
+                            advance()
+                            guard let right = parsePrimary(), right != 0 else { return nil }
+                            left /= right
+                        } else if peek() == "%" {
+                            advance()
+                            guard let right = parsePrimary(), right != 0 else { return nil }
+                            left = left.truncatingRemainder(dividingBy: right)
+                        } else { break }
+                    }
+                    return left
+                }
+
+                func parseAddSub() -> Double? {
+                    guard var left = parseMulDiv() else { return nil }
+                    while true {
+                        skipSpaces()
+                        if peek() == "+" {
+                            advance()
+                            guard let right = parseMulDiv() else { return nil }
+                            left += right
+                        } else if peek() == "-" {
+                            advance()
+                            guard let right = parseMulDiv() else { return nil }
+                            left -= right
+                        } else { break }
+                    }
+                    return left
+                }
+
+                let result = parseAddSub()
+                skipSpaces()
+                guard pos == expr.endIndex else { return nil }
+                return result
+            }
+
+            guard let v = _parseCalc(cleaned) else {
                 return ToolResult(success: false, summary: "无法计算该表达式",
                                   detail: #"{"error": "cannot evaluate"}"#)
             }
-            let v = value.doubleValue
             // v3.0.18：整数直接显示；小数保留 4 位去尾零（用 (?<!\\d) 防把整数的尾零删掉，如 100→"1"）
             let text: String
             if v == v.rounded() {
