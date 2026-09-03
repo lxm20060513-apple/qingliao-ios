@@ -90,6 +90,7 @@
 - **症结**：v3.0.30 把 Agent 模型改成"跟随设置页选定模型"（回归），背离 v3.1.8 已验证的"Agent 恒用 deepseek（支持 tool calling）"
 - **修复**：`_worker` 调用改 `_agent_loop(st["messages"], task)`——不再传 model/provider，`_agent_endpoint(None,None)` 回退 AGENT_URL（deepseek）
 - **验证**：容器内 `_agent_endpoint(None,None)` 返回 `deepseek-chat` ✓
+- **⚠️ 前提（决定性）**：v3.2.1 后端修复要真正生效，**必须重建镜像**——容器实际跑的是镜像内 `COPY backend/` 固化的 `/app/backend`（非宿主 bind mount）。本会话曾因只改宿主 backend + 重建容器，导致复读/Agent400 修复"始终不生效"；后 `docker build` 重建镜像 + `compose up -d` 才真正加载。详见踩坑经验第16条。
 
 ### v3.2.0（2026-09-03 已发版：后台推送恢复）
 
@@ -577,6 +578,22 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - **修复**：`_worker` 调用改 `_agent_loop(st["messages"], task)`，**不再传 model/provider**，`_agent_endpoint(None, None)` 回退 `AGENT_URL/AGENT_KEY/AGENT_MODEL`（deepseek，支持 tool calling）。
 - **类级**：**聊天主模型（mimo）≠ 工具调用模型（deepseek），二者必须解耦**。v3.0.30 曾把 Agent 模型改成"跟随设置页选定模型"，是背离 v3.1.8 已验证决策的回归。排查"Agent 分流生效但 400/空回复"先看 debug 日志的 `model/provider`——若 Agent 行显示 mimo/xiaomi 即用错模型，Agent 必须走 deepseek 等支持 tool calling 的 provider。
 - ⚠️ 本机相关 provider 速记：`mimo-v2.5`(xiaomi) 不支持原生 tool calling；`deepseek`(deepseek) 支持。Agent 恒用 deepseek。
+
+### 16. 后端代码改动必须重建镜像，不是重启容器（v3.2.1 实踩，决定性 — "始终不生效"总根源）
+- **现象**：反复改进宿主 `backend/stream_api.py`（复读修复/Agent400修复都用 `docker exec qingliao sh -c 'md5sum /volume1/.../backend/stream_api.py'` 验证到了新函数），但 App 复读还在、Agent 还 400——**声称部署的修复始终不生效**。
+- **根因**：容器**实际运行的不是 bind mount 的宿主 backend，而是镜像内 `COPY backend/` 固化的 `/app/backend`**！
+  - 容器挂载只有 3 项：`/usr/bin/docker`、`/data`、`/var/run/docker.sock` —— **根本没挂宿主 backend 到 `/app/backend`**
+  - 容器进程 `cat /proc/1/cmdline` = `python3 /app/backend/qingliao_all.py`，cwd=`/app/backend`
+  - 容器内 `/app/backend/stream_api.py` md5=`9075c808`（Aug 22 旧版），`_break_repeat_seed`=**0**（无修复）
+  - 宿主 `/volume1/.../backend/stream_api.py` md5=`77634dfc`（含修复）——**改的不是容器跑的那份**
+- **诊断方法（必须做）**：改 backend 后**校验容器内 `/app/backend/stream_api.py` 的 md5 是否等于宿主新代码**，而不是只 grep 宿主路径。`docker exec qingliao sh -c 'md5sum /app/backend/stream_api.py'`。
+- **修复（重建镜像）**：
+  1. Dockerfile 修正为 `/app` 路径：`COPY backend/ /app/backend/` + `WORKDIR /app/backend` + `CMD ["python3", "/app/backend/qingliao_all.py"]`（与镜像历史结构对齐）
+  2. build context 必须是**同时含 `backend/` 和 `docker/` 子目录的父目录**（`/volume1/docker/hermes/微信文件/轻聊web/`），因 Dockerfile 用 `COPY docker/curl-wrap` 和 `COPY backend/`
+  3. `cd 轻聊web/ && docker build -f docker/Dockerfile -t qingliao-backend:latest .`（约 1-3 分钟，pip install pyyaml/cryptography）
+  4. `docker rm -f qingliao && docker compose up -d`（compose 用 `image:` 无 `build:`，故容器重建即加载新镜像）
+- **验证**：`docker exec qingliao md5sum /app/backend/stream_api.py` == 宿主 md5；`grep -c _break_repeat_seed` ≥3；容器内 `_agent_endpoint(None,None)` 返回 deepseek。
+- **类级**：**改后端代码 ≠ 重启容器，必须重建镜像**（除非 bind mount 生效；本 compose bind mount 的是 `/volume1/...` 只读挂载整个 web 目录、不是 `/app/backend`）。镜像内 `COPY backend/` 固化旧代码，compose `image:` 不会自动 rebuild。验证必须看容器实际加载路径（`/proc/1/cwd` + `/app/backend` md5），不能只看宿主 grep——**之前多轮改宿主 backend 却容器跑镜像副本，是"始终没生效"的总根源**。
 
 ---
 
