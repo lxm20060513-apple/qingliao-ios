@@ -222,7 +222,8 @@ final class ChatStore {
         }()
         // v3.0.83fix：isPush=1 的推送消息不进模型上下文（推送被当AI回复污染对话的根治）
         // 推送消息是 Hermes 主动注入的，不该作为历史喂给模型。保留在会话展示，但历史重放滤掉。
-        let ctxMessages = messages.filter { !$0.isPush }
+        // v3.1.12：错误占位（⚠️/HTTP Error/连接中断）同样不进上下文——脏历史诱导模型复读
+        let ctxMessages = messages.filter { !$0.isPush && !$0.isErrorPlaceholder }
         return ctxMessages.map { m in
             var p = m.asPayload()
             if m.imageDataURL == nil {

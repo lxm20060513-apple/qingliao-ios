@@ -125,6 +125,16 @@ struct ChatMessage: Identifiable, Equatable {
     var voiceCommand: Bool = false   // v3.0.19：语音指令触发（长按智能球，显示 🎤 标记）
     var isPush: Bool = false         // v3.0.82：Hermes 主动推送消息（本地收件箱注入，显示"推送"标签）
 
+    /// v3.1.12：错误占位识别——App 失败提示（⚠️/HTTP Error/连接中断等）被 upsert 成 assistant
+    /// 混入历史是复读污染源之一：此类消息只用于 UI 展示，绝不允许进入模型上下文。
+    var isErrorPlaceholder: Bool {
+        guard role == "assistant" else { return false }
+        let c = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.hasPrefix("⚠️") { return true }
+        let markers = ["HTTP Error", "连接中断", "请重试", "请求失败", "网络错误", "Unauthorized", "无返回内容"]
+        return markers.contains { c.contains($0) }
+    }
+
     /// v3.0.x fix：Equatable 基于 id（SwiftUI diff 效率提升——不逐字段比较）
     static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
         lhs.id == rhs.id
