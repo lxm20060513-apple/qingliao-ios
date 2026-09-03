@@ -268,12 +268,18 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // v2.0.87e：原生液态玻璃输入栏（iOS 26+）
         .background { Capsule().glassEffect() }
+        // v3.2.3 渲染卡死根治：外层阴影移到流光 overlay **之前**——阴影只对静态背景/内容生效，
+        // 不再因流光每帧变化触发阴影 CGPath 重算（.ips 8BADF00D 主线程栈铁证：
+        // ShapeLayerShadowHelper.updateShadow → Path.cgPath → RenderBox CG::stroker 病态递归卡死）
+        .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         // v2.0.87s：等待回复特效（v2.0.87ay：改回 87 版效果——内部旋转流光，Siri 淡雅）
         // v2.0.96：语音转文字模式同样开启 Siri 流光
         .overlay {
             if (streaming || voiceMode) && UserDefaults.standard.bool(forKey: "qingliao_input_glow") {
                 // v2.0.139 性能：流光 60→30fps（旋转渐变肉眼无差，重绘开销减半）
-                let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 30.0)
+                // v3.2.3：30→15fps + **去掉 .shadow**——每帧变化的渐变+阴影=每帧送 stroker 算圆角
+                // 阴影路径（iOS 27 RenderBox 卡死源）。旋转渐变无锐边，15fps 肉眼无差，观感不变。
+                let schedule: AnimationTimelineSchedule = .animation(minimumInterval: 1.0 / 15.0)
                 TimelineView(schedule) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let angle = (t * 70).truncatingRemainder(dividingBy: 360)
@@ -285,14 +291,12 @@ struct ChatInputBar: View {
                             center: .center, angle: .degrees(angle)
                         )
                     )
-                    .shadow(color: .indigo.opacity(0.30), radius: 6)
                     .allowsHitTesting(false)   // v2.0.87al：不拦截点击（停止按钮可点）
                 }
             } else {
                 Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
             }
         }
-        .shadow(color: .black.opacity(0.3), radius: 14, y: 5)
         .padding(.horizontal, 18)   // v2.0.87aw：输入框宽度收窄（12→18）
     }
 
