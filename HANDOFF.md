@@ -70,6 +70,48 @@
   - `path` 未定义 → 改为 `self.path`（`NameError` → 500）
   - `rfile` 二次读取 → 使用已解析的 `data` 变量（body 已被上游消费）
 
+### v3.2.1（2026-09-03 已发版 App + 已部署后端：复读根治 + agentEnabled 双保险 + Agent 400 修复）
+
+**① App agentEnabled 双保险**（`QingliaoApp.swift` + `AuthStore.swift`）：
+- **根因**：设置页「Agent 智能回复」用 `@AppStorage(...) var agentOn = true`（默认值只在 UI 层生效不写盘），而 `AuthStore.streamStart` 用 `UserDefaults.standard.bool(forKey:)` 读取——**key 从未被写入 UserDefaults 时返回 false** → UI 显示"开"但请求发 `agentEnabled: false` → 后端 `agent_on=False` 走普通 LLM
+- **修复**：
+  - `QingliaoApp.init()` 加 `UserDefaults.standard.register(defaults: [UserDefaultsKey.agentEnabled: true])`（key 缺失兜底 true）
+  - `AuthStore.streamStart()` 改为 `(UserDefaults.standard.object(forKey:) as? Bool) ?? true`（双保险，不误伤用户显式关闭）
+
+**② 后端复读根治**（`stream_api.py`，v3.2.1 已上线即时生效）：
+- **根因**（msg_debug `[04:02:53]` 铁证）：模型会"续写"最新 user 前紧贴的那条**旧 assistant 长回复**（如"好的，简要说明我的上下文理解机制..."整段被原样复活），而非回答新问题。v3.1.12 的 `_sanitize_history` 只保证"列表以 user 结尾"，没处理"最新 user 前紧贴的 assistant"；且把 v3.1.10 的 KEEP_MSGS=2 放宽到 6，诱因重新进入上下文 → 复读回退
+- **修复**：
+  - 新增 `_break_repeat_seed(msgs)`：把最新 user 前紧贴的 assistant 压缩为占位"（上一轮回复已省略，请直接回答最新用户消息，不要续写或复述此条内容）"，断掉续写素材。普通模式 + Agent 模式两路统一调用
+  - 新增 `_log_sent_messages(tag, msgs)`：恢复 `stream_msg_debug.log` 诊断写点（v3.1.12 曾删除，导致无法观察部署后发给模型的内容）
+  - 本机上一条 stream_api.py 增改：`_break_repeat_seed` = 定义+2调用共3处，`_log_sent_messages` = 定义+3调用共4处
+
+**③ Agent 模式 400 Bad Request 修复**（`stream_api.py`，已部署）：
+- **根因**（`/tmp/stream_agent_debug.log [13:29:18]` 铁证）：`agent_on=True is_agent=True model=mimo-v2.5 provider=xiaomi` —— `_worker` 把聊天主模型 model/provider（mimo/xiaomi）传给 `_agent_loop`，Agent 带 `tools` 参数请求 → **mimo-v2.5 不支持 OpenAI 原生 tool calling** → 400
+- **症结**：v3.0.30 把 Agent 模型改成"跟随设置页选定模型"（回归），背离 v3.1.8 已验证的"Agent 恒用 deepseek（支持 tool calling）"
+- **修复**：`_worker` 调用改 `_agent_loop(st["messages"], task)`——不再传 model/provider，`_agent_endpoint(None,None)` 回退 AGENT_URL（deepseek）
+- **验证**：容器内 `_agent_endpoint(None,None)` 返回 `deepseek-chat` ✓
+
+### v3.2.0（2026-09-03 已发版：后台推送恢复）
+
+- 后端 v3.1.13 恢复 `_maybe_push_app` 函数 + 5 挂载（v3.1.x 防复读迭代重写 `_worker` 时丢失全部挂载 → App 收不到 AI 回复完成推送）
+- iOS 修 `triggerFastPoll` 死代码（消费 `fastPollRemaining`）+ 本地/云端流式完成触发快拉
+
+### v3.1.12（2026-09-03 已部署后端，iOS v3.1.9/394 已发版：防复读根治）
+
+- 后端 `_sanitize_history()`：剔脏占位（⚠️/HTTP Error/连接中断/请求失败/网络错误/Unauthorized/无返回内容）+ 连续相同 assistant 去重 + 保证以 user 结尾
+- `KEEP_MSGS=6` 轮次收窄（`STREAM_KEEP_MSGS` 可调），旧历史 system 标记占位
+- 恢复引导型 system prompt（"每次回复只针对用户最新一条消息...不要重复、复述或续写"）
+- Agent 入口 `_agent_loop` 同规则净化
+- ⚠️ **教训**：v3.1.11 改写 `_build_messages` 时误删了 v3.1.10 的"始终只保留最近2条"逻辑 → 防复读回退，用户反馈仍复读。**"始终没解决"必须拉线上代码比对声称部署的修复是否真在**（版本迭代会静默删上轮修复）
+
+### v3.1.11（2026-09-03）：base_sys=[] 清空 + 禁用 memory 注入（误删 v3.1.10 截断逻辑 → 复读回退）
+
+### v3.1.10（2026-09-03）：防复读根治（始终截断到最近2条）+ 中文引号修复 + Agent 关键词扩展
+
+### v3.1.9（2026-09-03）：防复读 v1（8条限制+关键词检测+prompt指令）→ 被 v3.1.10 替代
+
+### v3.1.8（2026-09-03 已发版）：Agent 模式用 deepseek 替代 mimo-v2.5（tool calling 支持）+ Agent 循环安全阀 + 对话历史限制10条
+
 ### v3.1.6（2026-09-02 已发版：Agent工具链对齐Hermes + 全量Hermes模式）
 
 **① 新增10个NAS桥接工具**（`LocalToolRunner.swift` + `tool_executor.py`）：
@@ -522,6 +564,19 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - 模型说"当前这台机器没有 /volume1"并写脚本让用户手动执行，而非直接调用工具。
 - **根因**：agent system prompt 没告诉模型它的运行环境和可用工具。
 - **修复**：system prompt 明确列出"运行在 NAS 上，/volume1 可直接访问"+6类工具能力+行为约束（"用户说帮我做X时直接调用工具"）。
+
+### 14. @AppStorage 默认值 ≠ 写入 UserDefaults（v3.2.1 实踩，agentEnabled 发 false）
+- **病根**：设置页 `@AppStorage(UserDefaultsKey.agentEnabled) var agentOn = true`，默认值 `true` 只在 UI 层生效、**不写盘**（除非用户实际拨动过 Toggle）。而 `AuthStore.streamStart()` 用 `UserDefaults.standard.bool(forKey:)` 读取——**key 从未被写入时返回 false** → UI 显示"开"但请求发出 `agentEnabled: false` → 后端 `agent_on=False` 走普通 LLM（不做工具调用）。
+- **诊断**：后端 `/tmp/stream_agent_debug.log` 里 `agent_on=False` 大量出现，但设置页明明开。grep `registerDefaults` 全仓库无结果，确认无"首启写默认值"逻辑。
+- **修复（双保险）**：① `QingliaoApp.init()` 加 `UserDefaults.standard.register(defaults: [key: true])`；② AuthStore 读取改 `(UserDefaults.standard.object(forKey:) as? Bool) ?? true`（`object(as? Bool)` 对缺失/nil 返回 nil 走兜底 true，且不误伤用户显式关闭——存了 false 仍尊重）。
+- **类级**：**`@AppStorage` 默认值 ≠ 真正写入 UserDefaults**。凡「设置页显示默认开（@AppStorage 默认 true / 默认值）+ 别处用 `bool(forKey:)` 读」的组合必踩坑。排查"UI 显示 X 但请求却 Y"先 grep 读取方用 `bool(forKey:)` 还是 `@AppStorage`，再查有无 `registerDefaults` 初始化。
+
+### 15. Agent 工具循环必须用支持 tool calling 的模型，不能跟随聊天主模型（v3.2.1 实踩，Agent 400）
+- **病根**：`_worker` 调 `_agent_loop` 时把聊天主模型的 `model/provider`（如 `mimo-v2.5`/`xiaomi`）传进去，`_agent_loop` 带 `tools` 参数发请求 → **mimo-v2.5 不支持 OpenAI 原生 tool calling** → `HTTP Error 400 Bad Request`。
+- **诊断**：`/tmp/stream_agent_debug.log` 显示 Agent 分流行 `agent_on=True is_agent=True model=mimo-v2.5 provider=xiaomi`——分流成功但用错了模型。
+- **修复**：`_worker` 调用改 `_agent_loop(st["messages"], task)`，**不再传 model/provider**，`_agent_endpoint(None, None)` 回退 `AGENT_URL/AGENT_KEY/AGENT_MODEL`（deepseek，支持 tool calling）。
+- **类级**：**聊天主模型（mimo）≠ 工具调用模型（deepseek），二者必须解耦**。v3.0.30 曾把 Agent 模型改成"跟随设置页选定模型"，是背离 v3.1.8 已验证决策的回归。排查"Agent 分流生效但 400/空回复"先看 debug 日志的 `model/provider`——若 Agent 行显示 mimo/xiaomi 即用错模型，Agent 必须走 deepseek 等支持 tool calling 的 provider。
+- ⚠️ 本机相关 provider 速记：`mimo-v2.5`(xiaomi) 不支持原生 tool calling；`deepseek`(deepseek) 支持。Agent 恒用 deepseek。
 
 ---
 
