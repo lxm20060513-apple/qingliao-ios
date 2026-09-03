@@ -138,7 +138,8 @@ final class AuthStore {
                 "username": username, "password": password, "remember": remember
             ])
             _ = resp.statusCode
-            // request() 会把 401 透传成 200；这里必须校验 body 的 ok 字段
+            // request() 现在会把非 2xx 直接抛 APIError.server(code)；
+            // 登录接口通常 200+body{ok:false} 表示失败，这里仍需校验 body 的 ok 字段
             if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                (j["ok"] as? Bool) == true {
                 self.username = username
