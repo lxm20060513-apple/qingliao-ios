@@ -1306,6 +1306,9 @@ struct ChatView: View {
                 } else {
                     chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
+                    // v3.1.9 fix：流式完成 → 快拉收件箱（后端 _maybe_push_app 已入队本次回复，
+                    // 此刻 isStreaming=false 且回复已落库 → 去重命中、不重复注入）
+                    InboxStore.shared.triggerFastPoll()
                     // v3.0.19：语音指令回复完成 → TTS 播报摘要
 
                     // v2.0.36：App 退后台时 AI 回复完成发本地通知（v2.0.60 携带会话 id）
@@ -1640,6 +1643,8 @@ struct ChatView: View {
                 } else {
                     chat.upsertAssistant(stream.content, agent: stream.isAgent)
                     showSentOK()
+                    // v3.1.9 fix：云端模式流式完成同样触发快拉（与本地模式一致）
+                    InboxStore.shared.triggerFastPoll()
                 }
                 Task { await chat.saveToServer(auth: auth) }
             }

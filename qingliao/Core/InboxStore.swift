@@ -139,7 +139,11 @@ final class InboxStore {
             while !Task.isCancelled {
                 guard let self else { break }
                 await self.pollOnce()
-                try? await Task.sleep(for: .seconds(self.pollInterval))
+                // v3.1.9 fix：消费快拉计数——triggerFastPoll 设置后此处真正缩短间隔
+                //（原实现只置 fastPollRemaining 但循环恒用 pollInterval，快拉从未生效）
+                let interval = self.fastPollRemaining > 0 ? 1.0 : self.pollInterval
+                if self.fastPollRemaining > 0 { self.fastPollRemaining -= 1 }
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
