@@ -548,6 +548,7 @@ curl -s "https://api.github.com/repos/lxm20060513-svg/qingliao-ios/actions/runs?
 - ⚠️ v3.0.87 初版只用 `contains` 直比：后端用 `re.sub(r"\s+"," ",...)` 把回复压成单行、流式 content 保留换行 → 匹配不上失效。v3.0.88 加 `normalizeWhitespace`（换行/多空格→单空格）双向比对 + `hasPrefix` 截断前缀兜底才生效。
 - ⚠️ v3.0.90 再补**时序竞态**：v3.0.88 只在「回复已落库」时能去重，但后端 done 即推、App 落库要等 `finish→upsertAssistant`——InboxStore 轮询抢在落库前拉到推送就漏。修复：流式进行中（`stream.isStreaming`）本轮不注入，等落库后下一轮必命中。类级：**比对类去重必须考虑「数据还没写入」的竞态窗口，不能只比对已存在的消息**。
 - 类级：**两个独立链路（后端自动推 + App 端注入）叠加在同一会话时，必须先想清楚会不会重复**；比对文本务必先统一空白格式（推送可能压行、会话保留换行），否则 contains 匹配失败。
+- ⚠️ v3.2.2（2026-09-03）**根治**：前面 v3.0.88/90 都是 App 端**被动去重**（依赖时序命中），仍会在竞态缝隙漏网（用户实测「流式回复 + 🔔推送」重复再现）。方案A：后端 `_maybe_push_app` 加「**用户在看则不推**」门控（复用 `PUSH_IDLE_SECONDS=30`，与 `_maybe_push` 推微信一致）——用户正盯着 App 看流式回复（`/api/stream` 轮询活跃，`lastPollAt` 近）就不推收件箱（前台不重复）；用户离开/后台 >30s 无轮询才推（后台仍有记录）。同时 App 端 `shouldSkipDuplicate` 加 `extra: stream.content` 兜底——即使 `chat.messages` 因时序暂缺该回复，`stream.content` 必持有，可稳定命中去重。**注意**：改后端必须重建镜像（见第16条），只改宿主不生效。
 
 ### 11. NAS 发版脚本 cp 弹 overwrite 交互卡死（v3.0.90 实踩）
 - NAS root shell 的 `cp` 是 `cp -i` 别名（`cp -f` 也弹「overwrite?」）→ 自动化脚本用 `cp` 传 IPA 会卡在交互确认，md5 校验拿不到。

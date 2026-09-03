@@ -85,7 +85,10 @@ final class InboxStore {
                 // v3.0.87 fix：去重——AI 回复完成自动推(_maybe_push_app)的摘要与该会话流式渲染的回复重复。
                 // 当前会话最后一条 assistant(非推送) 文本已包含此推送正文 → 判定为同一条回复，不再重复注入（仅标记已读），
                 // 避免用户看到「流式回复 + 🔔推送」两条相同内容。
-                if shouldSkipDuplicate(push: it.text, in: chat.messages) {
+                // v3.2.1 加固：同时比对 stream.content——时序竞态下 chat.messages 可能暂缺该流式回复
+                //（upsertAssistant 落库与 pollOnce 比对存在缝隙），但 stream.content 仍持有该回复 →
+                // 纳入比对可稳定命中去重，不重复注入。
+                if shouldSkipDuplicate(push: it.text, in: chat.messages, extra: stream?.content ?? "") {
                     await markDone(id, auth: auth)
                     continue
                 }
@@ -110,9 +113,14 @@ final class InboxStore {
     /// v3.0.88 fix：收件箱推送 vs 会话内流式回复去重（v3.0.87 版因空白格式不匹配失效）。
     /// 后端 _maybe_push_app 用 re.sub(r"\s+"," ",...) 把回复压成单行摘要，而流式回复 content 保留换行/段落，
     /// 直接 contains 会匹配失败 → 重复注入。改为双方先压缩空白再双向比对 + 截断前缀兜底。
-    private func shouldSkipDuplicate(push text: String, in messages: [ChatMessage]) -> Bool {
+    /// v3.2.1 加固：extra 参数额外比对 stream.content（流式进行中的当前回复）——即使 chat.messages
+    /// 因时序暂缺该回复（pollOnce 抢在 upsertAssistant 落库前），只要 stream.content 持有即可命中去重。
+    private func shouldSkipDuplicate(push text: String, in messages: [ChatMessage], extra: String = "") -> Bool {
         let core = normalizeWhitespace(text).replacingOccurrences(of: "…", with: "")
         guard !core.isEmpty else { return false }
+        // 先比对当前流式内容（最可靠——流式回复一定在 stream.content）
+        let ex = normalizeWhitespace(extra).replacingOccurrences(of: "…", with: "")
+        if !ex.isEmpty, ex == core || ex.contains(core) || core.contains(ex) { return true }
         for m in messages.reversed() {
             guard m.role == "assistant" && !m.isPush else { continue }
             let cm = normalizeWhitespace(m.content)
