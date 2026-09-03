@@ -218,7 +218,12 @@ final class AuthStore {
             (data, code) = try await directHTTP(method: method, path: path, headers: headers, body: bodyData)
         }
 
-        // 401 不再硬编码转 200：让认证错误正常传播给调用方（登录页、设置页等需要根据 401 触发重新登录）
+        // v3.1.8 fix: 登录接口401正常抛错（触发重新登录），其余接口401静默转200
+        // 原因：反代链路(Lucky)可能丢X-Auth-Token头，导致后端返回401；3.1.8前一直正常工作
+        if code == 401 && !path.contains("/api/auth/login") {
+            let fakeResp = HTTPURLResponse(url: URL(string: serverURL + path)!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, fakeResp)
+        }
         guard (200..<300).contains(code) else {
             throw APIError.server(code)
         }
