@@ -126,32 +126,21 @@ final class StreamHTTPClient: @unchecked Sendable {
                 if n <= 0 { break }
                 state.appendToBuffer(Data(buf[0..<n]))
             }
-            if StreamHTTPClient.isResponseComplete(state.buffer) {
-                state.result = StreamHTTPClient.parseResponse(state.buffer)
-                state.done = true
+            // 原子检查：buffer 读取 + Content-Length 判定 + result/done 设置在同一锁内
+            if state.tryFinalizeOnComplete() {
                 CFRunLoopStop(CFRunLoopGetCurrent())
             }
         case CFStreamEventType(rawValue: 16):  // EndEncountered（EOF）
-            // EOF（服务器关闭连接）：有数据则按当前缓冲解析
-            if !state.buffer.isEmpty, state.result == nil {
-                state.result = StreamHTTPClient.parseResponse(state.buffer)
+            // EOF（服务器关闭连接）：原子操作——有数据则按当前缓冲解析，设置 done
+            if state.handleEOF() {
+                CFRunLoopStop(CFRunLoopGetCurrent())
             }
-            state.done = true
-            CFRunLoopStop(CFRunLoopGetCurrent())
         case CFStreamEventType(rawValue: 8):   // ErrorOccurred（可能 RST）
-            // 错误（可能 RST）：已有缓冲且能解析出状态码 → 按成功处理（lucky 发完响应立即 RST 实测）
-            if !state.buffer.isEmpty, state.result == nil {
-                let (body, code) = StreamHTTPClient.parseResponse(state.buffer)
-                if code > 0 {
-                    state.result = (body, code)
-                    state.done = true
-                    CFRunLoopStop(CFRunLoopGetCurrent())
-                    return
-                }
+            // 错误（可能 RST）：原子操作——已有缓冲且能解析出状态码 → 按成功处理
+            let err = APIError.badResponseDetail("err buf=\(state.buffer.count) ev=\(state.lastEvent)")
+            if state.handleError(err) {
+                CFRunLoopStop(CFRunLoopGetCurrent())
             }
-            state.error = APIError.badResponseDetail("err buf=\(state.buffer.count) ev=\(state.lastEvent)")
-            state.done = true
-            CFRunLoopStop(CFRunLoopGetCurrent())
         default:
             break
         }
@@ -170,43 +159,40 @@ final class StreamHTTPClient: @unchecked Sendable {
     }
 
     private static func sendPayload(_ state: StreamState) {
-        guard !state.done, !state.sent, let write = state.write, let payload = state.payload else { return }
+        guard let (write, payload, startOffset) = state.beginSend() else { return }
+        defer { state.endSend() }
         // 从上次发送偏移续传（write 返回 0 缓冲满时不能从开头重发——会重复发送导致服务器解析错乱）
-        while state.sentOffset < payload.count {
-            let remaining = payload[state.sentOffset...]
+        var offset = startOffset
+        while offset < payload.count {
+            let remaining = payload[offset...]
             let n = remaining.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> CFIndex in
                 CFWriteStreamWrite(write, buf.baseAddress!.assumingMemoryBound(to: UInt8.self), buf.count)
             }
             if n < 0 {
                 // write 失败：TLS 握手可能尚未就绪 → 延迟重试（CanAcceptBytes 只触发一次，不能等事件）
-                state.writeFailCount += 1
-                if state.writeFailCount >= 5 {
-                    state.error = APIError.badResponseDetail("write fail buf=\(state.buffer.count)")
-                    state.done = true
+                let result = state.recordWriteFailure()
+                if result.abort {
                     CFRunLoopStop(CFRunLoopGetCurrent())
-                    return
-                }
-                state.sentOffset = 0
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1 * Double(state.writeFailCount)) {
-                    sendPayload(state)
+                } else {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + result.retryDelay) {
+                        sendPayload(state)
+                    }
                 }
                 return
             }
             if n == 0 {
                 // 缓冲满：CanAcceptBytes 只触发一次不再来 → 延迟重试续传（30 次 ~3s 上限）
-                state.zeroWrites += 1
-                if state.zeroWrites >= 30 {
-                    state.error = APIError.badResponseDetail("write stuck buf=\(state.buffer.count)")
-                    state.done = true
+                if state.recordZeroWrite() {
                     CFRunLoopStop(CFRunLoopGetCurrent())
-                    return
+                } else {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { sendPayload(state) }
                 }
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { sendPayload(state) }
                 return
             }
-            state.sentOffset += n
+            state.advanceOffset(by: n)
+            offset += n
         }
-        state.sent = true
+        state.markSent()
     }
 
     /// 按 Content-Length 判断响应是否完整（kimi-k3 确认的根因修复：Safari/curl 同款判定）
@@ -256,6 +242,7 @@ final class StreamState: @unchecked Sendable {
     private var _sentOffset = 0
     private var _writeFailCount = 0
     private var _zeroWrites = 0
+    private var _inFlight = false          // sendPayload 并发守卫
     private var _lastEvent: Int = -1
     private var _done = false
     private var _timeout = false
@@ -332,6 +319,101 @@ final class StreamState: @unchecked Sendable {
     var result: (Data, Int)? {
         get { lock.withLock { _result } }
         set { lock.withLock { _result = newValue } }
+    }
+
+    // MARK: - Atomic compound operations (check-then-act)
+
+    /// Atomically begin sending: guards done/sent/inFlight, returns payload info.
+    /// Caller MUST call endSend() when done.
+    func beginSend() -> (write: CFWriteStream, payload: Data, offset: Int)? {
+        lock.withLock {
+            guard !_done, !_sent, !_inFlight, let w = _write, let p = _payload else { return nil }
+            _inFlight = true
+            return (w, p, _sentOffset)
+        }
+    }
+
+    /// Mark send attempt complete (clear inFlight).
+    func endSend() {
+        lock.withLock { _inFlight = false }
+    }
+
+    /// Atomically advance send offset.
+    func advanceOffset(by bytes: Int) {
+        lock.withLock { _sentOffset += bytes }
+    }
+
+    /// Atomically record write failure. Returns (abort, retryDelay).
+    func recordWriteFailure() -> (abort: Bool, retryDelay: Double) {
+        lock.withLock {
+            _writeFailCount += 1
+            if _writeFailCount >= 5 {
+                _error = APIError.badResponseDetail("write fail buf=\(_buffer.count)")
+                _done = true
+                return (true, 0)
+            }
+            _sentOffset = 0
+            return (false, 0.1 * Double(_writeFailCount))
+        }
+    }
+
+    /// Atomically record zero-byte write. Returns true if should abort.
+    func recordZeroWrite() -> Bool {
+        lock.withLock {
+            _zeroWrites += 1
+            if _zeroWrites >= 30 {
+                _error = APIError.badResponseDetail("write stuck buf=\(_buffer.count)")
+                _done = true
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Atomically mark payload as sent.
+    func markSent() {
+        lock.withLock { _sent = true }
+    }
+
+    /// Atomically check if response is complete and finalize.
+    func tryFinalizeOnComplete() -> Bool {
+        lock.withLock {
+            guard !_done, _result == nil, !_buffer.isEmpty else { return false }
+            guard StreamHTTPClient.isResponseComplete(_buffer) else { return false }
+            _result = StreamHTTPClient.parseResponse(_buffer)
+            _done = true
+            return true
+        }
+    }
+
+    /// Atomically handle EOF: finalize with buffered data if available.
+    func handleEOF() -> Bool {
+        lock.withLock {
+            guard !_done else { return false }
+            if !_buffer.isEmpty && _result == nil {
+                _result = StreamHTTPClient.parseResponse(_buffer)
+            }
+            _done = true
+            return true
+        }
+    }
+
+    /// Atomically handle error: try to salvage response from buffer, else set error.
+    func handleError(_ error: Error) -> Bool {
+        lock.withLock {
+            guard !_done else { return false }
+            if !_buffer.isEmpty && _result == nil {
+                let parsed = StreamHTTPClient.parseResponse(_buffer)
+                if parsed.1 > 0 {
+                    _result = parsed
+                    _done = true
+                    return true
+                }
+            }
+            _error = error
+            _done = true
+            return true
+        }
     }
 
     init(payload: Data?) {
