@@ -17,9 +17,12 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
     private var sessionConfiguring = false
 
     /// v3.0.76：每个录音段用独立文件名（避免分段流式反复 stop/resume 同一 URL 的数据竞争 / 读到空段）
+    /// v3.0.x fix：加单调递增计数器，防止高频调用时时间戳重复产生相同文件名
+    private static var _urlCounter: Int = 0
     private func makeURL() -> URL {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let name = "voice_asr_\(Int(Date().timeIntervalSince1970 * 1000)).m4a"
+        Self._urlCounter += 1
+        let name = "voice_asr_\(Int(Date().timeIntervalSince1970 * 1000))_\(Self._urlCounter).m4a"
         return dir.appendingPathComponent(name)
     }
 
@@ -50,6 +53,9 @@ final class VoiceRecorder: NSObject, ObservableObject, @preconcurrency AVAudioRe
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.sessionConfiguring = false
+
+                // v3.1.5: 如果 stop() 在后台配置期间被调用，isRecording 已被清除，不再创建 recorder
+                guard self.isRecording else { return }
 
                 guard sessionOK else {
                     self.isRecording = false

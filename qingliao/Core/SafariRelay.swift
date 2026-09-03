@@ -107,19 +107,42 @@ final class SafariRelay: NSObject {
 
     // MARK: - 私有
 
-    private func runASWAS(url: URL, timeout: TimeInterval) async throws -> URL {
-        // 串行：若已有 sheet 在跑，等它结束（队列化）
-        while activeSession != nil {
-            try? await Task.sleep(for: .milliseconds(100))
+    /// 串行队列：替代 while 轮询忙等待（actor 模型：排队等候 activeSession 释放）
+    private var relayQueue: [CheckedContinuation<Void, Never>] = []
+    
+    private func acquireRelaySlot() async {
+        // 无活跃 session → 直接通过
+        guard activeSession != nil else { return }
+        // 有活跃 session → 挂起当前 Task 直到被释放
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            relayQueue.append(cont)
         }
+    }
+    
+    private func releaseRelaySlot() {
+        activeSession = nil
+        // 唤醒排队中的下一个请求
+        if !relayQueue.isEmpty {
+            let next = relayQueue.removeFirst()
+            next.resume()
+        }
+    }
+
+    private func runASWAS(url: URL, timeout: TimeInterval) async throws -> URL {
+        // 串行：若已有 sheet 在跑，异步等待（不忙等，挂起到队列）
+        await acquireRelaySlot()
+        // 原子标志位：确保 cont.resume 只被调用一次（error/callbackURL 竞态下防双重 resume）
+        let didResume = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
+        didResume.pointee = 0
+        defer { didResume.deallocate() }
         return try await withCheckedThrowingContinuation { cont in
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: callbackScheme
             ) { callbackURL, error in
-                Task { @MainActor in
-                    self.activeSession = nil
-                }
+                // 原子 CAS：仅第一个到达的路径（error 或 callbackURL）执行 resume
+                guard OSAtomicCompareAndSwap32(0, 1, didResume) else { return }
+                self.releaseRelaySlot()
                 if let error = error as? ASWebAuthenticationSessionError {
                     if error.code == .canceledLogin {
                         cont.resume(throwing: APIError.relayCancelled)

@@ -239,9 +239,11 @@ final class StreamClient {
 
     func persistState(sessionId: String) {
         guard isStreaming, !taskId.isEmpty else { return }
+        // 截断过长内容，避免超 UserDefaults 4MB 限制导致崩溃
+        let persistedContent = content.count > 4096 ? String(content.prefix(4096)) : content
         let d: [String: Any] = [
             "taskId": taskId, "sessionId": sessionId,
-            "offset": offset, "content": content,
+            "offset": offset, "content": persistedContent,
             "ts": Date().timeIntervalSince1970
         ]
         UserDefaults.standard.set(d, forKey: "qingliao_stream_pending")

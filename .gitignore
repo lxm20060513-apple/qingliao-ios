@@ -7,3 +7,7 @@ server_443.conf
 _remote_*
 NETWORK_POSTMORTEM.md
 qingliao-3.1.5.zip
+
+# Code review files
+qingliao/CORE_CODE_REVIEW.md
+qingliao/CORE_REVIEW_VERIFICATION.json

@@ -8,7 +8,7 @@ final class AuthStore {
     var isLoggedIn = false          // 登录状态（UserDefaults 持久化）
     var username = ""
     var serverURL = ""
-    var token = ""
+    private(set) var token = ""
     var errorMessage: String?
     var isLoading = false
 
@@ -217,12 +217,7 @@ final class AuthStore {
             (data, code) = try await directHTTP(method: method, path: path, headers: headers, body: bodyData)
         }
 
-        if code == 401 {
-            // 免登录模式：401 视为成功（服务器 AUTO_LOGIN 已放行，个别端点自身逻辑返回 401 无碍）
-            // 构造 200 透传（调用方只关心数据）
-            let http = HTTPURLResponse(url: URL(string: "https://localhost")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (data, http)
-        }
+        // 401 不再硬编码转 200：让认证错误正常传播给调用方（登录页、设置页等需要根据 401 触发重新登录）
         guard (200..<300).contains(code) else {
             throw APIError.server(code)
         }
@@ -248,8 +243,8 @@ final class AuthStore {
             } catch {
                 lastErr = error
                 let ns = error as NSError
-                // 瞬断类错误（连接丢失/超时/断网）重试；其余直接抛
-                if attempt < 2, [-1005, -1001, -1009, -1021].contains(ns.code) {
+                // 瞬断类错误（连接丢失/超时/断网/DNS失败/连接失败）重试；其余直接抛
+                if attempt < 2, [-1005, -1001, -1009, -1021, -1003, -1004].contains(ns.code) {
                     try? await Task.sleep(for: .seconds(Double(attempt + 1)))
                     continue
                 }
@@ -511,7 +506,7 @@ final class AuthStore {
     }
 
     /// 当前流式会话 id（StreamClient 启动时设置，用于 uid 推导）
-    var currentStreamSessionId: String = ""
+    private(set) var currentStreamSessionId: String = ""
 
     // MARK: - 连通性测试
 

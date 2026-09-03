@@ -58,12 +58,20 @@ final class SessionTagStore {
     }
 }
 
-/// 标签彩色（按哈希稳定分配，深浅色都醒目）
+// MARK: - 标签彩色扩展（按哈希稳定分配，深浅色都醒目）
+extension SessionTagStore {
+    /// 标签颜色（按名称哈希稳定分配）
+    static func tagColor(_ tag: String) -> Color {
+        let palette: [Color] = [
+            .blue, .teal, .green, .orange, .pink, .purple, .indigo, .mint
+        ]
+        var h = 5381
+        for b in tag.utf8 { h = (h &* 33) &+ Int(b) }
+        return palette[abs(h) % palette.count]
+    }
+}
+
+/// 全局便捷访问（向后兼容现有调用）
 func tagColor(_ tag: String) -> Color {
-    let palette: [Color] = [
-        .blue, .teal, .green, .orange, .pink, .purple, .indigo, .mint
-    ]
-    var h = 5381
-    for b in tag.utf8 { h = (h &* 33) &+ Int(b) }
-    return palette[abs(h) % palette.count]
+    SessionTagStore.tagColor(tag)
 }

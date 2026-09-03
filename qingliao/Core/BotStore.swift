@@ -52,6 +52,8 @@ final class BotStore {
     /// 默认 5 分钟缓存内直接返回（聊天/会话页 onAppear 调用，不惊扰 UI）。
     func load(auth: AuthStore, force: Bool = false) async {
         if !force, let last = lastLoadedAt, Date().timeIntervalSince(last) < 300 { return }
+        // v3.0.x fix：防重入——两次快速调用（如 Tab 切换 onAppear 竞态）不重复请求
+        guard !isLoading else { return }
         isLoading = true
         errorText = nil
         defer { isLoading = false }

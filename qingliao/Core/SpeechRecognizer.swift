@@ -119,8 +119,14 @@ final class SpeechManager: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer,
                                        didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            if self.speakingID != nil && self.player == nil {
-                self.speakingID = nil
+            // v3.0.x fix：云端 TTS 播放中 player != nil，系统 TTS didFinish 不清除 speakingID
+            // → 状态泄漏。改为无条件检查：如果云端 player 也在播完状态，一并清除
+            if self.speakingID != nil {
+                // 如果云端 player 还在播放，不在此清除（等 audioPlayerDidFinish 处理）
+                // 如果云端 player 已为 nil（已被 audioPlayerDidFinish 清除或本来就没用云端），直接清除
+                if self.player == nil {
+                    self.speakingID = nil
+                }
             }
         }
     }

@@ -16,7 +16,17 @@ final class ChatStore {
         didSet { defaults.set(botId ?? "", forKey: botKey) }
     }
 
+    // 缓存的 DateFormatter，避免循环内重复创建（~1ms/次）
+    private static let exportDateFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm"; return f
+    }()
+    private static let exportMDDateFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"; return f
+    }()
+
     private let defaults = UserDefaults.standard
+    // v3.0.7 修复：debounce 保存任务——快速切换会话/连续操作时只保存最后一次
+    private var saveTask: Task<Void, Never>?
     // v3.0.1 fix：云端/本地会话 id 用不同 key 隔离（原共用一个 key → 切模式串 sessionId）
     // 注意：init 里不能访问 self.sessionKey（sessionId 未初始化会报 'self' used before init），
     // 因此 init 内直接判断 CloudConfig.shared（静态单例，不依赖 self）
@@ -168,12 +178,19 @@ final class ChatStore {
     /// 流式结束后落库 assistant 消息（与最后一条相同则跳过，防重复）
     /// v2.0.102：去重仅限"连续两条 assistant 内容相同"（流式重复场景）——
     ///           上一条若是用户消息（新一轮提问），即使内容相同也必须新增（修复相同回复被吞）
+    /// 扩大去重范围到最近 5 条：极短时间多次调用（重试/网络抖动）可能产生多条相同 assistant
     func upsertAssistant(_ text: String, agent: Bool = false) {
+        let checkCount = min(messages.count, 5)
+        let tail = messages.suffix(checkCount)
+        // 检查最近 N 条中是否有连续相同内容的 assistant（含当前最后一条）
         if let idx = messages.indices.last, idx > 0,
-           messages[idx].role == "assistant", messages[idx].content == text,
-           messages[idx - 1].role == "assistant" {
-            messages[idx].agent = agent || messages[idx].agent
-            return
+           messages[idx].role == "assistant", messages[idx].content == text {
+            // 检查前面是否有相同内容的 assistant（最近 5 条内任一相同即可去重）
+            let hasDuplicateInTail = tail.dropLast().contains { $0.role == "assistant" && $0.content == text }
+            if hasDuplicateInTail || (idx > 0 && messages[idx - 1].role == "assistant") {
+                messages[idx].agent = agent || messages[idx].agent
+                return
+            }
         }
         var m = ChatMessage(role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000)
         m.agent = agent   // v2.0.96b：Agent 回复标记
@@ -223,8 +240,18 @@ final class ChatStore {
     /// 本地模式：POST /api/sessions/merge（2.0 原逻辑）
     /// 云端模式：写 App 本地文档（防云端会话串进本地 AI 后端 sessions）
     /// 图片消息降级为文本（不带 base64 data URL，防 sessions.json 膨胀；历史重放本就不渲染图片）
+    /// v3.0.7 fix：debounce 机制——快速切换会话/连续操作时只保存最后一次，防覆盖
     func saveToServer(auth: AuthStore) async {
-        await saveToServer(auth: auth, sessionId: sessionId, messages: messages, title: title)
+        saveTask?.cancel()
+        // 快照当前状态（cancel 后旧 Task 读到的是旧快照）
+        let sid = sessionId
+        let msgs = messages
+        let t = title
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await self?.saveToServer(auth: auth, sessionId: sid, messages: msgs, title: t)
+        }
     }
 
     /// v3.0.7 参数化快照版：切换角色（switchBot）前调用——切换会清空 messages，
@@ -278,9 +305,7 @@ final class ChatStore {
             let who = m.isUser ? "我" : "AI"
             let t = m.timestamp.map { ts -> String in
                 let d = Date(timeIntervalSince1970: ts / 1000)
-                let f = DateFormatter()
-                f.dateFormat = "MM-dd HH:mm"
-                return f.string(from: d)
+                return Self.exportDateFormatter.string(from: d)
             } ?? ""
             var content = m.content
             if m.imageDataURL != nil {
@@ -302,9 +327,7 @@ final class ChatStore {
             let who = m.isUser ? "**我**" : "**AI**"
             let t = m.timestamp.map { ts -> String in
                 let d = Date(timeIntervalSince1970: ts / 1000)
-                let f = DateFormatter()
-                f.dateFormat = "yyyy-MM-dd HH:mm"
-                return f.string(from: d)
+                return Self.exportMDDateFormatter.string(from: d)
             } ?? ""
             var content = m.content
             if m.imageDataURL != nil {
@@ -372,31 +395,23 @@ final class ChatStore {
         let provider = UserDefaults.standard.string(forKey: "qingliao_provider") ?? "deepseek"
 
         do {
-            let summary: String = try await withCheckedThrowingContinuation { continuation in
-                // 用非流式请求获取摘要
-                Task {
-                    let payload: [String: Any] = [
-                        "model": model,
-                        "provider": provider,
-                        "messages": [["role": "user", "content": summaryPrompt]],
-                        "stream": false
-                    ]
-                    do {
-                        let j = try await auth.json("/api/stream/chat", method: "POST", body: payload)
-                        if let content = j["content"] as? String {
-                            continuation.resume(returning: content)
-                        } else if let choices = j["choices"] as? [[String: Any]],
-                                  let first = choices.first,
-                                  let message = first["message"] as? [String: Any],
-                                  let content = message["content"] as? String {
-                            continuation.resume(returning: content)
-                        } else {
-                            continuation.resume(returning: "")
-                        }
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
+            // 直接 await（无需 withCheckedThrowingContinuation + Task 嵌套，
+            // 避免外层取消时 continuation 永远不 resume 的泄漏）
+            let payload: [String: Any] = [
+                "model": model,
+                "provider": provider,
+                "messages": [["role": "user", "content": summaryPrompt]],
+                "stream": false
+            ]
+            let j = try await auth.json("/api/stream/chat", method: "POST", body: payload)
+            var summary: String = ""
+            if let content = j["content"] as? String {
+                summary = content
+            } else if let choices = j["choices"] as? [[String: Any]],
+                      let first = choices.first,
+                      let message = first["message"] as? [String: Any],
+                      let content = message["content"] as? String {
+                summary = content
             }
 
             guard !summary.isEmpty else {

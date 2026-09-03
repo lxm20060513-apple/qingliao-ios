@@ -19,6 +19,7 @@ struct CloudProviderPreset: Identifiable {
     var supportsVision: Bool = false   // v3.0.4：默认模型是否支持视觉
     var keyless: Bool = false           // v3.0.57：keyless 免费档（无需 apiKey）
 
+    /// 预置厂商列表（可扩展：插件/未来版本可追加自定义 preset）
     static let presets: [CloudProviderPreset] = [
         CloudProviderPreset(id: "deepseek", name: "DeepSeek",
                             baseURL: "https://api.deepseek.com/v1",
@@ -349,11 +350,15 @@ final class CloudConfig {
         UserDefaults.standard.set(voice, forKey: ttsVoiceKey)
     }
 
-    /// v3.0.68：支持 TTS 的模型（从用户模型列表筛）。provider + model + 展示名
-    static let ttsSupported: [(provider: String, model: String, label: String)] = [
+    /// v3.0.68：支持 TTS 的模型列表（可扩展，新增 TTS 模型只需追加此数组）
+    private static let _ttsSupported: [(provider: String, model: String, label: String)] = [
         ("xiaomi", "mimo-v2.5-tts", "小米 MiMo"),
         ("zai", "glm-tts", "智谱 GLM"),
     ]
+    /// 公开访问器（供 UI 动态读取，未来支持插件追加）
+    static var ttsSupported: [(provider: String, model: String, label: String)] {
+        _ttsSupported
+    }
 
     /// 小米 mimo-v2.5-tts 预置音色
     static let xiaomiTtsVoices: [(name: String, id: String)] = [

@@ -99,8 +99,12 @@ final class CloudSessionStore {
             ]
         }
         let obj: [String: Any] = ["sessions": arr]
-        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
-            try? data.write(to: fileURL, options: [.atomic])
+        do {
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: fileURL, options: [.atomic])
+        } catch {
+            // v3.0.x fix：写失败时记录错误（原静默丢数据）
+            print("[CloudSessionStore] persist failed: \(error)")
         }
     }
 }

@@ -192,31 +192,31 @@ extension ChatView {
                     content = "[文件: \(name)]（上传失败：连接异常，请重试）"
                 }
             }
-            chat.append(.local(role: "user", content: content))
             // v3.0.84fix：云端模式文件消息走 startCloudStream（原 stream.start 打本地 NAS，云端 sendFile 链路报废）
             if CloudConfig.shared.isCloudMode {
                 let m = ChatMessage.local(role: "user", content: content)
                 chat.append(m)
                 startCloudStream(for: m)
-                return
-            }
-            let history = chat.historyPayload()
-            // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
-            let (useModel, useProvider) = resolveModel()
-            await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
-                               provider: useProvider, messages: history) { success, error in
-                if !success {
-                    chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
-                } else {
-                    chat.upsertAssistant(stream.content, agent: stream.isAgent)
-                    showSentOK()
-                    // v2.0.36：App 退后台时 AI 回复完成发本地通知
-                    if UIApplication.shared.applicationState != .active {
-                        NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
-                                                  sessionId: chat.sessionId)
+            } else {
+                chat.append(.local(role: "user", content: content))
+                let history = chat.historyPayload()
+                // v3.0.81：统一模型优先级链（免费 > 视觉 > Agent > 主模型）
+                let (useModel, useProvider) = resolveModel()
+                await stream.start(auth: auth, sessionId: chat.sessionId, model: useModel,
+                                   provider: useProvider, messages: history) { success, error in
+                    if !success {
+                        chat.upsertAssistant(stream.content.isEmpty ? "⚠️ \(error)" : stream.content + "\n\n⚠️ \(error)", agent: stream.isAgent)
+                    } else {
+                        chat.upsertAssistant(stream.content, agent: stream.isAgent)
+                        showSentOK()
+                        // v2.0.36：App 退后台时 AI 回复完成发本地通知
+                        if UIApplication.shared.applicationState != .active {
+                            NotificationHelper.notify(title: "轻聊", body: "AI 回复完成，点击查看",
+                                                      sessionId: chat.sessionId)
+                        }
                     }
+                    Task { await chat.saveToServer(auth: auth) }
                 }
-                Task { await chat.saveToServer(auth: auth) }
             }
         }
     }

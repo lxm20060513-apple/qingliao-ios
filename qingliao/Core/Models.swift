@@ -112,7 +112,7 @@ extension QingliaoBot {
 
 // MARK: - 聊天消息（content 可能是纯文本或数组，手动解析最稳）
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Equatable {
     let role: String        // user / assistant / system
     let content: String     // 纯文本形态（数组 content 取 text 部分）
     let timestamp: TimeInterval?   // 毫秒
@@ -124,6 +124,11 @@ struct ChatMessage: Identifiable {
     var agent: Bool = false        // v2.0.96b：Agent 回复标记（工具调用回复，显示标签）
     var voiceCommand: Bool = false   // v3.0.19：语音指令触发（长按智能球，显示 🎤 标记）
     var isPush: Bool = false         // v3.0.82：Hermes 主动推送消息（本地收件箱注入，显示"推送"标签）
+
+    /// v3.0.x fix：Equatable 基于 id（SwiftUI diff 效率提升——不逐字段比较）
+    static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+        lhs.id == rhs.id
+    }
 
     /// v3.0.50 聊天稳定性：稳定 id——用 djb2 哈希替代 String.hashValue（后者带进程随机种子，
     /// 跨启动漂移，导致会话重开后消息去重/ForEach id/删除定位错乱）
@@ -217,6 +222,13 @@ struct ChatSession: Identifiable {
         return ChatSession(id: id, title: title, messages: msgs)
     }
 
+    /// v3.0.x fix：缓存 DateFormatter（原每次调用创建新实例）
+    private static let relativeTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d"
+        return f
+    }()
+
     /// 列表页相对时间（分钟/小时/天）
     var relativeTime: String {
         guard let ts = lastTime else { return "" }
@@ -226,9 +238,7 @@ struct ChatSession: Identifiable {
         if diff < 3600 { return "\(Int(diff / 60)) 分钟" }
         if diff < 86400 { return "\(Int(diff / 3600)) 小时" }
         if diff < 86400 * 7 { return "\(Int(diff / 86400)) 天" }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M/d"
-        return fmt.string(from: Date(timeIntervalSince1970: t))
+        return Self.relativeTimeFormatter.string(from: Date(timeIntervalSince1970: t))
     }
 }
 
@@ -356,21 +366,15 @@ struct NASStatus {
     }
 
     var memPct: Double { memTotal > 0 ? memUsed / memTotal : 0 }
-    var memUsedText: String { byteText(memUsed) }
-    var memTotalText: String { byteText(memTotal) }
-    var qingliaoMemText: String { byteText(qingliaoMem) }
-    var hermesMemText: String { byteText(hermesMem) }
+    var memUsedText: String { memUsed.byteText }
+    var memTotalText: String { memTotal.byteText }
+    var qingliaoMemText: String { qingliaoMem.byteText }
+    var hermesMemText: String { hermesMem.byteText }
     var cpuText: String { String(format: "%.1f%%", cpu) }
     var maxDiskPctText: String { String(format: "%.0f%%", maxDiskPct) }
     /// v3.0.22：硬件温度预格式化（DashboardView hwDetail 内联格式化搬到模型层）
     var hwCpuText: String { "" }
     var hwSsdText: String { "" }
-
-    private func byteText(_ b: Double) -> String {
-        if b >= 1_073_741_824 { return String(format: "%.1fG", b / 1_073_741_824) }
-        if b >= 1_048_576 { return String(format: "%.0fM", b / 1_048_576) }
-        return String(format: "%.0fK", b / 1024)
-    }
 }
 
 // MARK: - NAS 磁盘
@@ -385,8 +389,8 @@ struct NASDisk: Identifiable {
 
     var id: String { mnt }
     var isSystem: Bool { kind == "system" }
-    var usedText: String { byteText(used) }
-    var totalText: String { byteText(total) }
+    var usedText: String { used.byteText }
+    var totalText: String { total.byteText }
     var pctText: String { String(format: "%.0f%%", pct) }
 
     static func parse(_ d: [String: Any]) -> NASDisk? {
@@ -397,12 +401,6 @@ struct NASDisk: Identifiable {
         let pct = Double(d["pct"] as? String ?? "0") ?? 0
         let kind = d["kind"] as? String ?? (mnt.hasPrefix("/volume") || mnt.hasPrefix("/data") ? "data" : "system")
         return NASDisk(mnt: mnt, fs: fs, used: used, total: total, pct: pct, kind: kind)
-    }
-
-    private func byteText(_ b: Double) -> String {
-        if b >= 1_073_741_824 { return String(format: "%.1fG", b / 1_073_741_824) }
-        if b >= 1_048_576 { return String(format: "%.0fM", b / 1_048_576) }
-        return String(format: "%.0fK", b / 1024)
     }
 }
 
@@ -513,18 +511,26 @@ struct PinItem: Identifiable, Codable {
         self.createdAt = createdAt
     }
 
-    /// 按天分组用 "2026-08-29"
-    var dateKey: String {
+    /// v3.0.x fix：缓存 DateFormatter（原每次调用创建新实例，列表滚动时大量浪费）
+    private static let dateKeyFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: createdAt)
+        return f
+    }()
+    private static let timeTextFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    /// 按天分组用 "2026-08-29"
+    var dateKey: String {
+        Self.dateKeyFormatter.string(from: createdAt)
     }
 
     /// 显示用时间 "14:30"
     var timeText: String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f.string(from: createdAt)
+        Self.timeTextFormatter.string(from: createdAt)
     }
 
     /// 内容截断（卡片用）
@@ -541,5 +547,41 @@ struct PinItem: Identifiable, Codable {
         case "assistant": return "🤖 AI 说的"
         default: return ""
         }
+    }
+}
+
+// MARK: - Double 扩展：字节文本格式化（消除 NASDisk/NASStatus 重复实现）
+
+extension Double {
+    /// 字节 → 可读文本（G/M/K）
+    var byteText: String {
+        if self >= 1_073_741_824 { return String(format: "%.1fG", self / 1_073_741_824) }
+        if self >= 1_048_576 { return String(format: "%.0fM", self / 1_048_576) }
+        return String(format: "%.0fK", self / 1024)
+    }
+}
+
+// MARK: - [String: Any] 扩展：防御式类型提取（消除大量 `as? String ?? ""` 重复模式）
+
+extension [String: Any] {
+    /// 安全提取 String 字段
+    func str(_ key: String, _ fallback: String = "") -> String {
+        self[key] as? String ?? fallback
+    }
+    /// 安全提取 Double 字段
+    func dbl(_ key: String, _ fallback: Double = 0) -> Double {
+        (self[key] as? Double) ?? fallback
+    }
+    /// 安全提取 Bool 字段
+    func bool(_ key: String, _ fallback: Bool = false) -> Bool {
+        (self[key] as? Bool) ?? fallback
+    }
+    /// 安全提取嵌套字典
+    func dict(_ key: String) -> [String: Any] {
+        self[key] as? [String: Any] ?? [:]
+    }
+    /// 安全提取嵌套数组
+    func arr(_ key: String) -> [[String: Any]] {
+        self[key] as? [[String: Any]] ?? []
     }
 }

@@ -106,6 +106,14 @@ final class ToolConfirmGate {
     var onConfirm: ((Bool) -> Void)?
 }
 
+/// v3.0.18 fix：云端流式 UI 状态——提取为 @Observable 引用类型，
+/// 闭包捕获此对象而非 ChatView struct（struct 值捕获 → Task 内 self 旧副本 → 后续更新丢失）
+@Observable @MainActor
+final class CloudStreamUIState {
+    var toolCards: [ToolCardItem] = []
+    var lastStreamFlush: Date? = nil
+}
+
 /// 工具执行结果卡片（显示在消息区，AI 气泡上方）
 struct ToolCardItem: Identifiable {
     let id = UUID()
@@ -195,15 +203,18 @@ struct ChatView: View {
     // v2.0.132：智能球点击全屏粒子爆发（满屏散开特效层）
     @State var showFullBurst = false
     // v3.0.18：云端工具调用——执行卡片 + 写操作确认弹窗（gate 类持有，超时闭包只捕获它）
-    @State var toolCards: [ToolCardItem] = []
+    // v3.0.18 fix：toolCards/lastStreamFlush 提取到 CloudStreamUIState（@Observable 引用类型，
+    // 闭包捕获引用而非 struct 值拷贝，避免 Task 内 self 旧副本 → 状态更新丢失）
     @State var toolGate = ToolConfirmGate()
-    // v3.0.41 性能：流式节流标记（50ms 合并一次 stream.content 更新）
-    @State var lastStreamFlush: Date? = nil
+    @State var cloudStreamUI = CloudStreamUIState()
     // v3.0.27：长文目录
     @State var showTOCSheet = false
     // v3.0.51 A2：极长会话分页懒加载——初始只渲染尾部最近 N 条，顶部可"加载更早"
     @State var displayLimit = 300
     private static let loadMoreStep = 300
+    // v3.0.51 A2 fix：缓存可见消息数组——仅在消息数量/显示上限变化时重建，
+    // 避免每帧 stream.delta 触发 body 重建 O(visible) 数组
+    @State private var visibleMessagesCache: [MessageRowItem] = []
     private var visibleMessageCount: Int { min(chat.messages.count, displayLimit) }
     /// 可见窗口起始绝对索引（用于日期分隔线的 prevTs 取真实前一条）
     private var visibleStartIndex: Int { chat.messages.count - visibleMessageCount }
@@ -213,8 +224,12 @@ struct ChatView: View {
         let msg: ChatMessage
         var id: String { msg.id }
     }
-    private var visibleMessages: [MessageRowItem] {
-        Array(chat.messages.enumerated())[visibleStartIndex...].map { MessageRowItem(index: $0.offset, msg: $0.element) }
+    // v3.0.51 A2 fix：缓存可见消息数组——仅在消息数量/显示上限变化时重建，
+    // 避免每帧 stream.delta 触发 body 重建 O(visible) 数组
+    private func refreshVisibleMessages() {
+        let msgs = chat.messages
+        let start = visibleStartIndex
+        visibleMessagesCache = (start..<msgs.count).map { MessageRowItem(index: $0, msg: msgs[$0]) }
     }
 
     // 模型/提供商可从模型管理面板选择（UserDefaults 持久化）
@@ -816,14 +831,15 @@ struct ChatView: View {
                                             .buttonStyle(.plain)
                                             .padding(.bottom, 2)
                                         }
-                                        ForEach(visibleMessages) { entry in
+                                        ForEach(visibleMessagesCache) { entry in
                                                                     // v3.0.51：整行（日期分隔 + 时间分隔 + 气泡）拆辅助函数，ForEach 内只留薄调用
                                                                     messageRow(idx: entry.index, msg: entry.msg)
                                                                 }
                         // v3.0.18：云端工具执行卡片（显示在流式气泡上方）
-                        if !toolCards.isEmpty {
+                        // v3.0.18 fix：改用 @Observable cloudStreamUI.toolCards（引用类型，闭包安全）
+                        if !cloudStreamUI.toolCards.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
-                                ForEach(toolCards) { card in
+                                ForEach(cloudStreamUI.toolCards) { card in
                                     ToolCardView(item: card)
                                 }
                             }
@@ -916,7 +932,7 @@ struct ChatView: View {
             // v2.0.88：切换/新建会话 → 清空待发队列（避免排队消息发到别的会话）
             .onChange(of: chat.sessionId) {
                 clearPendingQueue()
-                toolCards = []   // v3.0.18：工具卡片跨会话残留清理
+                cloudStreamUI.toolCards = []   // v3.0.18 fix：工具卡片跨会话残留清理（通过 @Observable 引用类型）
                 // v3.0.51 A1：会话加载后重传残留 base64 图片（重启续传/失败重传）
                 Task { await chat.retryPendingImageUploads(auth: auth) }
             }
@@ -929,7 +945,11 @@ struct ChatView: View {
                 inputFocus = false
             }
             .onChange(of: chat.messages.count) {
+                refreshVisibleMessages()
                 scrollBottom(proxy)
+            }
+            .onChange(of: displayLimit) { _, _ in
+                refreshVisibleMessages()
             }
             .onChange(of: stream.content) {
                 scrollBottom(proxy)
@@ -948,6 +968,8 @@ struct ChatView: View {
             inputFocus = false
         }
         .task {
+            // v3.0.51 A2 fix：初始化可见消息缓存（首次渲染不为空）
+            refreshVisibleMessages()
             // 服务器连接状态检测（真实绿点）
             let r = await auth.testConnection(server: auth.serverURL)
             serverOnline = r.hasPrefix("✅")
@@ -1321,9 +1343,11 @@ struct ChatView: View {
         stream.isDone = false
         stream.content = ""
         stream.isAgent = false
-        toolCards = []
+        cloudStreamUI.toolCards = []  // v3.0.18 fix：通过 @Observable 引用类型重置
         CloudBackend.shared.isStreaming = true   // v3.0.2：标记云端流式进行中（驱动 Siri 发光）
-        Task {
+        // v3.0.18 fix：Task 显式捕获引用对象（chat/stream @Environment 类引用），
+        // 避免隐式捕获 struct 值副本导致 Task 内 self 旧副本 → 后续更新丢失
+        Task { [chat = self.chat, stream = self.stream] in
             defer {
                 sendingLock = false
                 stream.isStreaming = false
@@ -1334,39 +1358,39 @@ struct ChatView: View {
                 let history = chat.historyPayload()
                 // v3.0.18：工具循环内 escaping 闭包修改局部 var 触发 Swift 6 并发错误 → 用 @MainActor 容器
                 let acc = CloudTextAccumulator()
-                // v3.0.18：工具循环（确认弹窗 → 执行 → 回传 → 最终文本）
-                // 注：ChatView 是 struct，闭包直接捕获 self（值捕获；@State 底层是引用存储，修改仍生效）
+                // v3.0.18 fix：闭包不再捕获 [self]（struct 值拷贝 → Task 内 self 旧副本 → 更新丢失），
+                // 改为捕获具体引用对象：chat/stream 是 @Environment 类引用，cloudStreamUI 是 @Observable 类引用
                 let finalText = await CloudToolLoop.shared.run(
                     messages: history,
-                    confirmHandler: { [self] pending in
+                    confirmHandler: { [chat = self.chat, toolGate = self.toolGate] pending in
                         // v3.0.18 review：确认弹窗期间切了会话 → 拒绝执行（防日历/提醒建到别的会话场景）
-                        guard self.chat.sessionId == startSid else { return false }
-                        return await self.confirmToolRun(pending)
+                        guard chat.sessionId == startSid else { return false }
+                        return await self.confirmToolRun(pending, toolGate: toolGate)
                     },
-                    events: { [self, acc] event in
-                        guard self.chat.sessionId == startSid else { return }
+                    events: { [chat = self.chat, stream = self.stream, ui = self.cloudStreamUI, acc] event in
+                        guard chat.sessionId == startSid else { return }
                         switch event {
                         case .text(let delta):
                             acc.text += delta
                             // v3.0.41 性能：流式节流——每 delta 更新 stream.content 触发全树重建，
                             // 超长文本高频重建=卡死主因；限 50ms 合并一次（视觉仍连贯）
                             let now = Date()
-                            if self.lastStreamFlush == nil || now.timeIntervalSince(self.lastStreamFlush!) >= 0.05 {
-                                self.lastStreamFlush = now
-                                self.stream.content = acc.text
+                            if ui.lastStreamFlush == nil || now.timeIntervalSince(ui.lastStreamFlush!) >= 0.05 {
+                                ui.lastStreamFlush = now
+                                stream.content = acc.text
                             }
                         case .toolCard(let title, let ok):
-                            self.toolCards.append(ToolCardItem(title: title, ok: ok))
+                            ui.toolCards.append(ToolCardItem(title: title, ok: ok))
                         case .done(let full):
                             acc.text = full
-                            self.stream.content = full
+                            stream.content = full
                         case .error(let err):
                             // v3.0.18 review fix #3：错误同时拼入 acc——run 返回 nil 后落库走 acc.text 路径，真实错误不丢失
                             // v3.0.19：限流错误友好提示（与本地模式一致）
                             let friendly = Self.friendlyStreamError(err)
                             let errText = acc.text.isEmpty ? "⚠️ " + friendly : acc.text + "\n\n⚠️ " + friendly
                             acc.text = errText
-                            self.stream.content = errText
+                            stream.content = errText
                         }
                     }
                 )
@@ -1400,14 +1424,14 @@ struct ChatView: View {
     }
 
     /// v3.0.18：工具写操作确认弹窗（await 用户点确认/取消；60s 无响应自动取消防挂死）
-    /// 超时 @Sendable 闭包只捕获 toolGate（@MainActor 类），不捕获 ChatView struct
-    private func confirmToolRun(_ pending: PendingToolConfirm) async -> Bool {
+    /// v3.0.18 fix：toolGate 改为参数传入（不捕获 self struct），闭包仅操作 @Observable 类引用
+    private func confirmToolRun(_ pending: PendingToolConfirm, toolGate: ToolConfirmGate) async -> Bool {
         await withCheckedContinuation { cont in
             toolGate.pending = pending
             toolGate.onConfirm = { ok in
                 cont.resume(returning: ok)
-                self.toolGate.pending = nil
-                self.toolGate.onConfirm = nil
+                toolGate.pending = nil
+                toolGate.onConfirm = nil
             }
             // 兜底：60s 用户无操作 → 自动取消（防 continuation 永不 resume 挂死工具循环）
             let gate = toolGate

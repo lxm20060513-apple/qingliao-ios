@@ -11,19 +11,24 @@ struct BigBangWord: Identifiable {
 }
 
 enum BigBangParser {
-    /// 将文本按语义拆成词块（限制 5000 字，防超长消息卡 UI）
-    static func tokenize(_ text: String) -> [BigBangWord] {
+    /// 将文本按语义拆成词块（默认限制 5000 字，防超长消息卡 UI；可通过 maxChars 自定义）
+    static func tokenize(_ text: String, maxChars: Int = 5000) -> [BigBangWord] {
         let ns = text as NSString
-        let maxLen = min(ns.length, 5000)
+        let maxLen = min(ns.length, maxChars)
         var words: [BigBangWord] = []
         var cursor = 0
 
-        let tokenizer = CFStringTokenizerCreate(
+        guard let tokenizer = CFStringTokenizerCreate(
             kCFAllocatorDefault, text as CFString,
             CFRange(location: 0, length: ns.length),
             kCFStringTokenizerUnitWord,
             Locale(identifier: "zh_CN") as CFLocale
-        )
+        ) else {
+            // CFStringTokenizerCreate 返回 nil（内存压力/输入异常），降级为逐字拆分
+            return text.isEmpty ? [] : Array(stride(from: 0, to: maxLen, by: 1)).map {
+                BigBangWord(id: $0, text: String(ns.character(at: $0)))
+            }
+        }
 
         func appendGap(from: Int, to: Int) {
             guard to > from else { return }

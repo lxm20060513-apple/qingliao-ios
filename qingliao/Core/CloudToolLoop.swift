@@ -72,7 +72,12 @@ final class CloudToolLoop {
 
         var working = messages
         // 分片 tool_calls 累积器（流式：同一 index 多次出现）
-        var pendingCalls: [Int: (id: String, name: String, args: String)] = [:]
+        struct PendingCall {
+            var id: String = ""
+            var name: String = ""
+            var args: String = ""
+        }
+        var pendingCalls: [Int: PendingCall] = [:]
         // v3.0.18 review fix #2：跨轮累计最终全文（.done 事件是纯信号，返回值必须含首轮叙述）
         var accumulatedFull = ""
 
@@ -90,7 +95,7 @@ final class CloudToolLoop {
                     events(.text(chunk.contentDelta))
                 }
                 for tc in chunk.toolCalls {
-                    var entry = pendingCalls[tc.index] ?? (id: "", name: "", args: "")
+                    var entry = pendingCalls[tc.index] ?? PendingCall()
                     if !tc.id.isEmpty { entry.id = tc.id }
                     if !tc.name.isEmpty { entry.name = tc.name }
                     entry.args += tc.arguments

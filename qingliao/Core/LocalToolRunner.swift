@@ -38,8 +38,8 @@ enum LocalToolRunner {
     /// v3.0.19：后端 API 访问器（HA/Docker 工具用）。App 启动时注入（QingliaoApp 或 RootView）
     static weak var authStore: AuthStore?
 
-    /// 所有工具定义（OpenAI tools 数组格式）
-    static let allDefs: [LocalToolDef] = [
+    /// 所有工具定义（OpenAI tools 数组格式；改为 var 以支持动态注册/插件追加）
+    static var allDefs: [LocalToolDef] = [
         createReminderDef,
         createCalendarEventDef,
         startTimerDef,
@@ -220,6 +220,17 @@ enum LocalToolRunner {
 
     // MARK: - 工具实现
 
+    // v3.0.x fix：缓存 Date/ISO8601 Formatter（避免每次工具调用重复创建 → 主线程卡顿）
+    private static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
+    private static let displayDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M月d日 HH:mm"
+        return f
+    }()
+
     /// 📅 日历建事件
     static let createCalendarEventDef = LocalToolDef(
         name: "create_calendar_event",
@@ -238,14 +249,14 @@ enum LocalToolRunner {
         run: { args in
             guard let title = args["title"] as? String, !title.isEmpty,
                   let startStr = args["start"] as? String,
-                  let start = ISO8601DateFormatter().date(from: startStr) ?? Self.parseFlexibleDate(startStr) else {
+                  let start = Self.iso8601.date(from: startStr) ?? Self.parseFlexibleDate(startStr) else {
                 return ToolResult(success: false, summary: "日历事件缺少标题或时间",
                                   detail: #"{"error": "missing title or start"}"#)
             }
             let store = EKEventStore()
             let end: Date
             if let endStr = args["end"] as? String,
-               let e = ISO8601DateFormatter().date(from: endStr) ?? Self.parseFlexibleDate(endStr) {
+               let e = Self.iso8601.date(from: endStr) ?? Self.parseFlexibleDate(endStr) {
                 end = e
             } else {
                 end = start.addingTimeInterval(3600)
@@ -258,10 +269,8 @@ enum LocalToolRunner {
             if let notes = args["notes"] as? String, !notes.isEmpty { event.notes = notes }
             do {
                 try store.save(event, span: .thisEvent)
-                let f = DateFormatter()
-                f.dateFormat = "M月d日 HH:mm"
                 return ToolResult(success: true,
-                                  summary: "已创建日程：\(title)（\(f.string(from: start))）",
+                                  summary: "已创建日程：\(title)（\(Self.displayDateFmt.string(from: start))）",
                                   detail: #"{"ok": true, "title": "\#(title)", "start": "\#(startStr)"}"#)
             } catch {
                 return ToolResult(success: false, summary: "日历创建失败：\(error.localizedDescription)",
@@ -291,7 +300,7 @@ enum LocalToolRunner {
             }
             var due: Date?
             if let dueStr = args["due"] as? String {
-                due = ISO8601DateFormatter().date(from: dueStr) ?? Self.parseFlexibleDate(dueStr)
+                due = Self.iso8601.date(from: dueStr) ?? Self.parseFlexibleDate(dueStr)
             } else if let mins = args["minutes"] as? Int {
                 due = Date().addingTimeInterval(TimeInterval(mins * 60))
             }
@@ -307,9 +316,7 @@ enum LocalToolRunner {
             }
             do {
                 try store.save(reminder, commit: true)
-                let f = DateFormatter()
-                f.dateFormat = "M月d日 HH:mm"
-                let whenText = due.map { f.string(from: $0) } ?? "尽快"
+                let whenText = due.map { Self.displayDateFmt.string(from: $0) } ?? "尽快"
                 return ToolResult(success: true,
                                   summary: "已创建提醒：\(title)（\(whenText)）",
                                   detail: #"{"ok": true, "title": "\#(title)", "due": "\#(due?.timeIntervalSince1970 ?? 0)}"#)
@@ -425,6 +432,17 @@ enum LocalToolRunner {
                 return ToolResult(success: false, summary: "表达式包含非法字符",
                                   detail: #"{"error": "invalid characters"}"#)
             }
+            // 防 NSExpression 注入：长度限制 + 嵌套深度检查（防超长/深层表达式导致栈溢出）
+            guard cleaned.count <= 200 else {
+                return ToolResult(success: false, summary: "表达式过长",
+                                  detail: #"{"error": "expression too long"}"#)
+            }
+            let depth = cleaned.reduce(0) { $0 + ($1 == "(" ? 1 : $1 == ")" ? -1 : 0) }
+            guard depth >= 0, depth <= 20 else {
+                return ToolResult(success: false, summary: "表达式括号嵌套过深",
+                                  detail: #"{"error": "expression too deeply nested"}"#)
+            }
+
             // v3.0.18：% 在 NSExpression(format:) 是 C 风格格式符（%d 等），字面 % 须转义 %% 防格式串注入/崩溃
             let safeExpr = cleaned.replacingOccurrences(of: "%", with: "%%")
             let exp = NSExpression(format: safeExpr)
@@ -643,10 +661,17 @@ enum LocalToolRunner {
 
     /// 宽松时间解析（支持 "2026-08-21 15:00:00" / "2026-08-21T15:00:00" / "2026-08-21 15:00" /
     /// "2026-08-21T15:00" / "MM-dd HH:mm" / "HH:mm"（已过则明天））
-    static func parseFlexibleDate(_ s: String) -> Date? {
+    private static let flexibleDateFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
         f.timeZone = .current
+        return f
+    }()
+
+    /// 宽松时间解析（支持 "2026-08-21 15:00:00" / "2026-08-21T15:00:00" / "2026-08-21 15:00" /
+    /// "2026-08-21T15:00" / "MM-dd HH:mm" / "HH:mm"（已过则明天））
+    static func parseFlexibleDate(_ s: String) -> Date? {
+        let f = Self.flexibleDateFmt
         // v3.0.18 review fix：带秒模式必须在前（模型按 schema 示例输出 "2026-08-21T15:00:00"，
         // 无秒模式 "yyyy-MM-dd'T'HH:mm" 吞不下尾部 ":00" → 解析失败）
         let patterns = [
@@ -686,7 +711,8 @@ enum LocalToolRunner {
         case 71, 73, 75, 77: return "雪"
         case 80, 81, 82: return "阵雨"
         case 85, 86: return "阵雪"
-        case 95, 96, 99: return "雷暴"
+        case 95: return "雷暴"
+        case 96, 99: return "雷暴+冰雹"
         default: return ""
         }
     }
@@ -711,10 +737,20 @@ enum LocalToolRunner {
             let error = j["error"] as? String ?? ""
             if ok {
                 // 截断过长结果（给模型的 detail 限制 4000 字符）
-                let truncated = result.count > 4000 ? String(result.prefix(4000)) + "\n...(已截断)" : result
+                // 确保截断后 detail 始终是合法 JSON（原生 result 可能是 JSON 对象，截断会破坏结构）
+                let detail: String
+                if result.count > 4000 {
+                    let short = String(result.prefix(4000))
+                    let escaped = short.replacingOccurrences(of: "\\", with: "\\\\")
+                                      .replacingOccurrences(of: "\"", with: "\\\"")
+                                      .replacingOccurrences(of: "\n", with: "\\n")
+                    detail = #"{"truncated": true, "content": ""# + escaped + "\"}"
+                } else {
+                    detail = result
+                }
                 return ToolResult(success: true,
                                   summary: toolNASPreview(name: name, args: args),
-                                  detail: truncated)
+                                  detail: detail)
             }
             return ToolResult(success: false, summary: "NAS工具失败: \(error)",
                               detail: #"{"error": "\#(error)"}"#)

@@ -33,6 +33,8 @@ struct QingliaoApp: App {
                 .task {
                     // v2.0.36：请求本地通知权限（AI 回复完成提醒）
                     NotificationHelper.requestAuth()
+                    // v3.0.x：初始化图片缓存限制（避免首次使用前无上限缓存）
+                    initImageCacheLimit()
                     // v3.0.x：注入 AuthStore 到本地工具执行器（云端 HA/Docker 工具用）
                     LocalToolRunner.authStore = auth
                     // v3.0.x：注入 AuthStore 到朗读管理（语音引擎 TTS 经 /api/tts 需带 token）

@@ -98,7 +98,7 @@ enum CrashReporter {
     }
 
     /// 启动时若有未上报崩溃 → 异步 POST，成功删除本地文件
-    @MainActor
+    /// v3.0.x fix：改为非 @MainActor（原 @MainActor 阻塞 App 主线程启动）
     static func flushPending(auth: AuthStore) async {
         let path = qlCrashFilePath()
         guard FileManager.default.fileExists(atPath: path) else { return }

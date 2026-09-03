@@ -25,22 +25,33 @@ final class InboxStore {
     /// 已注入的消息 id（本地防重复——App 前后台频繁轮询，done 标记有网络延迟）
     /// v3.0.84fix：持久化到 UserDefaults（原纯内存 Set，App 重启丢 → 未 markDone 的推送会重复注入+重复通知）
     private var consumedIds: Set<String>
+    /// v3.0.x fix：按插入顺序记录 id，用于清理时保留最近的而非按字典序（字典序会丢掉最近的 id）
+    private var consumedOrder: [String] = []
     private var pollingTask: Task<Void, Never>?
     private let consumedKey = "qingliao_inbox_consumed_ids"
 
     /// 推送轮询间隔（秒）。App 前台持续轮询；后台系统会冻结 task。
+    /// v3.0.x fix：流式结束后临时缩短间隔快速拉取（1s），3 轮后恢复默认 5s
     var pollInterval: Double = 5
+    /// 流式结束后剩余快拉轮数
+    private var fastPollRemaining = 0
 
     private init() {
-        consumedIds = Set(UserDefaults.standard.stringArray(forKey: "qingliao_inbox_consumed_ids") ?? [])
+        let saved = UserDefaults.standard.stringArray(forKey: "qingliao_inbox_consumed_ids") ?? []
+        consumedIds = Set(saved)
+        // 恢复插入顺序（字典序保存的旧数据无法精确恢复，用 sorted 兜底）
+        consumedOrder = saved.isEmpty ? saved : Array(consumedIds).sorted()
     }
 
     private func consume(_ id: String) {
+        guard !consumedIds.contains(id) else { return }
         consumedIds.insert(id)
+        consumedOrder.append(id)
         // 只保留最近 200 个去重 id（防无限增长；远大于队列上限 100）
-        if consumedIds.count > 200 {
-            let dropped = consumedIds.sorted().dropFirst(consumedIds.count - 200)
-            consumedIds.subtract(dropped)
+        if consumedOrder.count > 200 {
+            let dropped = consumedOrder.prefix(consumedOrder.count - 200)
+            for old in dropped { consumedIds.remove(old) }
+            consumedOrder = Array(consumedOrder.suffix(200))
         }
         UserDefaults.standard.set(Array(consumedIds), forKey: consumedKey)
     }
@@ -144,6 +155,11 @@ final class InboxStore {
         if pollingTask == nil { startPolling() }
         // 立即拉一次，不等下一轮
         Task { await self.pollOnce() }
+    }
+
+    /// v3.0.x fix：流式结束后触发快拉（临时缩短轮询间隔，快速拉取可能的推送）
+    func triggerFastPoll() {
+        fastPollRemaining = 3  // 连续 3 轮用 1s 间隔
     }
 
     // MARK: - 后端 API

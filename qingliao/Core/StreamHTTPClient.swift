@@ -8,7 +8,8 @@ import Foundation
 ///     完成判定 = 按响应头 Content-Length 收满即停（Safari/curl 同款逻辑，kimi-k3 确认的根因）。
 final class StreamHTTPClient: @unchecked Sendable {
 
-    /// 同步执行一次 HTTP 请求（阻塞当前线程直到完成/超时；由调用方放到后台线程）
+    /// 同步执行一次 HTTP 请求（阻塞当前线程直到完成/超时；由调用方放到后台线程）。
+    /// ⚠️ 必须在后台线程调用——在主线程调用会卡死 UI（runloop 等待响应）。
     func request(host: String, port: UInt16, isTLS: Bool,
                  method: String, path: String,
                  headers: [String: String], body: Data?,
@@ -27,12 +28,15 @@ final class StreamHTTPClient: @unchecked Sendable {
         }
 
         if isTLS {
-            // TLS：SNI=域名（kCFStreamSSLPeerName）+ 忽略证书链校验（自家服务）
-            let settings: [CFString: Any] = [
+            // TLS：SNI=域名（kCFStreamSSLPeerName）；仅本地服务跳过证书链校验，外部服务正常验证
+            var settings: [CFString: Any] = [
                 kCFStreamSSLLevel: kCFStreamSocketSecurityLevelNegotiatedSSL,
                 kCFStreamSSLPeerName: host as CFString,
-                kCFStreamSSLValidatesCertificateChain: kCFBooleanFalse,
             ]
+            let isLocal = (host == "127.0.0.1" || host == "localhost" || host == "::1")
+            if isLocal {
+                settings[kCFStreamSSLValidatesCertificateChain] = kCFBooleanFalse
+            }
             let sslKey = CFStreamPropertyKey(kCFStreamPropertySSLSettings)
             CFReadStreamSetProperty(read, sslKey, settings as CFDictionary)
             CFWriteStreamSetProperty(write, sslKey, settings as CFDictionary)
@@ -120,7 +124,7 @@ final class StreamHTTPClient: @unchecked Sendable {
             while CFReadStreamHasBytesAvailable(read) {
                 let n = CFReadStreamRead(read, &buf, buf.count)
                 if n <= 0 { break }
-                state.buffer.append(buf, count: n)
+                state.appendToBuffer(Data(buf[0..<n]))
             }
             if StreamHTTPClient.isResponseComplete(state.buffer) {
                 state.result = StreamHTTPClient.parseResponse(state.buffer)
@@ -239,23 +243,98 @@ final class StreamHTTPClient: @unchecked Sendable {
     }
 }
 
-/// 单次请求状态（C 回调 context.info 传递，runloop 单线程访问）
+/// 单次请求状态（C 回调 context.info 传递；runloop + DispatchQueue 并发访问，用锁保护）
 final class StreamState: @unchecked Sendable {
-    var payload: Data?
-    var read: CFReadStream?
-    var write: CFWriteStream?
-    var buffer = Data()
-    var sent = false
-    var sentOffset = 0
-    var writeFailCount = 0
-    var zeroWrites = 0
-    var lastEvent: Int = -1
-    var done = false
-    var timeout = false
-    var error: Error?
-    var result: (Data, Int)?
+    private let lock = NSLock()
+
+    // 以下字段全部在锁保护下访问
+    private var _payload: Data?
+    private var _read: CFReadStream?
+    private var _write: CFWriteStream?
+    private var _buffer = Data()
+    private var _sent = false
+    private var _sentOffset = 0
+    private var _writeFailCount = 0
+    private var _zeroWrites = 0
+    private var _lastEvent: Int = -1
+    private var _done = false
+    private var _timeout = false
+    private var _error: Error?
+    private var _result: (Data, Int)?
+
+    // MARK: - 线程安全访问器
+
+    var payload: Data? {
+        get { lock.withLock { _payload } }
+        set { lock.withLock { _payload = newValue } }
+    }
+
+    var read: CFReadStream? {
+        get { lock.withLock { _read } }
+        set { lock.withLock { _read = newValue } }
+    }
+
+    var write: CFWriteStream? {
+        get { lock.withLock { _write } }
+        set { lock.withLock { _write = newValue } }
+    }
+
+    var buffer: Data {
+        get { lock.withLock { _buffer } }
+        set { lock.withLock { _buffer = newValue } }
+    }
+
+    /// 仅追加 buffer（避免整个 getter/setter 之间的竞态）
+    func appendToBuffer(_ data: Data) {
+        lock.withLock { _buffer.append(data) }
+    }
+
+    var sent: Bool {
+        get { lock.withLock { _sent } }
+        set { lock.withLock { _sent = newValue } }
+    }
+
+    var sentOffset: Int {
+        get { lock.withLock { _sentOffset } }
+        set { lock.withLock { _sentOffset = newValue } }
+    }
+
+    var writeFailCount: Int {
+        get { lock.withLock { _writeFailCount } }
+        set { lock.withLock { _writeFailCount = newValue } }
+    }
+
+    var zeroWrites: Int {
+        get { lock.withLock { _zeroWrites } }
+        set { lock.withLock { _zeroWrites = newValue } }
+    }
+
+    var lastEvent: Int {
+        get { lock.withLock { _lastEvent } }
+        set { lock.withLock { _lastEvent = newValue } }
+    }
+
+    var done: Bool {
+        get { lock.withLock { _done } }
+        set { lock.withLock { _done = newValue } }
+    }
+
+    var timeout: Bool {
+        get { lock.withLock { _timeout } }
+        set { lock.withLock { _timeout = newValue } }
+    }
+
+    var error: Error? {
+        get { lock.withLock { _error } }
+        set { lock.withLock { _error = newValue } }
+    }
+
+    var result: (Data, Int)? {
+        get { lock.withLock { _result } }
+        set { lock.withLock { _result = newValue } }
+    }
 
     init(payload: Data?) {
-        self.payload = payload
+        self._payload = payload
     }
 }

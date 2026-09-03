@@ -73,9 +73,10 @@ final class PinStore {
         // 写本地 UserDefaults 兜底
         UserDefaults.standard.set(data, forKey: "qingliao_pins_data")
 
-        // 异步写后端文件（NAS）
-        Task {
-            await writeToFile(data: data)
+        // v3.0.x fix：用 Task.detached 避免继承 @MainActor（原 Task 继承 MainActor → 网络 I/O 阻塞主线程）
+        let path = pinsFilePath
+        Task.detached { [weak auth] in
+            await Self.writeToFile(auth: auth, path: path, data: data)
         }
     }
 
@@ -106,10 +107,11 @@ final class PinStore {
 
     // MARK: - 文件读写（通过后端 API）
 
-    private func writeToFile(data: Data) async {
+    /// v3.0.x fix：static 方法，供 Task.detached 调用（避免捕获 self 导致 MainActor 隔离问题）
+    private static func writeToFile(auth: AuthStore?, path: String, data: Data) async {
         guard let auth else { return }
         let body: [String: Any] = [
-            "path": pinsFilePath,
+            "path": path,
             "data": data.base64EncodedString()
         ]
         _ = try? await auth.json("/api/files/pin_write", method: "POST", body: body)
