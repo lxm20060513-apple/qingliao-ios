@@ -507,7 +507,7 @@ final class AuthStore {
     }
 
     /// 当前流式会话 id（StreamClient 启动时设置，用于 uid 推导）
-    private(set) var currentStreamSessionId: String = ""
+    internal(set) var currentStreamSessionId: String = ""
 
     // MARK: - 连通性测试
 

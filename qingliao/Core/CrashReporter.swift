@@ -111,8 +111,11 @@ enum CrashReporter {
         var body: [String: Any] = obj
         body["app"] = "qingliao-ios"
         body["platform"] = "iOS"
-        body["os"] = UIDevice.current.systemVersion
-        body["device"] = UIDevice.current.model
+        let (os, device) = await MainActor.run {
+            (UIDevice.current.systemVersion, UIDevice.current.model)
+        }
+        body["os"] = os
+        body["device"] = device
         if let info = Bundle.main.infoDictionary {
             body["version"] = (info["CFBundleShortVersionString"] as? String) ?? ""
         }

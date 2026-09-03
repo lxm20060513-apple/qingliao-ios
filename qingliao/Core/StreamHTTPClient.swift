@@ -196,7 +196,7 @@ final class StreamHTTPClient: @unchecked Sendable {
     }
 
     /// 按 Content-Length 判断响应是否完整（kimi-k3 确认的根因修复：Safari/curl 同款判定）
-    private static func isResponseComplete(_ buffer: Data) -> Bool {
+    fileprivate static func isResponseComplete(_ buffer: Data) -> Bool {
         guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return false }
         let headerText = String(data: buffer[..<headerEnd.lowerBound], encoding: .utf8) ?? ""
         for line in headerText.split(separator: "\r\n") {

@@ -72,6 +72,6 @@ extension SessionTagStore {
 }
 
 /// 全局便捷访问（向后兼容现有调用）
-func tagColor(_ tag: String) -> Color {
+@MainActor func tagColor(_ tag: String) -> Color {
     SessionTagStore.tagColor(tag)
 }
